@@ -9,6 +9,8 @@ include 'header.php';
             <h1>Bienvenido al Sistema de Gestión</h1>
             <p>U.E.B.N. "Juan Pablo Pérez Alfonzo"</p>
             <p>Trabajando para el pueblo jjajaja</p>
+            <h2>Se menea se menea se meneaaaaa
+        Arremangalarrepungala no, Arremangalarrepungala si. Arremangalarrepungala Arremangalarrepungala Arremangalarrepungala</h2>
         </div>
     </div>
 </div>
