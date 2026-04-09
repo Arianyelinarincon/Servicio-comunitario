@@ -8,6 +8,7 @@ include 'header.php';
         <div class="col-md-12 text-center">
             <h1>Bienvenido al Sistema de Gestión</h1>
             <p>U.E.B.N. "Juan Pablo Pérez Alfonzo"</p>
+            <p>Trabajando para el pueblo jjajaja</p>
         </div>
     </div>
 </div>

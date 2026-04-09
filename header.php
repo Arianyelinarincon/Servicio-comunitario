@@ -40,7 +40,7 @@
         <a class="navbar-brand d-flex align-items-center text-white" href="dashboard.php">
             <img src="img/unefa_logo.png" alt="Logo UNEFA"> 
             <div class="d-none d-md-block" style="line-height: 1.2;">
-                <span class="fs-6 fw-bold">SISTEMA DE GESTIÓN ESCOLAR</span><br>
+                <span class="fs-6 fw-bold">SISTEMA DE GESTIÓN ESCOLAR!!!</span><br>
                 <small style="font-size: 0.7rem; color: var(--unefa-oro);">SERVICIO COMUNITARIO - UNEFA ZULIA</small>
             </div>
         </a>
