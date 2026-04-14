@@ -1,21 +1,23 @@
-<?php 
-// Esto importa todo el contenido de tu barra de navegación y estilos
-include 'header.php'; 
-?>
-
-<div class="container mt-5">
-    <div class="row">
-        <div class="col-md-12 text-center">
-            <h1>Bienvenido al Sistema de Gestión</h1>
-            <p>U.E.B.N. "Juan Pablo Pérez Alfonzo"</p>
-            <p>Trabajando para el pueblo jjajaja</p>
-            <h2>Se menea se menea se meneaaaaa
-        Arremangalarrepungala no, Arremangalarrepungala si. Arremangalarrepungala Arremangalarrepungala Arremangalarrepungala</h2>
-        </div>
-    </div>
-</div>
-
-<?php 
-// Opcional: Si creas un footer.php para los créditos de la UNEFA
-// include 'footer.php'; 
-?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba de repositorio</title>
+</head>
+<body>
+    <h1>esta es una prueba 
+        primera guardada
+        adasdasdasdas
+        titulo: viva chave
+    </h1>
+     <h1>esta es una prueba 
+        primera guardada
+        adasdasdasdas
+        titulo: viva chave
+        aymimadrecita
+    </h1>
+    <h2>El futuro de la Patria</h2>
+    <p>Victor Cuando sea grande quiero ser como vos!</p>
+</body>
+</html>
