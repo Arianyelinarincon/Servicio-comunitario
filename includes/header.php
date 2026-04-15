@@ -1,94 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestión U.E.B.N. Juan Pablo Pérez Alfonzo</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <style>
-        :root {
-            --unefa-azul: #003366; /* Azul Institucional UNEFA */
-            --unefa-oro: #C5A059;  /* Dorado Institucional */
-        }
-        .navbar-custom {
-            background-color: var(--unefa-azul);
-            border-bottom: 3px solid var(--unefa-oro);
-        }
-        .navbar-brand img {
-            height: 50px;
-            margin-right: 15px;
-        }
-        .nav-link {
-            color: white !important;
-            font-weight: 500;
-            transition: 0.3s;
-        }
-        .nav-link:hover {
-            color: var(--unefa-oro) !important;
-        }
-        .user-info {
-            color: white;
-            font-size: 0.9rem;
-        }
-    </style>
+    <title>S.G.E - Pérez Alfonzo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <?php include "estilos.php"; ?>
 </head>
-
 <body>
- <nav class="navbar navbar-expand-lg navbar-custom sticky-top">
-    <div class="container-fluid">
-        <a class="navbar-brand d-flex align-items-center text-white" href="dashboard.php">
-            <img src="img/unefa_logo.png" alt="Logo UNEFA"> 
-            <div class="d-none d-md-block" style="line-height: 1.2;">
-                <span class="fs-6 fw-bold">SISTEMA DE GESTIÓN ESCOLAR</span><br>
-                <small style="font-size: 0.7rem; color: var(--unefa-oro);">SERVICIO COMUNITARIO - UNEFA ZULIA</small>
-            </div>
-        </a>
 
-        <button class="navbar-toggler border-white" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav mx-auto">
-                <li class="nav-item">
-                    <a class="nav-link active" href="dashboard.php"><i class="bi bi-house-door"></i> Inicio</a>
-                </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        <i class="bi bi-people"></i> Estudiantes
-                    </a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="estudiantes_sala4.php">Sala 4 Años</a></li>
-                        <li><a class="dropdown-item" href="estudiantes_sala5.php">Sala 5 Años</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="registro_nuevo.php">Inscribir Nuevo</a></li>
-                    </ul>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="boletines.php"><i class="bi bi-file-earmark-text"></i> Boletines</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="estadisticas.php"><i class="bi bi-bar-chart"></i> Estadísticas</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="respaldos.php"><i class="bi bi-database-fill-check"></i> Respaldos</a>
-                </li>
-            </ul>
-
-            <div class="d-flex align-items-center user-info">
-                <div class="text-end me-3 d-none d-sm-block">
-                    <span class="d-block fw-bold text-uppercase">ADMIN - SECRETARÍA</span>
-                    <small style="color: var(--unefa-oro);">Sede: Maracaibo</small>
-                </div>
-                <a href="logout.php" class="btn btn-outline-light btn-sm">
-                    <i class="bi bi-box-arrow-right"></i>
-                </a>
-            </div>
+<div class="d-flex">
+    <nav id="sidebar" class="shadow">
+        <div class="sidebar-header text-center py-4">
+            <h3 class="fw-bold text-white">S.G.E.</h3>
+            <small class="text-white-50">U.E.B.N. Juan Pablo Pérez Alfonzo</small>
         </div>
-    </div>
-</nav>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>   
-</body>
-</html>
+        <ul class="list-unstyled components mt-2">
+            <li><a href="../index.php"><i class="fas fa-home me-2"></i> Inicio</a></li>
+            <li><a href="../inscripcion/index.php"><i class="fas fa-user-plus me-2"></i> Inscripción</a></li>
+            <li><a href="../matricula/index.php"><i class="fas fa-address-book me-2"></i> Matrícula</a></li>
+            <li class="active-item"><a href="../estadisticas/index.php"><i class="fas fa-chart-bar me-2"></i> Estadísticas</a></li>
+            <li><a href="../usuario/index.php"><i class="fas fa-users me-2"></i> Usuario</a></li>
+            <li><a href="../auditoria/index.php"><i class="fas fa-clipboard-list me-2"></i> Auditoría</a></li>
+            <li><a href="../seguridad/index.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
+            <li class="mt-4"><a href="../../logout.php" class="text-danger"><i class="fas fa-sign-out-alt me-2"></i> Salir</a></li>
+        </ul>
+    </nav>
+
+    <div id="content" style="width: 100%;">
+        <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm py-3 px-4">
+            <button type="button" id="sidebarCollapse" class="btn btn-primary" style="background-color: #002d54;">
+                <i class="fas fa-align-left"></i>
+            </button>
+            <div class="ms-3 fw-bold text-muted">PANEL DE ADMINISTRACIÓN</div>
+        </nav>
+        
+        <div class="p-4">
