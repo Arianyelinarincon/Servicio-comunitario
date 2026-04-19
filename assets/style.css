@@ -1,0 +1,61 @@
+body {
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+}
+
+.contenedor-hoja {
+    background: white;
+    width: 216mm; /* Tamaño carta aproximado */
+    min-height: 279mm;
+    margin: 20px auto;
+    padding: 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+.encabezado {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.info-ministerio {
+    text-align: center;
+}
+
+.tabla-estadistica {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+}
+
+.tabla-estadistica th, .tabla-estadistica td {
+    border: 1px solid black;
+    padding: 0; /* Sin padding para que el input ocupe todo */
+    text-align: center;
+    height: 25px; /* Altura fija como en la hoja */
+}
+
+/* Magia para que los inputs parezcan texto normal en la hoja */
+input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+    display: none; /* Ocultar flechitas de los números */
+}
+
+.tabla-estadistica td input {
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.input-corto { width: 40px; border-bottom: 1px solid black; }
+.input-medio { width: 100px; border-bottom: 1px solid black; }
+.input-largo { width: 200px; border-bottom: 1px solid black; }
