@@ -1,12 +1,12 @@
 <?php
 session_start();
-include_once "../auth.php"; 
+
 include_once "../config/conexion.php"; 
 include_once "../includes/header.php"; 
 
 if (!isset($_GET['id'])) {
     echo "<div class='alert alert-danger m-4'>Error: No se seleccionó ningún boletín.</div>";
-    include_once "../../includes/footer.php";
+    include_once "../includes/footer.php";
     exit;
 }
 
@@ -24,7 +24,7 @@ $boletin = $resultado->fetch_assoc();
 
 if (!$boletin) {
     echo "<div class='alert alert-danger m-4'>Boletín no encontrado.</div>";
-    include_once "../../includes/footer.php";
+    include_once "../includes/footer.php";
     exit;
 }
 ?>
@@ -88,4 +88,4 @@ if (!$boletin) {
     </div>
 </div>
 
-<?php include_once "../../includes/footer.php"; ?>
+<?php include_once "../includes/footer.php"; ?>

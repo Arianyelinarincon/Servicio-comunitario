@@ -1,6 +1,6 @@
 <?php
 session_start();
-include_once "../auth.php"; 
+
 include_once "../config/conexion.php"; 
 
 require('../fpdf/fpdf.php');

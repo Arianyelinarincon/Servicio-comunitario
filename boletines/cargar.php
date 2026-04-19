@@ -1,7 +1,6 @@
 <?php
 session_start();
 
-include_once "../auth.php"; 
 include_once "../config/conexion.php"; 
 include_once "../includes/header.php"; 
 
