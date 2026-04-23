@@ -100,21 +100,38 @@
         </tr>
         <tr>
             <th>D</th>
-            <?php for($i=1; $i<=31; $i++): ?><td><span class="dato-celda"><?php echo $datos['dias_letra'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <?php 
+            // LÓGICA PARA LOS DÍAS DE LA SEMANA
+            $anio_actual = date('Y', strtotime($datos['mes']));
+            $mes_actual = date('m', strtotime($datos['mes']));
+            
+            for($i=1; $i<=31; $i++): 
+                $letra = "";
+                if(checkdate($mes_actual, $i, $anio_actual)){
+                    $fecha_temp = "$anio_actual-$mes_actual-" . str_pad($i, 2, "0", STR_PAD_LEFT);
+                    $n_dia = date('w', strtotime($fecha_temp));
+                    $letra = ['D','L','M','M','J','V','S'][$n_dia];
+                }
+            ?>
+                <td><span class="dato-celda"><?php echo $letra; ?></span></td>
+            <?php endfor; ?>
             <td><span class="dato-celda"><?php echo $datos['dias_total'] ?? ''; ?></span></td>
             <td><span class="dato-celda"><?php echo $datos['dias_porcentaje'] ?? ''; ?></span></td>
         </tr>
         <tr>
             <th>V</th>
-            <?php for($i=1; $i<=33; $i++): ?><td><span class="dato-celda"><?php echo $datos['asistencia_v'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <?php for($i=1; $i<=31; $i++): ?><td><span class="dato-celda"><?php echo $datos['asistencia_v'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <td colspan="2"></td>
         </tr>
         <tr>
             <th>H</th>
-            <?php for($i=1; $i<=33; $i++): ?><td><span class="dato-celda"><?php echo $datos['asistencia_h'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <?php for($i=1; $i<=31; $i++): ?><td><span class="dato-celda"><?php echo $datos['asistencia_h'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <td colspan="2"></td>
         </tr>
         <tr>
             <th>Total</th>
-            <?php for($i=1; $i<=33; $i++): ?><td><span class="dato-celda"><?php echo $datos['asistencia_total'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <?php for($i=1; $i<=31; $i++): ?><td><span class="dato-celda"><?php echo $datos['asistencia_total'][$i] ?? ''; ?></span></td><?php endfor; ?>
+            <td colspan="2"></td>
         </tr>
     </table>
 
