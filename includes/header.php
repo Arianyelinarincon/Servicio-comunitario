@@ -38,3 +38,86 @@
         </nav>
         
         <div class="p-4">
+
+      
+
+// Daniel
+
+<div class="container-fluid mt-4">
+    <h3 class="mb-4">MÓDULO DE ESTUDIANTES - NUEVA INSCRIPCIÓN</h3>
+    
+    <form action="procesos.php" method="POST">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white text-center font-weight-bold">
+                        DATOS DEL ESTUDIANTE
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group mb-3">
+                            <label>Nombre Completo</label>
+                            <input type="text" name="nombre" class="form-control" placeholder="Ej. JUANITO ALCADE" required>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label>Cédula Escolar/ID</label>
+                            <input type="text" name="cedula" class="form-control" required>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label>Fecha de Nacimiento</label>
+                                <input type="date" name="fecha_nacimiento" class="form-control" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label>Género</label>
+                                <select name="genero" class="form-control" required>
+                                    <option value="V">Varón</option>
+                                    <option value="H">Hembra</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label>Sala Asignada</label>
+                            <select name="sala" class="form-control" required>
+                                <option value="sala4">Sala 4</option>
+                                <option value="sala5">Sala 5</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white text-center font-weight-bold">
+                        DATOS DEL REPRESENTANTE
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group mb-3">
+                            <label>Nombre Completo</label>
+                            <input type="text" name="rep_nombre" class="form-control" required>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label>Cédula/ID</label>
+                            <input type="text" name="rep_cedula" class="form-control" required>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label>Teléfono</label>
+                            <input type="text" name="rep_telefono" class="form-control" required>
+                        </div>
+                        <div class="form-group mb-3">
+                            <label>Alergias o condiciones del Estudiante</label>
+                            <textarea name="alergias_condiciones" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-3">
+            <button type="submit" name="registrar" class="btn btn-success btn-lg w-50">REGISTRAR ESTUDIANTE</button>
+            <a href="index.php" class="btn btn-secondary btn-lg">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<?php include_once "../includes/footer.php"; ?>
