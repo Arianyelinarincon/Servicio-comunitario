@@ -1,26 +1,58 @@
 <?php
-die("SI ESTAS LEYENDO ESTO, EL ARCHIVO SI SE GUARDO");
-include_once("Login/conexion.php");
-
 session_start();
 
-if (isset($_POST['login'])) {
-    
-    $usuario = mysqli_real_escape_string($conexion, $_POST['usuario']);
-    $password = mysqli_real_escape_string($conexion, $_POST['password']);
+// Activar errores por si acaso
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-    $sql = "SELECT * FROM usuarios WHERE usuario = '$usuario' AND password = '$password'";
-    $resultado = mysqli_query($conexion, $sql);
+// 1. Ruta corregida para salir dos niveles hasta la raíz del proyecto
+include_once("../../config/conexion.php"); 
 
-    if (mysqli_num_rows($resultado) > 0) {
-        $fila = mysqli_fetch_array($resultado);
-        $_SESSION['usuario'] = $fila['usuario'];
-    
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $usuario = trim($_POST['usuario']);
+    $password = trim($_POST['password']);
+
+    // 2. VALIDACIÓN DEL SUPER ADMIN (Credenciales maestras)
+    if ($usuario === "admin_unefa" && $password === "superadmin123") {
+        $_SESSION['usuario'] = "Super Admin";
+        $_SESSION['rol'] = "superadmin";
         
-        header("Location: index.php"); 
+        // Redirige correctamente saliendo de la carpeta login hacia profesores/index.php
+        header("Location: ../index.php");
         exit();
-    } else {
-        echo "<script>alert('Usuario o contraseña incorrectos'); window.location='Login/login.php';</script>";
     }
+
+    // 3. VALIDACIÓN DE PROFESORES REGULARES
+    // Buscamos en tu tabla 'profesores' asegurando que su estatus sea 'Activo'
+    $query = "SELECT * FROM profesores WHERE nombre = ? AND estatus = 'Activo'";
+    $stmt = $conexion->prepare($query);
+    $stmt->bind_param("s", $usuario);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        $profesor = $result->fetch_assoc();
+        
+        // Clave provisional de desarrollo para los profesores regulares
+        if ($password === "123456") { 
+            $_SESSION['usuario'] = $profesor['nombre'];
+            $_SESSION['rol'] = "profesor";
+            $_SESSION['profesor_id'] = $profesor['id'];
+            
+            // Redirige al index.php de afuera
+            header("Location: ../index.php");
+            exit();
+        } else {
+            header("Location: login.php?error=clave_incorrecta");
+            exit();
+        }
+    } else {
+        // Si no existe o su estatus es 'Inactivo' (eliminado), no entra
+        header("Location: login.php?error=no_autorizado_o_inactivo");
+        exit();
+    }
+} else {
+    header("Location: login.php");
+    exit();
 }
 ?>
