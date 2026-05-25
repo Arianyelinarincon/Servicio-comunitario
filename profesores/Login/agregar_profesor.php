@@ -77,7 +77,7 @@ $resultado_secciones = $conexion->query($sql_secciones);
 <body>
 
     <div class="container">
-        <a href="../index.php" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
+        <a href="../../index.php" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
         
         <h2><i class="fas fa-user-plus"></i> Registrar Profesor</h2>
         

@@ -2,10 +2,7 @@
 session_start();
 
 // 1. Validar seguridad: Si no hay sesión activa, mandarlo al login interno
-if (!isset($_SESSION['usuario'])) {
-    header("Location: login/login.php");
-    exit();
-}
+if ($_SESSION['rol'] !== 'administrador') { header("Location: Login/login.php"); exit(); }
 
 // Capturar el rol y usuario
 $rol = isset($_SESSION['rol']) ? $_SESSION['rol'] : 'profesor';
@@ -82,19 +79,19 @@ $nombre_usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Usuario'
         <h1>¡Bienvenido, <?php echo htmlspecialchars($nombre_usuario); ?>!</h1>
         <p>Has ingresado correctamente al Módulo de Profesores (UNEFA).</p>
         
-        <?php if ($rol === 'superadmin'): ?>
+        <?php if ($rol === 'administrador'): ?>
             <div style="color: #004b93; font-weight: bold; margin-top: 20px;">
                 <i class="fas fa-shield-alt"></i> Panel Administrativo Activo
             </div>
             
             <div class="grid-acciones">
-                <a href="login/agregar_profesor.php" class="btn-accion btn-add">
+                <a href="profesores/Login/agregar_profesor.php" class="btn-accion btn-add">
                     <i class="fas fa-user-plus fa-2x"></i> Agregar Profesor
                 </a>
-                <a href="login/actualizar_profesor.php" class="btn-accion btn-update">
+                <a href="profesores/Login/actualizar_profesor.php" class="btn-accion btn-update">
                     <i class="fas fa-user-edit fa-2x"></i> Actualizar Info
                 </a>
-                <a href="login/eliminar_profesor.php" class="btn-accion btn-delete">
+                <a href="profesores/login/eliminar_profesor.php" class="btn-accion btn-delete">
                     <i class="fas fa-user-minus fa-2x"></i> Eliminar (Inactivar)
                 </a>
             </div>
@@ -105,7 +102,7 @@ $nombre_usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Usuario'
         <?php endif; ?>
 
         <br>
-        <a href="login/logout.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a>
+        <a href="profesores/Login/login.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a>
     </div>
 
 </body>

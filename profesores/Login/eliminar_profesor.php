@@ -60,7 +60,7 @@ $resultado = $conexion->query($sql_profesores);
 <body>
 
     <div class="container">
-        <a href="index.php" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
+        <a href="../../index.php" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
         
         <h2><i class="fas fa-user-minus"></i> Dar de Baja Profesores</h2>
         <p style="color: #666; margin-bottom: 20px;">Selecciona el docente que deseas remover. Al hacerlo, su estado pasará a ser Inactivo y no podrá loguearse en el sistema.</p>

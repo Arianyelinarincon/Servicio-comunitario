@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'superadmin') {
+if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
     header("Location: login.php");
     exit();
 }
@@ -82,7 +82,7 @@ $resultado_secciones = $conexion->query($sql_secciones);
 <body>
 
     <div class="container">
-        <a href="index.php" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
+        <a href="../../index.php" class="btn-back"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
         
         <h2><i class="fas fa-user-edit"></i> Gestión y Actualización de Profesores</h2>
         
