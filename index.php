@@ -1,108 +1,76 @@
 <?php
 session_start();
 
-// 1. Validar seguridad: Si no hay sesión activa, mandarlo al login interno
-if ($_SESSION['rol'] !== 'administrador') { header("Location: Login/login.php"); exit(); }
+// 1. Validar seguridad
+if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') { 
+    header("Location: Login/login.php"); 
+    exit(); 
+}
 
-// Capturar el rol y usuario
-$rol = isset($_SESSION['rol']) ? $_SESSION['rol'] : 'profesor';
-$nombre_usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Usuario';
+$nombre_usuario = $_SESSION['nombre_profesor'] ?? 'Administrador';
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Profesores - UEBN Juan Pablo Pérez Alfonzo</title>
+    <title>Panel Administrativo - UEBN Juan Pablo Pérez Alfonzo</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f2f5;
-            margin: 0;
-            padding: 40px 20px;
-            display: flex;
-            justify-content: center;
-        }
-        .welcome-box {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            text-align: center;
-            max-width: 600px;
-            width: 100%;
-        }
-        h1 { color: #333; margin-bottom: 5px; font-size: 28px; }
-        p { color: #666; margin-top: 5px; }
-        .grid-acciones {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-            margin-bottom: 30px;
-        }
-        .btn-accion {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            border-radius: 8px;
-            color: white;
-            text-decoration: none;
-            font-weight: bold;
-            font-size: 14px;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .btn-accion i { margin-bottom: 10px; }
-        .btn-accion:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-        .btn-add { background-color: #28a745; }
-        .btn-update { background-color: #ffc107; color: #333; }
-        .btn-delete { background-color: #dc3545; }
-        .btn-logout {
-            display: inline-block;
-            margin-top: 20px;
-            color: #dc3545;
-            text-decoration: none;
-            font-weight: bold;
-        }
-        .btn-logout:hover { text-decoration: underline; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #eef2f7; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+        
+        /* Encabezado Profesional */
+        .header-admin { background: #003366; color: white; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .header-admin a { color: #ffcccc; text-decoration: none; font-weight: bold; }
+
+        .container { flex: 1; padding: 40px; max-width: 1200px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+        .content-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        
+        /* Tarjetas de Acción */
+        .grid-acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; margin-top: 40px; }
+        .btn-accion { background: #fff; border: 2px solid #eef2f7; padding: 40px; border-radius: 15px; text-decoration: none; color: #333; text-align: center; transition: all 0.3s ease; display: block; }
+        .btn-accion:hover { border-color: #003366; transform: translateY(-10px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .btn-accion i { font-size: 3.5em; margin-bottom: 20px; display: block; }
+        
+        /* Colores */
+        .btn-add { border-top: 5px solid #28a745; }
+        .btn-add i { color: #28a745; }
+        .btn-update { border-top: 5px solid #ffc107; }
+        .btn-update i { color: #ffc107; }
+        .btn-delete { border-top: 5px solid #dc3545; }
+        .btn-delete i { color: #dc3545; }
     </style>
 </head>
 <body>
 
-    <div class="welcome-box">
-        <h1>¡Bienvenido, <?php echo htmlspecialchars($nombre_usuario); ?>!</h1>
-        <p>Has ingresado correctamente al Módulo de Profesores (UNEFA).</p>
-        
-        <?php if ($rol === 'administrador'): ?>
-            <div style="color: #004b93; font-weight: bold; margin-top: 20px;">
-                <i class="fas fa-shield-alt"></i> Panel Administrativo Activo
-            </div>
-            
+    <div class="header-admin">
+        <div><h2><i class="fas fa-shield-alt"></i> Panel Administrativo</h2></div>
+        <div>
+            <span><i class="fas fa-user-shield"></i> <?php echo htmlspecialchars($nombre_usuario); ?></span> | 
+            <a href="logout.php">Cerrar Sesión</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="content-box">
+            <h1>Gestión de Personal Docente</h1>
+            <p>Desde aquí puedes administrar el acceso y la información de los profesores del sistema.</p>
+
             <div class="grid-acciones">
-                <a href="profesores/Login/agregar_profesor.php" class="btn-accion btn-add">
-                    <i class="fas fa-user-plus fa-2x"></i> Agregar Profesor
+                <a href="profesores/login/agregar_profesor.php" class="btn-accion btn-add">
+                    <i class="fas fa-user-plus"></i>
+                    <h3>Agregar Profesor</h3>
                 </a>
-                <a href="profesores/Login/actualizar_profesor.php" class="btn-accion btn-update">
-                    <i class="fas fa-user-edit fa-2x"></i> Actualizar Info
+                <a href="profesores/login/actualizar_profesor.php" class="btn-accion btn-update">
+                    <i class="fas fa-user-edit"></i>
+                    <h3>Actualizar Info</h3>
                 </a>
                 <a href="profesores/login/eliminar_profesor.php" class="btn-accion btn-delete">
-                    <i class="fas fa-user-minus fa-2x"></i> Eliminar (Inactivar)
+                    <i class="fas fa-user-minus"></i>
+                    <h3>Eliminar Profesor</h3>
                 </a>
             </div>
-        <?php else: ?>
-            <p style="margin-top: 25px; font-style: italic;">
-                <i class="fas fa-info-circle"></i> Vista de docente. Puedes gestionar las notas y asistencias asignadas.
-            </p>
-        <?php endif; ?>
-
-        <br>
-        <a href="profesores/Login/login.php" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</a>
+        </div>
     </div>
 
 </body>

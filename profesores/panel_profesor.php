@@ -1,6 +1,6 @@
 <?php
 session_start();
-// Validación estricta: solo profesores
+// Validación de seguridad
 if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'profesor') {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -14,46 +14,50 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'profesor') {
     <title>Panel Docente - UNEFA</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f4f6f9; margin: 0; padding: 40px; display: flex; justify-content: center; }
-        .container { max-width: 900px; width: 100%; }
+        /* Diseño a pantalla completa */
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #eef2f7; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
         
-        .header-docente { background: #003366; color: white; padding: 20px; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center; }
-        .content-box { background: white; padding: 40px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header-docente { background: #003366; color: white; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .header-docente a { color: #ffcccc; text-decoration: none; font-weight: bold; }
+
+        .container { flex: 1; padding: 40px; max-width: 1200px; margin: 0 auto; width: 100%; box-sizing: border-box; }
         
-        .grid-acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 30px; }
-        .btn-accion { background: #f8f9fa; border: 1px solid #dee2e6; padding: 30px; border-radius: 8px; text-decoration: none; color: #333; text-align: center; transition: 0.3s; }
-        .btn-accion:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-color: #003366; }
-        .btn-accion i { font-size: 2.5em; margin-bottom: 15px; display: block; }
+        .content-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        
+        .grid-acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; margin-top: 40px; }
+        
+        .btn-accion { background: #fff; border: 2px solid #eef2f7; padding: 40px; border-radius: 15px; text-decoration: none; color: #333; text-align: center; transition: all 0.3s ease; display: block; }
+        .btn-accion:hover { border-color: #003366; transform: translateY(-10px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .btn-accion i { font-size: 3.5em; margin-bottom: 20px; display: block; }
         
         .btn-estudiantes i { color: #007bff; }
         .btn-boletines i { color: #6f42c1; }
-        
-        .logout-link { color: #ff4d4d; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <div class="header-docente">
-            <div>
-                <h2><i class="fas fa-chalkboard-teacher"></i> Panel Docente</h2>
-            </div>
-            <div>
-                <span><i class="fas fa-user"></i> <?php echo htmlspecialchars($_SESSION['usuario']); ?></span> | 
-                <a href="/Servicio-comunitario/profesores/logout.php" class="logout-link">Cerrar Sesión</a>
-            </div>
+    <div class="header-docente">
+        <div><h2><i class="fas fa-chalkboard-teacher"></i> Sistema Docente</h2></div>
+        <div>
+            <span><i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($_SESSION['nombre_profesor'] ?? 'Profesor'); ?></span> | 
+            <a href="../logout.php">Cerrar Sesión</a>
         </div>
+    </div>
 
+    <div class="container">
         <div class="content-box">
-            <h1>Bienvenido(a), Profesor(a)</h1>
-            <p>Desde este panel puedes gestionar la información académica de tus secciones asignadas.</p>
+            <h1>Bienvenido Docente</h1>
+            <p>Selecciona una de las opciones a continuación para gestionar tus responsabilidades académicas.</p>
 
             <div class="grid-acciones">
-                <a href="#" class="btn-accion btn-estudiantes">
-                    <i class="fas fa-user-graduate"></i> Mis Estudiantes
+                <a href="mis_estudiantes.php" class="btn-accion btn-estudiantes">
+                    <i class="fas fa-user-graduate"></i>
+                    <h3>Mis Estudiantes</h3>
                 </a>
-                <a href="#" class="btn-accion btn-boletines">
-                    <i class="fas fa-file-alt"></i> Gestión de Boletines
+                
+                <a href="../boletines/cargar.php" class="btn-accion btn-boletines">
+                    <i class="fas fa-file-alt"></i>
+                    <h3>Gestión de Boletines</h3>
                 </a>
             </div>
         </div>

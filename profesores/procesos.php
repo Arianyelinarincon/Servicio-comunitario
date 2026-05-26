@@ -7,7 +7,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = trim($_POST['password']);
 
     // Consultamos por la columna 'usuario'
-    $sql = "SELECT * FROM profesores WHERE usuario = ?";
+    $sql = "SELECT * FROM profesores WHERE BINARY usuario = ?";
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("s", $usuario);
     $stmt->execute();
@@ -17,9 +17,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $data = $result->fetch_assoc();
 
         // Verificamos contraseña
-        if ($password == $data['password']) {
+        if ($password == $data['password'] && $data['estatus'] == 'Activo') {
             $_SESSION['usuario'] = $data['usuario'];
+            $_SESSION['nombre_profesor'] = $data['nombre'];
             $_SESSION['rol'] = $data['rol'];
+            $_SESSION['sala'] = $data['sala'];
 
             if ($data['rol'] === 'administrador') {
                 header("Location: /Servicio-comunitario/index.php");
@@ -28,10 +30,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             }
             exit();
         } else {
-            header("Location: /Servicio-comunitario/profesores/Login/login.php?error=clave");
+            header("Location: /Servicio-comunitario/profesores/Login/login.php?error=inactivo");
         }
     } else {
-        header("Location: /Servicio-comunitario/profesores/Login/login.php?error=usuario");
+        header("Location: /Servicio-comunitario/profesores/Login/login.php?error=clave");
     }
 } 
 ?>

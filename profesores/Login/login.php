@@ -1,3 +1,10 @@
+<?php
+// Evitar que el navegador guarde en caché la página de login
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -29,7 +36,7 @@
             <label for="password">CONTRASEÑA</label>
             <div class="input-group">
                 <i class="fas fa-lock"></i>
-                <input type="password" id="password" name="password" placeholder="••••••••" required>
+                <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="off">
             </div>
             
             <button type="submit" name="login" class="btn-entrar">ENTRAR</button>
