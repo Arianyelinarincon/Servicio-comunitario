@@ -237,7 +237,7 @@
                 <th width="4%">Edad</th><th width="3%">V</th><th width="3%">H</th><th width="5%">Total</th>
             </tr>
             
-            <?php for($edad=7; $edad<=15; $edad++): ?>
+            <?php for($edad=4; $edad<=6; $edad++): ?>
             <tr>
                 <td><?php echo $edad; ?></td>
                 <td><input type="text" name="venezolano_v[<?php echo $edad; ?>]" class="cell-input"></td>
@@ -290,9 +290,8 @@
         </table>
     </div>
 
-    <input type="hidden" name="tipo_reporte" value="regular">
-
-    <button type="submit" class="btn-descargar">Convertir a PDF (Reporte Regular)</button>
+    <input type="hidden" name="tipo_reporte" value="inicial">
+    <button type="submit" class="btn-descargar">Convertir a PDF (Reporte Inicial)</button>
 
 </form>
 
