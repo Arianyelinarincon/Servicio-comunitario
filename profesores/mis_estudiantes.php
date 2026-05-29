@@ -67,6 +67,7 @@ $resultado = $stmt->get_result();
             ?>
         </tbody>
     </table>
+    <a href="panel_profesor.php" class="back-link"><i class="fas fa-arrow-left"></i> Volver al Panel</a>
 </div>
 
 </body>

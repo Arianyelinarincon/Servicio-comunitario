@@ -1,6 +1,8 @@
 <?php
 session_start();
 
+$nombre_profesor = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Administrador';
+
 // 1. Validar seguridad
 if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') { 
     header("Location: Login/login.php"); 
@@ -68,6 +70,11 @@ $nombre_usuario = $_SESSION['nombre_profesor'] ?? 'Administrador';
                 <a href="profesores/login/eliminar_profesor.php" class="btn-accion btn-delete">
                     <i class="fas fa-user-minus"></i>
                     <h3>Eliminar Profesor</h3>
+                </a>
+
+                <a href="gestionar_permisos.php" class="btn-accion" style="border-top: 5px solid #6f42c1;">
+                    <i class="fas fa-user-shield" style="color: #6f42c1;"></i>
+                    <h3>Control de Permisos</h3>
                 </a>
             </div>
         </div>

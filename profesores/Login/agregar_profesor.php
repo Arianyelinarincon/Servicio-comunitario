@@ -12,19 +12,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $nombre = strtoupper(trim($_POST['nombre']));
     $seccion_id = intval($_POST['seccion']);
     $sala = trim($_POST['sala']);
+    $telefono = trim($_POST['telefono']); // Nuevo campo
+    $direccion = trim($_POST['direccion']); // Nuevo campo
+    // Por defecto, permitimos editar (1) o puedes cambiarlo a 0 según tu preferencia
+    $permiso_editar = 1; 
 
     if (!empty($nombre) && !empty($sala) && !empty($seccion_id)) {
-        $sql_insert = "INSERT INTO profesores (nombre, seccion, sala, estatus) VALUES (?, ?, ?, 'Activo')";
+        // SQL actualizado con telefono, direccion y permiso_editar_perfil
+        $sql_insert = "INSERT INTO profesores (nombre, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus) VALUES (?, ?, ?, ?, ?, ?, 'Activo')";
         $stmt = $conexion->prepare($sql_insert);
-        $stmt->bind_param("sis", $nombre, $seccion_id, $sala);
+        $stmt->bind_param("sisssi", $nombre, $seccion_id, $sala, $telefono, $direccion, $permiso_editar);
 
         if ($stmt->execute()) {
             $mensaje = "<div class='alert success'><i class='fas fa-check-circle'></i> ¡Profesor registrado con éxito!</div>";
         } else {
-            $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Error en la base de datos.</div>";
+            $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Error en la base de datos: " . $stmt->error . "</div>";
         }
     } else {
-        $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Todos los campos son obligatorios.</div>";
+        $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Nombre, Sala y Sección son obligatorios.</div>";
     }
 }
 
@@ -40,25 +45,15 @@ $resultado_secciones = $conexion->query($sql_secciones);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #eef2f7; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
-        
-        /* Header estandarizado */
         .header-admin { background: #003366; color: white; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        
         .container { flex: 1; padding: 40px; display: flex; justify-content: center; align-items: center; }
         .form-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 500px; }
-        
         h2 { color: #0401c5; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; }
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; color: #444; }
-        .form-group input, .form-group select { width: 100%; padding: 12px; border: 2px solid #eef2f7; border-radius: 8px; box-sizing: border-box; transition: 0.3s; }
-        .form-group input:focus, .form-group select:focus { border-color: #003366; outline: none; }
-        
-        .btn-submit { background: #003366; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px; }
-        .btn-submit:hover { background: #004b93; transform: translateY(-2px); }
-        
-        .btn-back { display: inline-block; margin-bottom: 20px; color: #666; text-decoration: none; font-size: 14px; }
-        
-        .alert { padding: 15px; margin-bottom: 20px; border-radius: 8px; font-size: 14px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: #444; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 2px solid #eef2f7; border-radius: 8px; box-sizing: border-box; }
+        .btn-submit { background: #003366; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .alert { padding: 15px; margin-bottom: 20px; border-radius: 8px; }
         .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
     </style>
@@ -67,7 +62,7 @@ $resultado_secciones = $conexion->query($sql_secciones);
 
     <div class="header-admin">
         <div><h2><i class="fas fa-shield-alt"></i> Panel Administrativo</h2></div>
-        <a href="../../index.php" style="color: white; text-decoration: none;"><i class="fas fa-home"></i>Inicio</a>
+        <a href="../../index.php" style="color: white; text-decoration: none;"><i class="fas fa-home"></i> Inicio</a>
     </div>
 
     <div class="container">
@@ -78,6 +73,14 @@ $resultado_secciones = $conexion->query($sql_secciones);
                 <div class="form-group">
                     <label>Nombre Completo:</label>
                     <input type="text" name="nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Teléfono:</label>
+                    <input type="text" name="telefono">
+                </div>
+                <div class="form-group">
+                    <label>Dirección:</label>
+                    <input type="text" name="direccion">
                 </div>
                 <div class="form-group">
                     <label>Sala / Grado:</label>
@@ -110,6 +113,5 @@ $resultado_secciones = $conexion->query($sql_secciones);
             </form>
         </div>
     </div>
-
 </body>
 </html>
