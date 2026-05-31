@@ -48,7 +48,7 @@ include('../includes/header.php'); // <--- Llamamos al nuevo header
 
     <div class="container">
         <div class="content-box">
-            <h1>Bienvenido Docente</h1>
+            <h1>Bienvenido Administrador</h1>
             <p>Selecciona una de las opciones a continuación para gestionar tus responsabilidades académicas.</p>
 
             <div class="grid-acciones">

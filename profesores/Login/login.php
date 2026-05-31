@@ -12,7 +12,12 @@ header("Pragma: no-cache");
         body { font-family: sans-serif; background-color: #e0e0e0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
         .header-title { text-align: center; margin-bottom: 20px; }
         .login-container { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); width: 350px; text-align: center; }
-        .logo { width: 80px; margin-bottom: 10px; }
+        .logo { 
+            width: 350%;      /* Hace que se ajuste al ancho del contenedor */
+            max-width: 220px; /* Aquí controlas el tamaño máximo. Prueba cambiando este número */
+            height: auto;     /* Mantiene la proporción de la imagen para que no se deforme */
+            margin-bottom: 15px; 
+        }
         .input-group { position: relative; margin-bottom: 15px; text-align: left; }
         .input-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
         .input-group i.fa-user, .input-group i.fa-lock { position: absolute; left: 10px; top: 38px; color: #555; }
@@ -30,7 +35,7 @@ header("Pragma: no-cache");
     </div>
 
     <div class="login-container">
-        <img src="Estilo/image/descarga.png" alt="Logo" class="logo">
+        <img src="Estilo/image/logo.jpg" alt="Logo" class="logo">
         <h2>INICIO DE SESIÓN</h2>
 
         <?php
