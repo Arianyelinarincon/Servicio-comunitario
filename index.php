@@ -3,13 +3,17 @@ session_start();
 
 $nombre_profesor = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Administrador';
 
-// 1. Validar seguridad
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') { 
+
+// Ahora (permite acceso si eres Super Admin O Administrador)
+if ($_SESSION['rol'] !== 'administrador' && $_SESSION['rol'] !== 'super_admin') { 
     header("Location: Login/login.php"); 
     exit(); 
-}
+}  
 
-$nombre_usuario = $_SESSION['nombre_profesor'] ?? 'Administrador';
+
+$nombre_usuario = $_SESSION['nombre_profesor'] ?? 'super_admin';
+// INICIO DE LA INTEGRACIÓN
+include('includes/header.php'); // <--- Llamamos al nuevo header
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -45,14 +49,6 @@ $nombre_usuario = $_SESSION['nombre_profesor'] ?? 'Administrador';
 </head>
 <body>
 
-    <div class="header-admin">
-        <div><h2><i class="fas fa-shield-alt"></i> Panel Administrativo</h2></div>
-        <div>
-            <span><i class="fas fa-user-shield"></i> <?php echo htmlspecialchars($nombre_usuario); ?></span> | 
-            <a href="logout.php">Cerrar Sesión</a>
-        </div>
-    </div>
-
     <div class="container">
         <div class="content-box">
             <h1>Gestión de Personal Docente</h1>
@@ -79,6 +75,8 @@ $nombre_usuario = $_SESSION['nombre_profesor'] ?? 'Administrador';
             </div>
         </div>
     </div>
+
+     <?php include('includes/footer.php'); // <--- Llamamos al footer para los scripts ?>
 
 </body>
 </html>

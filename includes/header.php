@@ -16,17 +16,19 @@
             <h3 class="fw-bold text-white">S.G.E.</h3>
             <small class="text-white-50">U.E.B.N. Juan Pablo Pérez Alfonzo</small>
         </div>
-
+        
+        
+        
+        
         <ul class="list-unstyled components mt-2">
             <li><a href="../index.php"><i class="fas fa-home me-2"></i> Inicio</a></li>
             <li><a href="../inscripcion/index.php"><i class="fas fa-user-plus me-2"></i> Inscripción</a></li>
-            <li><a href="../matricula/index.php"><i class="fas fa-address-book me-2"></i> Matrícula</a></li>
-            <li class="active-item"><a href="../estadisticas/index.php"><i class="fas fa-chart-bar me-2"></i> Estadísticas</a></li>
-            <li><a href="../usuario/index.php"><i class="fas fa-users me-2"></i> Usuario</a></li>
-            <li><a href="../auditoria/index.php"><i class="fas fa-clipboard-list me-2"></i> Auditoría</a></li>
-            <li><a href="../seguridad/index.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
-            <li class="mt-4"><a href="../../logout.php" class="text-danger"><i class="fas fa-sign-out-alt me-2"></i> Salir</a></li>
-        </ul>
+    <li><a href="../matricula/index.php"><i class="fas fa-address-book me-2"></i> Matrícula</a></li>
+    <li><a href="/Servicio-comunitario/profesores/panel_profesor.php"><i class="fas fa-users me-2"></i>Profesores</a></li>
+    <li><a href="../auditoria/index.php"><i class="fas fa-clipboard-list me-2"></i> Auditoría</a></li>
+    <li><a href="../seguridad/index.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
+    <li class="mt-4"><a href="logout.php" class="text-danger"><i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión</a></li>
+</ul>
     </nav>
 
     <div id="content" style="width: 100%;">

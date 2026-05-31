@@ -3,20 +3,25 @@ session_start();
 // 1. Incluir conexión (ajusta la ruta según tu estructura de carpetas)
 require_once __DIR__ . '/../config/conexion.php'; 
 
-// Validación de seguridad
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'profesor') {
+// Reemplaza tus antiguas validaciones por esta:
+if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
 }
 
 // 2. Obtener el estado del permiso desde la base de datos
 $id_profesor = $_SESSION['id_usuario'];
-$query = $conexion->prepare("SELECT permiso_editar_perfil FROM profesores WHERE id = ?");
+$query = $conexion->prepare("SELECT permiso_editar_perfil FROM administradores WHERE id = ?");
 $query->bind_param("i", $id_profesor);
 $query->execute();
 $resultado = $query->get_result();
 $datos_profesor = $resultado->fetch_assoc();
+
+// INICIO DE LA INTEGRACIÓN
+include('../includes/header.php'); // <--- Llamamos al nuevo header
 ?>
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -40,14 +45,6 @@ $datos_profesor = $resultado->fetch_assoc();
     </style>
 </head>
 <body>
-
-    <div class="header-docente">
-        <div><h2><i class="fas fa-chalkboard-teacher"></i> Sistema Docente</h2></div>
-        <div>
-            <span><i class="fas fa-user-circle"></i> <?php echo htmlspecialchars($_SESSION['nombre_profesor'] ?? 'Profesor'); ?></span> | 
-            <a href="../logout.php">Cerrar Sesión</a>
-        </div>
-    </div>
 
     <div class="container">
         <div class="content-box">
@@ -79,5 +76,6 @@ $datos_profesor = $resultado->fetch_assoc();
             </div>
         </div>
     </div>
+    <?php include('../includes/footer.php'); // <--- Llamamos al footer para los scripts ?>
 </body>
 </html>

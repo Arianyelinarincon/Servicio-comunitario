@@ -1,7 +1,8 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'administrador') {
-    header("Location: login.php");
+// Reemplaza tus antiguas validaciones por esta:
+if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
+    header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
 }
 
