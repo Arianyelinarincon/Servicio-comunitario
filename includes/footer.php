@@ -8,9 +8,23 @@
 
 <script>
 $(document).ready(function () {
-    // Esto hace que el botón azul abra/cierre el menú lateral
+    // 1. Al cargar la página, verificar si hay un estado guardado en localStorage
+    if (localStorage.getItem('sidebarStatus') === 'hidden') {
+        $('#sidebar').addClass('active');
+    } else {
+        $('#sidebar').removeClass('active');
+    }
+
+    // 2. Controlar el clic en el botón de las tres rayitas
     $('#sidebarCollapse').on('click', function () {
         $('#sidebar').toggleClass('active');
+        
+        // 3. Guardar el nuevo estado según si tiene o no la clase 'active'
+        if ($('#sidebar').hasClass('active')) {
+            localStorage.setItem('sidebarStatus', 'hidden');
+        } else {
+            localStorage.setItem('sidebarStatus', 'visible');
+        }
     });
 
     // Inicializar tooltips si usas alguno

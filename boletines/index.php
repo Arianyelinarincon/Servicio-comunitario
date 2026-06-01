@@ -1,3 +1,7 @@
+<?php 
+// Aseguramos que la cabecera se incluya antes de cualquier salida HTML
+include "../includes/header.php"; 
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -81,3 +85,4 @@
 
 </body>
 </html>
+<?php include "../includes/footer.php"; ?>
