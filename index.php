@@ -1,82 +1,59 @@
 <?php
-session_start();
+// --- SEGURIDAD: EVITAR CACHÉ ---
+// Estas líneas obligan al navegador a consultar siempre al servidor
+// y no mostrar la página desde su memoria local (lo que evita el "atrás")
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+header("Expires: Wed, 01 Jan 1997 00:00:00 GMT");
 
-$nombre_profesor = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Administrador';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-
-// Ahora (permite acceso si eres Super Admin O Administrador)
-if ($_SESSION['rol'] !== 'administrador' && $_SESSION['rol'] !== 'super_admin') { 
+// Validación de sesión robusta
+if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'administrador' && $_SESSION['rol'] !== 'super_admin')) { 
     header("Location: Login/login.php"); 
     exit(); 
-}  
+}   
 
-
-$nombre_usuario = $_SESSION['nombre_profesor'] ?? 'super_admin';
-// INICIO DE LA INTEGRACIÓN
-include('includes/header.php'); // <--- Llamamos al nuevo header
+// Incluimos el header
+include('includes/header.php'); 
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Administrativo - UEBN Juan Pablo Pérez Alfonzo</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #eef2f7; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
-        
-        /* Encabezado Profesional */
-        .header-admin { background: #003366; color: white; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .header-admin a { color: #ffcccc; text-decoration: none; font-weight: bold; }
 
-        .container { flex: 1; padding: 40px; max-width: 1200px; margin: 0 auto; width: 100%; box-sizing: border-box; }
-        .content-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-        
-        /* Tarjetas de Acción */
-        .grid-acciones { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; margin-top: 40px; }
-        .btn-accion { background: #fff; border: 2px solid #eef2f7; padding: 40px; border-radius: 15px; text-decoration: none; color: #333; text-align: center; transition: all 0.3s ease; display: block; }
-        .btn-accion:hover { border-color: #003366; transform: translateY(-10px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        .btn-accion i { font-size: 3.5em; margin-bottom: 20px; display: block; }
-        
-        /* Colores */
-        .btn-add { border-top: 5px solid #28a745; }
-        .btn-add i { color: #28a745; }
-        .btn-update { border-top: 5px solid #ffc107; }
-        .btn-update i { color: #ffc107; }
-        .btn-delete { border-top: 5px solid #dc3545; }
-        .btn-delete i { color: #dc3545; }
-    </style>
-</head>
-<body>
+<div class="content-wrapper" style="padding: 20px;">
+    
+    <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+        <h2 style="color: #333; margin-bottom: 10px;">Gestión de Personal Docente</h2>
+        <p style="color: #666; margin-bottom: 30px;">Desde aquí puedes administrar el acceso y la información de los profesores del sistema.</p>
 
-    <div class="container">
-        <div class="content-box">
-            <h1>Gestión de Personal Docente</h1>
-            <p>Desde aquí puedes administrar el acceso y la información de los profesores del sistema.</p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
+            
+            <a href="profesores/login/agregar_profesor.php" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 25px; border-radius: 12px; text-decoration: none; color: #28a745; text-align: center; transition: 0.3s;">
+                <i class="fas fa-user-plus" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Agregar Profesor</h4>
+            </a>
 
-            <div class="grid-acciones">
-                <a href="profesores/login/agregar_profesor.php" class="btn-accion btn-add">
-                    <i class="fas fa-user-plus"></i>
-                    <h3>Agregar Profesor</h3>
-                </a>
-                <a href="profesores/login/actualizar_profesor.php" class="btn-accion btn-update">
-                    <i class="fas fa-user-edit"></i>
-                    <h3>Actualizar Info</h3>
-                </a>
-                <a href="profesores/login/eliminar_profesor.php" class="btn-accion btn-delete">
-                    <i class="fas fa-user-minus"></i>
-                    <h3>Eliminar Profesor</h3>
-                </a>
+            <a href="profesores/login/actualizar_profesor.php" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 25px; border-radius: 12px; text-decoration: none; color: #ffc107; text-align: center; transition: 0.3s;">
+                <i class="fas fa-user-edit" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Actualizar Info</h4>
+            </a>
 
-                <a href="gestionar_permisos.php" class="btn-accion" style="border-top: 5px solid #6f42c1;">
-                    <i class="fas fa-user-shield" style="color: #6f42c1;"></i>
-                    <h3>Control de Permisos</h3>
-                </a>
-            </div>
+            <a href="profesores/login/eliminar_profesor.php" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 25px; border-radius: 12px; text-decoration: none; color: #dc3545; text-align: center; transition: 0.3s;">
+                <i class="fas fa-user-minus" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Eliminar Profesor</h4>
+            </a>
+
+            <a href="gestionar_permisos.php" style="background: #f8f9fa; border: 1px solid #dee2e6; padding: 25px; border-radius: 12px; text-decoration: none; color: #6f42c1; text-align: center; transition: 0.3s;">
+                <i class="fas fa-user-shield" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Control de Permisos</h4>
+            </a>
+            
         </div>
     </div>
 
-     <?php include('includes/footer.php'); // <--- Llamamos al footer para los scripts ?>
+</div>
 
-</body>
-</html>
+<?php 
+include('includes/footer.php'); 
+?>

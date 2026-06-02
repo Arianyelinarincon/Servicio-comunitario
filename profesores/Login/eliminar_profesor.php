@@ -1,6 +1,5 @@
 <?php
 session_start();
-// Reemplaza tus antiguas validaciones por esta:
 if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -9,10 +8,10 @@ if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['r
 include_once('../../config/conexion.php');
 $mensaje = "";
 
-// Lógica para inactivar (o reactivar si quisieras)
+// Lógica para inactivar (Apuntando a la tabla 'administradores')
 if (isset($_GET['inactivar_id'])) {
     $id_profesor = intval($_GET['inactivar_id']);
-    $sql_update = "UPDATE profesores SET estatus = 'Inactivo' WHERE id = ?";
+    $sql_update = "UPDATE administradores SET estatus = 'Inactivo' WHERE id = ?";
     $stmt = $conexion->prepare($sql_update);
     $stmt->bind_param("i", $id_profesor);
     
@@ -23,11 +22,10 @@ if (isset($_GET['inactivar_id'])) {
     }
 }
 
-// Consulta actualizada
-$sql_profesores = "SELECT p.id, p.nombre, s.nombre AS seccion_nombre, p.sala, p.telefono, p.direccion, p.estatus 
-                   FROM profesores p 
-                   LEFT JOIN secciones s ON p.seccion = s.id 
-                   WHERE p.rol != 'administrador'";
+// Consulta actualizada a la tabla 'administradores'
+$sql_profesores = "SELECT p.id, p.nombre_profesores, s.nombre AS seccion_nombre, p.sala, p.estatus 
+                   FROM administradores p 
+                   LEFT JOIN secciones s ON p.seccion = s.id";
 $resultado = $conexion->query($sql_profesores);
 ?>
 
@@ -70,8 +68,6 @@ $resultado = $conexion->query($sql_profesores);
                         <th>Nombre</th>
                         <th>Sala</th>
                         <th>Sección</th>
-                        <th>Teléfono</th>
-                        <th>Dirección</th>
                         <th>Estado</th>
                         <th>Acción</th>
                     </tr>
@@ -79,11 +75,9 @@ $resultado = $conexion->query($sql_profesores);
                 <tbody>
                     <?php while($row = $resultado->fetch_assoc()): ?>
                         <tr>
-                            <td><strong><?php echo htmlspecialchars($row['nombre']); ?></strong></td>
+                            <td><strong><?php echo htmlspecialchars($row['nombre_profesores']); ?></strong></td>
                             <td><?php echo htmlspecialchars($row['sala']); ?></td>
                             <td><?php echo htmlspecialchars($row['seccion_nombre'] ?? 'N/A'); ?></td>
-                            <td><?php echo htmlspecialchars($row['telefono'] ?? 'S/N'); ?></td>
-                            <td><?php echo htmlspecialchars($row['direccion'] ?? 'S/N'); ?></td>
                             <td>
                                 <span class="badge <?php echo ($row['estatus'] == 'Activo') ? 'badge-activo' : 'badge-inactivo'; ?>">
                                     <?php echo htmlspecialchars($row['estatus']); ?>

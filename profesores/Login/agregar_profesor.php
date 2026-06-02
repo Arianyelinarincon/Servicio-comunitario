@@ -1,6 +1,5 @@
 <?php
 session_start();
-// Reemplaza tus antiguas validaciones por esta:
 if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -11,33 +10,38 @@ $mensaje = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $nombre = strtoupper(trim($_POST['nombre']));
-    $seccion_id = intval($_POST['seccion']);
+    $cedula = trim($_POST['cedula']); // Nuevo campo
+    $seccion = trim($_POST['seccion']); // Coincide con la columna 'seccion' (tipo INT en tu BD)
     $sala = trim($_POST['sala']);
-    $telefono = trim($_POST['telefono']); // Nuevo campo
-    $direccion = trim($_POST['direccion']); // Nuevo campo
-    // Por defecto, permitimos editar (1) o puedes cambiarlo a 0 según tu preferencia
+    $telefono = trim($_POST['telefono']);
+    $direccion = trim($_POST['direccion']);
     $permiso_editar = 1; 
 
-    if (!empty($nombre) && !empty($sala) && !empty($seccion_id)) {
-        // SQL actualizado con telefono, direccion y permiso_editar_perfil
-        $sql_insert = "INSERT INTO profesores (nombre, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus) VALUES (?, ?, ?, ?, ?, ?, 'Activo')";
+    // Validamos solo campos que existen físicamente en 'administradores'
+    if (!empty($nombre) && !empty($cedula) && !empty($sala) && !empty($seccion)) {
+        
+        // SQL ajustado a los nombres reales de columnas y tabla
+        $sql_insert = "INSERT INTO administradores (nombre_profesores, cedula, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus, rol) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 'Activo', 'profesor')";
+        
         $stmt = $conexion->prepare($sql_insert);
-        $stmt->bind_param("sisssi", $nombre, $seccion_id, $sala, $telefono, $direccion, $permiso_editar);
+        // Ajustado a 6 parámetros: s (nombre), i (seccion), s (sala), s (telefono), s (direccion), i (permiso)
+        $stmt->bind_param("sissssi", $nombre, $cedula, $seccion, $sala, $telefono, $direccion, $permiso_editar);
 
         if ($stmt->execute()) {
             $mensaje = "<div class='alert success'><i class='fas fa-check-circle'></i> ¡Profesor registrado con éxito!</div>";
         } else {
-            $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Error en la base de datos: " . $stmt->error . "</div>";
+            $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Error en BD: " . $stmt->error . "</div>";
         }
     } else {
         $mensaje = "<div class='alert error'><i class='fas fa-exclamation-triangle'></i> Nombre, Sala y Sección son obligatorios.</div>";
     }
 }
 
+// Asegúrate de que la tabla 'secciones' exista para que esto funcione
 $sql_secciones = "SELECT * FROM secciones ORDER BY sala, nombre";
 $resultado_secciones = $conexion->query($sql_secciones);
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -75,6 +79,10 @@ $resultado_secciones = $conexion->query($sql_secciones);
                     <label>Nombre Completo:</label>
                     <input type="text" name="nombre" required>
                 </div>
+                <div class="form-group">
+    <label>Cédula:</label>
+    <input type="text" name="cedula" maxlength="12" pattern="[0-9-]+" title="Solo números y guiones" required>
+</div>
                 <div class="form-group">
                     <label>Teléfono:</label>
                     <input type="text" name="telefono">

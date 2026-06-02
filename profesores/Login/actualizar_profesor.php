@@ -1,6 +1,6 @@
 <?php
 session_start();
-// Reemplaza tus antiguas validaciones por esta:
+// Validación corregida
 if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -10,28 +10,28 @@ include_once('../../config/conexion.php');
 $mensaje = "";
 $profesor_editar = null;
 
+// 1. Buscamos usando el ID
 if (isset($_GET['editar_id'])) {
     $id_editar = intval($_GET['editar_id']);
-    $sql_busca = "SELECT * FROM profesores WHERE id = ?";
+    $sql_busca = "SELECT * FROM administradores WHERE id = ?";
     $stmt = $conexion->prepare($sql_busca);
     $stmt->bind_param("i", $id_editar);
     $stmt->execute();
     $profesor_editar = $stmt->get_result()->fetch_assoc();
 }
 
+// 2. Procesar actualización (SIN campos inexistentes)
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['actualizar'])) {
     $id_profesor = intval($_POST['id_profesor']);
-    $nombre = strtoupper(trim($_POST['nombre']));
+    $nombre = strtoupper(trim($_POST['nombre_profesores'])); 
     $seccion_id = intval($_POST['seccion']);
     $sala = trim($_POST['sala']);
     $estatus = trim($_POST['estatus']);
-    $telefono = trim($_POST['telefono']);
-    $direccion = trim($_POST['direccion']);
 
-    // Se añaden telefono y direccion al UPDATE
-    $sql_update = "UPDATE profesores SET nombre = ?, seccion = ?, sala = ?, estatus = ?, telefono = ?, direccion = ? WHERE id = ?";
+    // Actualizamos tabla administradores (Quitamos telefono/direccion por ahora porque no existen en tu DB)
+    $sql_update = "UPDATE administradores SET nombre_profesores = ?, seccion = ?, sala = ?, estatus = ? WHERE id = ?";
     $stmt = $conexion->prepare($sql_update);
-    $stmt->bind_param("sissssi", $nombre, $seccion_id, $sala, $estatus, $telefono, $direccion, $id_profesor);
+    $stmt->bind_param("sissi", $nombre, $seccion_id, $sala, $estatus, $id_profesor);
 
     if ($stmt->execute()) {
         $mensaje = "<div class='alert success'><i class='fas fa-sync-alt'></i> Información actualizada correctamente.</div>";
@@ -41,11 +41,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['actualizar'])) {
     }
 }
 
-// Se añaden telefono y direccion al SELECT
-$sql_lista = "SELECT p.id, p.nombre, p.sala, p.estatus, p.telefono, p.direccion, s.nombre AS seccion_nombre 
-              FROM profesores p 
-              LEFT JOIN secciones s ON p.seccion = s.id 
-              WHERE p.rol != 'administrador'";
+// 3. Consulta de lista (Cambiado nombre a nombre_profesores)
+$sql_lista = "SELECT p.id, p.nombre_profesores, p.sala, p.estatus, s.nombre AS seccion_nombre 
+              FROM administradores p 
+              LEFT JOIN secciones s ON p.seccion = s.id";
 $resultado_lista = $conexion->query($sql_lista);
 $sql_secciones = "SELECT * FROM secciones ORDER BY sala, nombre";
 $resultado_secciones = $conexion->query($sql_secciones);
@@ -89,27 +88,23 @@ $resultado_secciones = $conexion->query($sql_secciones);
 
         <?php if ($profesor_editar): ?>
         <div class="edit-card">
-            <h3><i class="fas fa-edit"></i> Editando a: <?php echo htmlspecialchars($profesor_editar['nombre']); ?></h3>
+            <h3><i class="fas fa-edit"></i> Editando a: <?php echo htmlspecialchars($profesor_editar['nombre_profesores']); ?></h3>
             <form method="POST">
                 <input type="hidden" name="id_profesor" value="<?php echo $profesor_editar['id']; ?>">
                 <div class="form-row">
-                    <div class="form-group"><label>Nombre:</label><input type="text" name="nombre" value="<?php echo htmlspecialchars($profesor_editar['nombre']); ?>" required></div>
-                    <div class="form-group"><label>Teléfono:</label><input type="text" name="telefono" value="<?php echo htmlspecialchars($profesor_editar['telefono'] ?? ''); ?>"></div>
+                    <div class="form-group"><label>Nombre:</label><input type="text" name="nombre_profesores" value="<?php echo htmlspecialchars($profesor_editar['nombre_profesores']); ?>" required></div>
+                    <div class="form-group"><label>Sala (Grado):</label><input type="text" name="sala" value="<?php echo htmlspecialchars($profesor_editar['sala']); ?>" required></div>
                 </div>
-                <div class="form-group"><label>Dirección:</label><input type="text" name="direccion" value="<?php echo htmlspecialchars($profesor_editar['direccion'] ?? ''); ?>"></div>
-                <div class="form-row">
-                    <div class="form-group"><label>Grado:</label><input type="text" name="sala" value="<?php echo htmlspecialchars($profesor_editar['sala']); ?>" required></div>
-                    <div class="form-group"><label>Sección:</label>
-                        <select name="seccion">
-                            <?php 
-                            $resultado_secciones->data_seek(0);
-                            while($sec = $resultado_secciones->fetch_assoc()) {
-                                $sel = ($sec['id'] == $profesor_editar['seccion']) ? 'selected' : '';
-                                echo "<option value='".$sec['id']."' $sel>".$sec['sala']." - ".$sec['nombre']."</option>";
-                            }
-                            ?>
-                        </select>
-                    </div>
+                <div class="form-group"><label>Sección:</label>
+                    <select name="seccion">
+                        <?php 
+                        $resultado_secciones->data_seek(0);
+                        while($sec = $resultado_secciones->fetch_assoc()) {
+                            $sel = ($sec['id'] == $profesor_editar['seccion']) ? 'selected' : '';
+                            echo "<option value='".$sec['id']."' $sel>".$sec['sala']." - ".$sec['nombre']."</option>";
+                        }
+                        ?>
+                    </select>
                 </div>
                 <div class="form-group"><label>Estatus:</label>
                     <select name="estatus">
@@ -123,13 +118,11 @@ $resultado_secciones = $conexion->query($sql_secciones);
         <?php endif; ?>
 
         <table>
-            <thead><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Grado</th><th>Estado</th><th>Acción</th></tr></thead>
+            <thead><tr><th>Nombre</th><th>Sala</th><th>Estado</th><th>Acción</th></tr></thead>
             <tbody>
                 <?php while($row = $resultado_lista->fetch_assoc()): ?>
                 <tr>
-                    <td><?php echo htmlspecialchars($row['nombre']); ?></td>
-                    <td><?php echo htmlspecialchars($row['telefono'] ?? 'N/A'); ?></td>
-                    <td><?php echo htmlspecialchars($row['direccion'] ?? 'N/A'); ?></td>
+                    <td><?php echo htmlspecialchars($row['nombre_profesores']); ?></td>
                     <td><?php echo htmlspecialchars($row['sala']); ?></td>
                     <td><span class="badge <?php echo ($row['estatus'] == 'Activo') ? 'bg-activo' : 'bg-inactivo'; ?>"><?php echo $row['estatus']; ?></span></td>
                     <td><a href="actualizar_profesor.php?editar_id=<?php echo $row['id']; ?>" style="color:#003366;"><i class="fas fa-edit"></i> Editar</a></td>
