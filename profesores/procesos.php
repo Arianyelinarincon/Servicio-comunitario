@@ -20,7 +20,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($data['estatus'] == 'Activo') {
                 $_SESSION['id_usuario'] = $data['id'];
                 $_SESSION['usuario'] = $data['usuario'];
-                $_SESSION['nombre_profesor'] = $data['nombre_profesores']; 
+                $_SESSION['nombre_profesor'] = $data['nombre'] . ' ' . $data['apellido']; 
                 $_SESSION['rol'] = $data['rol'];
                 $_SESSION['sala'] = $data['sala'];
 

@@ -37,6 +37,7 @@ $stmt_select->bind_param("i", $id);
 $stmt_select->execute();
 $datos = $stmt_select->get_result()->fetch_assoc();
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>

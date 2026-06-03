@@ -27,7 +27,7 @@ include('../includes/header.php');
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="fw-bold">Bienvenido, <?php echo $_SESSION['usuario']; ?></h2>
+           <h2 class="fw-bold">Bienvenido, <?php echo isset($_SESSION['nombre_profesor']) ? $_SESSION['nombre_profesor'] : 'Quedo pendiete con esto!!'; ?></h2>
             <p class="text-muted">Panel de control administrativo</p>
         </div>
     </div>

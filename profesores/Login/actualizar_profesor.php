@@ -20,7 +20,7 @@ if (isset($_GET['inactivar_id'])) {
 }
 
 // Consulta de lista (Uniendo con secciones y excluyendo administradores)
-$sql_lista = "SELECT p.id, p.nombre, p.sala, p.estatus, s.nombre AS seccion_nombre 
+$sql_lista = "SELECT p.id, p.nombre AS nombre_profesor, p.apellido As apellido_profesor,   p.sala, p.estatus, s.nombre AS nombre_seccion
               FROM profesores p 
               LEFT JOIN secciones s ON p.seccion = s.id
               WHERE p.rol != 'administrador' AND p.rol != 'super_admin'";
@@ -52,7 +52,7 @@ $resultado_lista = $conexion->query($sql_lista);
 <body>
 
 <div class="header-top">
-    <h2><i class="fas fa-users-cog"></i> Gestión de Docentes</h2>
+    <h2><i class="fas fa-users-cog"></i> Actualización de Datos</h2>
     <a href="../../index.php" style="color: white;"><i class="fas fa-home"></i> Inicio</a>
 </div>
 
@@ -62,6 +62,7 @@ $resultado_lista = $conexion->query($sql_lista);
         <thead>
             <tr>
                 <th>Nº</th> <th>Nombre</th>
+                <th>Apellido</th>
                 <th>Sala</th>
                 <th>Sección</th>
                 <th>Estado</th>
@@ -75,9 +76,10 @@ $resultado_lista = $conexion->query($sql_lista);
                 $esActivo = (strtolower(trim($row['estatus'])) == 'activo');
             ?>
             <tr>
-                <td><?php echo $contador++; ?></td> <td><?php echo htmlspecialchars($row['nombre']); ?></td>
+                <td><?php echo $contador++; ?></td> <td><?php echo htmlspecialchars($row['nombre_profesor']); ?></td>
+                <td><?php echo htmlspecialchars($row['apellido_profesor']); ?></td>
                 <td><?php echo htmlspecialchars($row['sala']); ?></td>
-                <td><?php echo htmlspecialchars($row['seccion_nombre'] ?? 'N/A'); ?></td>
+                <td><?php echo htmlspecialchars($row['nombre_seccion'] ?? 'N/A'); ?></td>
                 <td>
                     <span class="badge <?php echo $esActivo ? 'bg-activo' : 'bg-inactivo'; ?>">
                         <?php echo htmlspecialchars($row['estatus']); ?>

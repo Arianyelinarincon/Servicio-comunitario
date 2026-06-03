@@ -10,6 +10,7 @@ $mensaje = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $nombre = strtoupper(trim($_POST['nombre']));
+    $apellido = isset($_POST['apellido']) ? strtoupper(trim($_POST['apellido'])) : '';
     $cedula = trim($_POST['cedula']); // Nuevo campo
     $seccion = trim($_POST['seccion']); // Coincide con la columna 'seccion' (tipo INT en tu BD)
     $sala = trim($_POST['sala']);
@@ -18,15 +19,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $permiso_editar = 1; 
 
     // Validamos solo campos que existen físicamente en 'administradores'
-    if (!empty($nombre) && !empty($cedula) && !empty($sala) && !empty($seccion)) {
+    if (!empty($nombre) && !empty($apellido) && !empty($cedula) && !empty($sala) && !empty($seccion)) {
         
         // SQL ajustado a los nombres reales de columnas y tabla
-        $sql_insert = "INSERT INTO profesores (nombre, cedula, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus, rol) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, 'Activo', 'profesor')";
+        $sql_insert = "INSERT INTO profesores (nombre, apellido, cedula, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus, rol) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Activo', 'profesor')";
         
         $stmt = $conexion->prepare($sql_insert);
-        // Ajustado a 6 parámetros: s (nombre), i (seccion), s (sala), s (telefono), s (direccion), i (permiso)
-        $stmt->bind_param("sissssi", $nombre, $cedula, $seccion, $sala, $telefono, $direccion, $permiso_editar);
+        // Ajustado a 7 parámetros: s (nombre), s (apellido), i (seccion), s (sala), s (telefono), s (direccion), i (permiso)
+        $stmt->bind_param("sssisssi", $nombre, $apellido, $cedula, $seccion, $sala, $telefono, $direccion, $permiso_editar);
 
         if ($stmt->execute()) {
             $mensaje = "<div class='alert success'><i class='fas fa-check-circle'></i> ¡Profesor registrado con éxito!</div>";
@@ -76,8 +77,12 @@ $resultado_secciones = $conexion->query($sql_secciones);
             <?php echo $mensaje; ?>
             <form method="POST">
                 <div class="form-group">
-                    <label>Nombre Completo:</label>
+                    <label>Nombre :</label>
                     <input type="text" name="nombre" required>
+                </div>
+                <div class="form-group">
+                    <label>Apellido :</label>
+                    <input type="text" name="apellido" required>
                 </div>
                 <div class="form-group">
     <label>Cédula:</label>

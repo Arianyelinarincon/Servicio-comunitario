@@ -59,6 +59,7 @@ $resultado = $conexion->query($sql);
                     <th>ID</th>
                     <th>Cédula</th>
                     <th>Nombre</th>
+                    <th>Apellido</th>
                     <th>Usuario</th>
                     <th>Rol</th>
                     <th>Estatus</th>
@@ -73,6 +74,7 @@ $resultado = $conexion->query($sql);
                         echo "<tr>
                                 <td>" . $contador . "</td> <td>" . htmlspecialchars($row['cedula'] ?? 'N/A') . "</td>
                                 <td><a href='detalle_profesor.php?id=" . $row['id'] . "'>" . htmlspecialchars($row['nombre']) . "</a></td>
+                                <td>" . htmlspecialchars($row['apellido'] ?? 'N/A') . "</td>
                                 <td>" . htmlspecialchars($row['usuario'] ?? 'N/A') . "</td>
                                 <td>" . htmlspecialchars($row['rol']) . "</td>
                                 <td><span class='badge $estatusClass'>" . htmlspecialchars($row['estatus']) . "</span></td>
@@ -98,12 +100,14 @@ function filtrarTabla() {
     for (let i = 1; i < tr.length; i++) {
         let tdCedula = tr[i].getElementsByTagName("td")[1];
         let tdNombre = tr[i].getElementsByTagName("td")[2];
+        let tdApellido = tr[i].getElementsByTagName("td")[3]; // Nueva referencia
         
-        if (tdCedula || tdNombre) {
+        if (tdCedula || tdNombre || tdApellido) {
             let valCedula = tdCedula.textContent || tdCedula.innerText;
             let valNombre = tdNombre.textContent || tdNombre.innerText;
+            let valApellido = tdApellido.textContent || tdApellido.innerText;
             
-            if (valCedula.toUpperCase().indexOf(filter) > -1 || valNombre.toUpperCase().indexOf(filter) > -1) {
+            if (valCedula.toUpperCase().indexOf(filter) > -1 || valNombre.toUpperCase().indexOf(filter) > -1   || valApellido.toUpperCase().indexOf(filter) > -1) {
                 tr[i].style.display = "";
             } else {
                 tr[i].style.display = "none";
