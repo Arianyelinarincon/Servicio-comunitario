@@ -6,7 +6,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $usuario_ingresado = trim($_POST['usuario']);
     $password_ingresado = trim($_POST['password']);
 
-    $sql = "SELECT * FROM administradores WHERE BINARY usuario = ?";
+    $sql = "SELECT * FROM profesores WHERE BINARY usuario = ?";
     $stmt = $conexion->prepare($sql);
     $stmt->bind_param("s", $usuario_ingresado);
     $stmt->execute();

@@ -8,7 +8,7 @@ if (!isset($_SESSION['usuario'])) {
 require_once('../config/conexion.php');
 
 // MODIFICACIÓN: Se añade el WHERE para excluir administradores y mostrar solo profesores
-$sql = "SELECT * FROM administradores WHERE rol = 'profesor' ORDER BY id ASC";
+$sql = "SELECT * FROM profesores WHERE rol = 'profesor' ORDER BY id ASC";
 $resultado = $conexion->query($sql);
 ?>
 
@@ -72,7 +72,7 @@ $resultado = $conexion->query($sql);
                         $estatusClass = ($row['estatus'] == 'Activo') ? 'bg-activo' : 'bg-inactivo';
                         echo "<tr>
                                 <td>" . $contador . "</td> <td>" . htmlspecialchars($row['cedula'] ?? 'N/A') . "</td>
-                                <td><a href='detalle_profesor.php?id=" . $row['id'] . "'>" . htmlspecialchars($row['nombre_profesores']) . "</a></td>
+                                <td><a href='detalle_profesor.php?id=" . $row['id'] . "'>" . htmlspecialchars($row['nombre']) . "</a></td>
                                 <td>" . htmlspecialchars($row['usuario'] ?? 'N/A') . "</td>
                                 <td>" . htmlspecialchars($row['rol']) . "</td>
                                 <td><span class='badge $estatusClass'>" . htmlspecialchars($row['estatus']) . "</span></td>

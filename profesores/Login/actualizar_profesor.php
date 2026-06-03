@@ -6,9 +6,25 @@ if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['r
 }
 
 include_once('../../config/conexion.php');
+$mensaje = "";
 
-// Consulta de lista
-$sql_lista = "SELECT id, nombre_profesores, sala, estatus FROM administradores";
+// Lógica para inactivar (si se recibe el ID)
+if (isset($_GET['inactivar_id'])) {
+    $id_profesor = intval($_GET['inactivar_id']);
+    $sql_update = "UPDATE profesores SET estatus = 'Inactivo' WHERE id = ?";
+    $stmt = $conexion->prepare($sql_update);
+    $stmt->bind_param("i", $id_profesor);
+    if ($stmt->execute()) {
+        $mensaje = "<div style='background:#d4edda; color:#155724; padding:10px; border-radius:6px; margin-bottom:20px;'><i class='fas fa-check-circle'></i> Docente inactivado correctamente.</div>";
+    }
+}
+
+// Consulta de lista (Uniendo con secciones y excluyendo administradores)
+$sql_lista = "SELECT p.id, p.nombre, p.sala, p.estatus, s.nombre AS seccion_nombre 
+              FROM profesores p 
+              LEFT JOIN secciones s ON p.seccion = s.id
+              WHERE p.rol != 'administrador' AND p.rol != 'super_admin'";
+              
 $resultado_lista = $conexion->query($sql_lista);
 ?>
 
@@ -16,61 +32,59 @@ $resultado_lista = $conexion->query($sql_lista);
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Actualizar Docente</title>
+    <title>Gestión de Docentes</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body { font-family: 'Segoe UI', sans-serif; background-color: #eef2f7; margin: 0; min-height: 100vh; }
         .header-top { background: #003366; color: white; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; }
         .container { margin: 20px 40px; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .search-box { margin-bottom: 25px; }
-        .search-box input { width: 100%; padding: 15px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; background-color: #000; color: #fff; font-size: 16px; }
         table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 15px; border-bottom: 2px solid #eee; color: #555; }
+        th { text-align: left; padding: 15px; border-bottom: 2px solid #eee; }
         td { padding: 15px; border-bottom: 1px solid #eee; }
-        .badge { padding: 5px 12px; border-radius: 4px; color: white; font-size: 0.85em; font-weight: bold; text-transform: uppercase; }
+        .badge { padding: 5px 10px; border-radius: 4px; color: white; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
         .bg-activo { background: #28a745; }
         .bg-inactivo { background: #dc3545; }
+        .btn { padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: bold; color: white; }
+        .btn-editar { background: #003366; }
+        .btn-inactivar { background: #dc3545; }
     </style>
 </head>
 <body>
 
 <div class="header-top">
-    <h2><i class="fas fa-user-edit"></i> Actualizar Docentes</h2>
-    <a href="../../index.php" style="color: white; text-decoration: none;"><i class="fas fa-home"></i> Inicio</a>
+    <h2><i class="fas fa-users-cog"></i> Gestión de Docentes</h2>
+    <a href="../../index.php" style="color: white;"><i class="fas fa-home"></i> Inicio</a>
 </div>
 
 <div class="container">
-    <div class="search-box">
-        <input type="text" id="buscador" onkeyup="filtrarProfesores()" placeholder="Buscar docente por nombre o cédula...">
-    </div>
-
+    <?php echo $mensaje; ?>
     <table id="tablaProfesores">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Nombre</th>
+                <th>Nº</th> <th>Nombre</th>
                 <th>Sala</th>
+                <th>Sección</th>
                 <th>Estado</th>
-                <th>Acción</th>
+                <th>Modificación</th>
             </tr>
         </thead>
         <tbody>
-            <?php while($row = $resultado_lista->fetch_assoc()): 
-                // Usamos strtolower para comparar sin importar si está en mayúsculas o minúsculas
-                $estado = trim($row['estatus']);
-                $esActivo = (strtolower($estado) == 'activo');
+            <?php 
+            $contador = 1; // Inicializamos el contador
+            while($row = $resultado_lista->fetch_assoc()): 
+                $esActivo = (strtolower(trim($row['estatus'])) == 'activo');
             ?>
             <tr>
-                <td><?php echo $row['id']; ?></td>
-                <td><?php echo htmlspecialchars($row['nombre_profesores']); ?></td>
+                <td><?php echo $contador++; ?></td> <td><?php echo htmlspecialchars($row['nombre']); ?></td>
                 <td><?php echo htmlspecialchars($row['sala']); ?></td>
+                <td><?php echo htmlspecialchars($row['seccion_nombre'] ?? 'N/A'); ?></td>
                 <td>
                     <span class="badge <?php echo $esActivo ? 'bg-activo' : 'bg-inactivo'; ?>">
-                        <?php echo htmlspecialchars($estado); ?>
+                        <?php echo htmlspecialchars($row['estatus']); ?>
                     </span>
                 </td>
                 <td>
-                    <a href="actualizar_profesor.php?editar_id=<?php echo $row['id']; ?>" style="color:#003366; font-weight:bold;">
+                    <a href="editar_profesor.php?id=<?php echo $row['id']; ?>" class="btn btn-editar">
                         <i class="fas fa-edit"></i> Editar
                     </a>
                 </td>
@@ -79,23 +93,5 @@ $resultado_lista = $conexion->query($sql_lista);
         </tbody>
     </table>
 </div>
-
-<script>
-function filtrarProfesores() {
-    let input = document.getElementById("buscador");
-    let filter = input.value.toUpperCase();
-    let table = document.getElementById("tablaProfesores");
-    let tr = table.getElementsByTagName("tr");
-    for (let i = 1; i < tr.length; i++) {
-        let tdId = tr[i].getElementsByTagName("td")[0];
-        let tdNombre = tr[i].getElementsByTagName("td")[1];
-        if (tdNombre || tdId) {
-            let txtValue = tdNombre.textContent || tdNombre.innerText;
-            let idValue = tdId.textContent || tdId.innerText;
-            tr[i].style.display = (txtValue.toUpperCase().indexOf(filter) > -1 || idValue.indexOf(filter) > -1) ? "" : "none";
-        }
-    }
-}
-</script>
 </body>
 </html>

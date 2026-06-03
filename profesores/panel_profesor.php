@@ -8,7 +8,7 @@ if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['r
 }
 
 $id_profesor = $_SESSION['id_usuario'];
-$query = $conexion->prepare("SELECT permiso_editar_perfil FROM administradores WHERE id = ?");
+$query = $conexion->prepare("SELECT permiso_editar_perfil FROM profesores WHERE id = ?");
 $query->bind_param("i", $id_profesor);
 $query->execute();
 $resultado = $query->get_result();
@@ -37,7 +37,7 @@ include('../includes/header.php');
             <a href="mis_estudiantes.php" class="card-link">
                 <div class="card p-4 dashboard-card text-center">
                     <div class="icon-box text-primary"><i class="fas fa-user-graduate"></i></div>
-                    <h5 class="fw-bold">Mis Estudiantes</h5>
+                    <h5 class="fw-bold">Estudiantes</h5>
                 </div>
             </a>
         </div>
@@ -62,17 +62,9 @@ include('../includes/header.php');
 
         <div class="col-md-3">
             <?php if ($datos_profesor && $datos_profesor['permiso_editar_perfil'] == 1): ?>
-                <a href="actualizar_perfil.php" class="card-link">
-                    <div class="card p-4 dashboard-card text-center">
-                        <div class="icon-box text-success"><i class="fas fa-user-edit"></i></div>
-                        <h5 class="fw-bold">Actualizar Perfil</h5>
-                    </div>
-                </a>
+           
             <?php else: ?>
-                <div class="card p-4 dashboard-card text-center bg-light" style="opacity: 0.6;">
-                    <div class="icon-box text-secondary"><i class="fas fa-user-lock"></i></div>
-                    <h5 class="fw-bold">Perfil Bloqueado</h5>
-                </div>
+               
             <?php endif; ?>
         </div>
     </div>

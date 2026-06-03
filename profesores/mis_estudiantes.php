@@ -57,6 +57,7 @@ $resultado = $conexion->query($sql);
                     <th>Sala/Grado</th>
                     <th>Representante</th>
                     <th>Estatus</th>
+                    <th>Modificación</th>
                 </tr>
             </thead>
             <tbody>
@@ -65,15 +66,20 @@ $resultado = $conexion->query($sql);
                     $contador = 1; // Inicializamos el contador
                     while($row = $resultado->fetch_assoc()) {
                         echo "<tr>
-                                <td>" . $contador . "</td>
-                                <td>" . htmlspecialchars($row['cedula'] ?? 'N/A') . "</td>
-                                <td><strong>" . htmlspecialchars($row['nombre'] . " " . $row['apellido']) . "</strong></td>
-                                <td>" . htmlspecialchars($row['genero']) . "</td>
-                                <td>" . htmlspecialchars($row['fecha_nacimiento']) . "</td>
-                                <td>" . htmlspecialchars($row['sala']) . "</td>
-                                <td>" . htmlspecialchars($row['rep_nombre'] ?? 'N/A') . "</td>
-                                <td><span class='badge bg-activo'>" . htmlspecialchars($row['estatus']) . "</span></td>
-                              </tr>";
+                        <td>" . $contador . "</td>
+                        <td>" . htmlspecialchars($row['cedula'] ?? 'N/A') . "</td>
+                        <td><strong>" . htmlspecialchars($row['nombre'] . " " . $row['apellido']) . "</strong></td>
+                        <td>" . htmlspecialchars($row['genero']) . "</td>
+                        <td>" . htmlspecialchars($row['fecha_nacimiento']) . "</td>
+                        <td>" . htmlspecialchars($row['sala']) . "</td>
+                        <td>" . htmlspecialchars($row['rep_nombre'] ?? 'N/A') . "</td>
+                        <td><span class='badge bg-activo'>" . htmlspecialchars($row['estatus']) . "</span></td>
+                        <td>
+                        <a href='editar_estudiantes.php?id=" . $row['id'] . "' style='background:#003366; color:white; padding:5px 10px; border-radius:4px; text-decoration:none; font-size:12px;'>
+                            <i class='fas fa-edit'></i> Editar
+                        </a>
+                    </td>
+                </tr>";
                         $contador++; // Incrementamos el contador
                     }
                 } else {

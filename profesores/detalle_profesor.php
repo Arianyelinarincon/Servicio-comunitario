@@ -16,7 +16,7 @@ include "../config/conexion.php";
 
 $id = $_GET['id']; 
 
-$sql_profesor = "SELECT * FROM administradores WHERE id = $id";
+$sql_profesor = "SELECT * FROM profesores WHERE id = $id";
 $res_profesor = mysqli_query($conexion, $sql_profesor);
 $prof = mysqli_fetch_assoc($res_profesor);
 
@@ -24,15 +24,15 @@ $prof = mysqli_fetch_assoc($res_profesor);
 $sql_datos = "SELECT estudiantes.id, secciones.nombre AS nombre_seccion, estudiantes.sala, estudiantes.nombre, estudiantes.apellido 
               FROM estudiantes 
               JOIN secciones ON estudiantes.sala = secciones.sala
-              JOIN administradores ON secciones.id = administradores.seccion
-              WHERE administradores.id = $id";
+              JOIN profesores ON secciones.id = profesores.seccion
+              WHERE profesores.id = $id";
 
 $res_datos = mysqli_query($conexion, $sql_datos);
 ?>
 
 <div class="container mt-4">
     <div class="card shadow p-4">
-        <h2>Detalles de: <?php echo $prof['nombre_profesores']; ?></h2>
+        <h2>Detalles de: <?php echo $prof['nombre']; ?></h2>
         <hr>
         <div class="row">
             <div class="col-md-6">

@@ -21,7 +21,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (!empty($nombre) && !empty($cedula) && !empty($sala) && !empty($seccion)) {
         
         // SQL ajustado a los nombres reales de columnas y tabla
-        $sql_insert = "INSERT INTO administradores (nombre_profesores, cedula, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus, rol) 
+        $sql_insert = "INSERT INTO profesores (nombre, cedula, seccion, sala, telefono, direccion, permiso_editar_perfil, estatus, rol) 
                        VALUES (?, ?, ?, ?, ?, ?, ?, 'Activo', 'profesor')";
         
         $stmt = $conexion->prepare($sql_insert);

@@ -13,8 +13,8 @@ header("Pragma: no-cache");
         .header-title { text-align: center; margin-bottom: 20px; }
         .login-container { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); width: 350px; text-align: center; }
         .logo { 
-            width: 350%;      /* Hace que se ajuste al ancho del contenedor */
-            max-width: 220px; /* Aquí controlas el tamaño máximo. Prueba cambiando este número */
+            width: 700%;      /* Hace que se ajuste al ancho del contenedor */
+            max-width: 300px; /* Aquí controlas el tamaño máximo. Prueba cambiando este número */
             height: auto;     /* Mantiene la proporción de la imagen para que no se deforme */
             margin-bottom: 15px; 
         }
@@ -35,7 +35,7 @@ header("Pragma: no-cache");
     </div>
 
     <div class="login-container">
-        <img src="Estilo/image/logo.jpg" alt="Logo" class="logo">
+        <img src="../../includes/image/logo1.png" alt="Logo" class="logo">
         <h2>INICIO DE SESIÓN</h2>
 
         <?php
