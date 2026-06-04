@@ -1,41 +1,41 @@
-</div> </div> </div> <footer class="text-center py-3 text-muted mt-auto">
-    <small>&copy; <?= date('Y'); ?> - Sistema de Estadísticas Escolares</small>
+</div> <!-- cierra .p-4 -->
+</div> <!-- cierra #content -->
+</div> <!-- cierra .d-flex -->
+
+<footer class="text-center py-3 text-muted mt-auto">
+    <small>&copy; <?= date('Y'); ?> - Sistema de Gestión Educativa</small>
 </footer>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-$(document).ready(function () {
-    // 1. Al cargar la página, verificar si hay un estado guardado en localStorage
-    if (localStorage.getItem('sidebarStatus') === 'hidden') {
+$(document).ready(function() {
+    // Sincronizar el estado desde localStorage (si existe) y guardar en cookie
+    var storedStatus = localStorage.getItem('sidebarStatus');
+    if (storedStatus === 'hidden') {
         $('#sidebar').addClass('active');
-    } else {
+        document.cookie = "sidebarStatus=hidden; path=/";
+    } else if (storedStatus === 'visible') {
         $('#sidebar').removeClass('active');
+        document.cookie = "sidebarStatus=visible; path=/";
+    } else {
+        // Si no hay estado, aseguramos visible por defecto
+        localStorage.setItem('sidebarStatus', 'visible');
+        document.cookie = "sidebarStatus=visible; path=/";
     }
 
-    // 2. Controlar el clic en el botón de las tres rayitas
-    $('#sidebarCollapse').on('click', function () {
+    // Toggle al hacer clic
+    $('#sidebarCollapse').on('click', function() {
         $('#sidebar').toggleClass('active');
-        
-        // 3. Guardar el nuevo estado según si tiene o no la clase 'active'
-        if ($('#sidebar').hasClass('active')) {
-            localStorage.setItem('sidebarStatus', 'hidden');
-        } else {
-            localStorage.setItem('sidebarStatus', 'visible');
-        }
-    });
-
-    // Inicializar tooltips si usas alguno
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl)
+        var isHidden = $('#sidebar').hasClass('active');
+        var newStatus = isHidden ? 'hidden' : 'visible';
+        localStorage.setItem('sidebarStatus', newStatus);
+        document.cookie = "sidebarStatus=" + newStatus + "; path=/";
     });
 });
 </script>
 
-<script src="../assets/js/funciones.js"></script>
-
+<?php if (isset($GLOBALS['includes_js_extra'])) echo $GLOBALS['includes_js_extra']; ?>
 </body>
 </html>

@@ -2,14 +2,14 @@
 session_start();
 require_once('../config/conexion.php');
 
-if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
     header("Location: ../profesores/Login/login.php");
     exit();
 }
 
 $id = intval($_GET['id']);
 $mensaje = "";
-$tipo_mensaje = ""; // 'success' o 'info'
+$tipo_mensaje = "";
 
 // Obtener datos actuales para comparar
 $stmt_select = $conexion->prepare("SELECT * FROM estudiantes WHERE id = ?");

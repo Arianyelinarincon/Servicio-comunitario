@@ -9,9 +9,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Validación de sesión
-if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'administrador' && $_SESSION['rol'] !== 'super_admin')) { 
-    header("Location: Login/login.php"); 
+// Validación de sesión: SOLO administrador y super_admin
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) { 
+    header("Location: profesores/Login/login.php"); 
     exit(); 
 }   
 
@@ -19,7 +19,6 @@ include('includes/header.php');
 ?>
 
 <style>
-    /* Estilos de botones organizados */
     .btn-gestion {
         background: #f8f9fa;
         border: 1px solid #dee2e6;
@@ -40,25 +39,50 @@ include('includes/header.php');
     }
     .btn-agregar { color: #28a745; }
     .btn-actualizar { color: #ffc107; }
+    .welcome-message {
+        background: #e9f7ff;
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        border-left: 5px solid #007bff;
+    }
 </style>
 
 <div class="content-wrapper" style="padding: 20px;">
     
     <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
-        <h2 style="color: #333; margin-bottom: 10px;">Gestión de Personal Docente</h2>
-        <p style="color: #666; margin-bottom: 30px;">Desde aquí puedes administrar el acceso y la información de los profesores del sistema.</p>
+        
+        <div class="welcome-message">
+            <h3>Bienvenida, <?php echo htmlspecialchars($_SESSION['nombre_profesor'] ?? $_SESSION['usuario']); ?> 👋</h3>
+            <p>Rol: <strong><?php echo ucfirst($_SESSION['rol']); ?></strong></p>
+        </div>
+
+        <h2 style="color: #333; margin-bottom: 10px;">Gestión del Sistema Educativo</h2>
+        <p style="color: #666; margin-bottom: 30px;">Desde aquí puedes administrar estudiantes, asistencia, boletines y usuarios.</p>
 
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
             
-            <a href="profesores/login/agregar_profesor.php" class="btn-gestion btn-agregar">
-                <i class="fas fa-user-plus" style="font-size: 2.5em; margin-bottom: 15px;"></i>
-                <h4 style="margin: 0;">Agregar Profesor</h4>
+            <a href="estudiantes/index.php" class="btn-gestion btn-agregar">
+                <i class="fas fa-user-graduate" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Gestión de Estudiantes</h4>
             </a>
 
-            <a href="profesores/login/actualizar_profesor.php" class="btn-gestion btn-actualizar">
-                <i class="fas fa-user-edit" style="font-size: 2.5em; margin-bottom: 15px;"></i>
-                <h4 style="margin: 0;">Actualizar Info</h4>
+            <a href="estadisticas/index.php" class="btn-gestion btn-actualizar">
+                <i class="fas fa-calendar-check" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Control de Asistencia</h4>
             </a>
+
+            <a href="boletines/paso1_portada.php" class="btn-gestion" style="color: #17a2b8;">
+                <i class="fas fa-file-alt" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Generar Boletines</h4>
+            </a>
+
+            <?php if ($_SESSION['rol'] === 'super_admin'): ?>
+            <a href="profesores/gestionar_usuarios.php" class="btn-gestion" style="color: #6f42c1;">
+                <i class="fas fa-users-cog" style="font-size: 2.5em; margin-bottom: 15px;"></i>
+                <h4 style="margin: 0;">Gestionar Usuarios</h4>
+            </a>
+            <?php endif; ?>
             
         </div>
     </div>

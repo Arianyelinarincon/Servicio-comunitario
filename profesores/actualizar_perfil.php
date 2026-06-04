@@ -1,9 +1,9 @@
 <?php
 session_start();
-include_once('../config/conexion.php'); 
+include_once('../config/conexion.php');
 
-if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'profesor') {
-    header("Location: ../Login/login.php");
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+    header("Location: Login/login.php");
     exit();
 }
 
@@ -11,16 +11,16 @@ $id = $_SESSION['id_usuario'];
 $mensaje = "";
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $telefono = $_POST['telefono'];
-    $direccion = $_POST['direccion'];
+    $telefono = trim($_POST['telefono']);
+    $direccion = trim($_POST['direccion']);
     
     if (!empty($_POST['password'])) {
         $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-        $sql = "UPDATE profesores SET telefono = ?, direccion = ?, password = ? WHERE id = ?";
+        $sql = "UPDATE administradores SET telefono = ?, direccion = ?, password = ? WHERE id = ?";
         $stmt = $conexion->prepare($sql);
         $stmt->bind_param("sssi", $telefono, $direccion, $password, $id);
     } else {
-        $sql = "UPDATE profesores SET telefono = ?, direccion = ? WHERE id = ?";
+        $sql = "UPDATE administradores SET telefono = ?, direccion = ? WHERE id = ?";
         $stmt = $conexion->prepare($sql);
         $stmt->bind_param("ssi", $telefono, $direccion, $id);
     }
@@ -30,12 +30,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } else {
         $mensaje = "<div class='alert error'><i class='fas fa-exclamation-circle'></i> Error al actualizar: " . $stmt->error . "</div>";
     }
+    $stmt->close();
 }
 
-$stmt_select = $conexion->prepare("SELECT * FROM profesores WHERE id = ?");
+$stmt_select = $conexion->prepare("SELECT * FROM administradores WHERE id = ?");
 $stmt_select->bind_param("i", $id);
 $stmt_select->execute();
 $datos = $stmt_select->get_result()->fetch_assoc();
+$stmt_select->close();
 ?>
 
 <!DOCTYPE html>
@@ -49,18 +51,13 @@ $datos = $stmt_select->get_result()->fetch_assoc();
         .container { max-width: 800px; margin: auto; }
         .content-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         h2 { color: #003366; margin-bottom: 25px; }
-        
-        .form-group { margin-bottom: 20px; position: relative; } /* Posicionamiento relativo para el icono */
+        .form-group { margin-bottom: 20px; position: relative; }
         label { display: block; font-weight: bold; margin-bottom: 8px; color: #333; }
         input, textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         textarea { height: 100px; resize: vertical; }
-        
-        /* Estilo para el icono del ojo */
         .toggle-password { position: absolute; right: 15px; top: 40px; cursor: pointer; color: #777; }
-        
         button { background: #003366; color: white; padding: 12px 25px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; width: 100%; transition: 0.3s; }
         button:hover { background: #002244; }
-        
         .alert { padding: 15px; margin-bottom: 20px; border-radius: 6px; }
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
@@ -75,6 +72,16 @@ $datos = $stmt_select->get_result()->fetch_assoc();
         <?php echo $mensaje; ?>
         
         <form method="POST">
+            <div class="form-group">
+                <label>Nombre:</label>
+                <input type="text" value="<?php echo htmlspecialchars($datos['nombre_profesores'] ?? ''); ?>" disabled>
+            </div>
+            
+            <div class="form-group">
+                <label>Usuario:</label>
+                <input type="text" value="<?php echo htmlspecialchars($datos['usuario'] ?? ''); ?>" disabled>
+            </div>
+            
             <div class="form-group">
                 <label>Teléfono:</label>
                 <input type="text" name="telefono" value="<?php echo htmlspecialchars($datos['telefono'] ?? ''); ?>" placeholder="Ej: 0412-1234567">
@@ -101,13 +108,9 @@ $datos = $stmt_select->get_result()->fetch_assoc();
 <script>
     const togglePassword = document.querySelector('#togglePassword');
     const passwordInput = document.querySelector('#password');
-
     togglePassword.addEventListener('click', function () {
-        // Cambiar el tipo de input
         const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
         passwordInput.setAttribute('type', type);
-        
-        // Cambiar el icono del ojo
         this.classList.toggle('fa-eye');
         this.classList.toggle('fa-eye-slash');
     });

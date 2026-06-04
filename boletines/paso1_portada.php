@@ -1,7 +1,18 @@
 <?php
 session_start();
-// Reiniciamos las sesiones para evitar que queden datos de un boletín anterior
-session_unset();
+
+// NO destruyas toda la sesión. Solo elimina las variables del boletín anterior.
+// session_unset();  // <-- ELIMINA ESTA LÍNEA
+
+// Limpiar solo las variables que usa el boletín (sin afectar la sesión del usuario)
+$vars_boletin = ['estudiante', 'ce', 'grupo', 'ano_escolar', 'docente', 'representante', 
+                 'observacion', 'm1_proyecto', 'm1_formacion', 'm1_relacion', 'm1_sugerencias',
+                 'm2_proyecto', 'm2_formacion', 'm2_relacion', 'm2_sugerencias',
+                 'm3_proyecto', 'm3_formacion', 'm3_relacion', 'm3_sugerencias'];
+foreach ($vars_boletin as $var) {
+    unset($_SESSION[$var]);
+}
+
 include '../includes/header.php'; 
 ?>
 <div style="font-family: Arial, sans-serif; background: rgb(240, 242, 245); padding: 20px;">

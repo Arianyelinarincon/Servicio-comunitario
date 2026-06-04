@@ -1,61 +1,99 @@
-body {
-    background-color: #f0f0f0;
-    font-family: Arial, sans-serif;
-    font-size: 12px;
-}
 
-.contenedor-hoja {
-    background: white;
-    width: 216mm; /* Tamaño carta aproximado */
-    min-height: 279mm;
-    margin: 20px auto;
-    padding: 20px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-}
+    :root {
+        --azul-marino: #002d54;
+        --azul-hover: #004080;
+    }
 
-.encabezado {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
+    body { background-color: #f4f7f6; }
 
-.info-ministerio {
-    text-align: center;
-}
+    #sidebar {
+        min-width: 250px;
+        max-width: 250px;
+        background: var(--azul-marino);
+        color: #fff;
+        /* Sin transición para evitar animación al cargar */
+        min-height: 100vh;
+        margin-left: 0; /* visible por defecto */
+    }
 
-.tabla-estadistica {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 20px;
-}
+    /* Estado oculto */
+    #sidebar.active {
+        margin-left: -250px;
+    }
 
-.tabla-estadistica th, .tabla-estadistica td {
-    border: 1px solid black;
-    padding: 0; /* Sin padding para que el input ocupe todo */
-    text-align: center;
-    height: 25px; /* Altura fija como en la hoja */
-}
+    #content {
+        width: 100%;
+        /* Sin transición */
+    }
 
-/* Magia para que los inputs parezcan texto normal en la hoja */
-input {
-    border: none;
-    outline: none;
-    background: transparent;
-    font-family: Arial, sans-serif;
-    font-size: 12px;
-}
+    /* Forzar que no haya transición en ningún elemento del sidebar */
+    #sidebar, #sidebar * {
+        transition: none !important;
+    }
 
-input[type="number"]::-webkit-inner-spin-button {
-    display: none; /* Ocultar flechitas de los números */
-}
+    /* Estilos de enlaces del menú */
+    #sidebar ul li a {
+        padding: 15px 20px;
+        display: block;
+        color: rgba(255,255,255,0.8);
+        text-decoration: none;
+    }
 
-.tabla-estadistica td input {
-    width: 100%;
-    height: 100%;
-    text-align: center;
-    box-sizing: border-box;
-}
+    #sidebar ul li a:hover, .active-item a {
+        background: var(--azul-hover);
+        color: #fff;
+    }
 
-.input-corto { width: 40px; border-bottom: 1px solid black; }
-.input-medio { width: 100px; border-bottom: 1px solid black; }
-.input-largo { width: 200px; border-bottom: 1px solid black; }
+    /* Estilo para el input de mes moderno */
+    .date-moderna {
+        border-radius: 0 8px 8px 0;
+        transition: all 0.3s ease;
+    }
+
+    .date-moderna:focus {
+        border-color: #002d54;
+        box-shadow: 0 0 0 0.25rem rgba(0, 45, 84, 0.1);
+    }
+
+    /* Personalizar el icono nativo del calendario */
+    input[type="month"]::-webkit-calendar-picker-indicator {
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="15" viewBox="0 0 24 24" fill="none" stroke="%23002d54" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>');
+        cursor: pointer;
+        padding: 5px;
+    }
+
+    /* Quitar flechas de inputs number */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+
+    /* Estilos para tabla de asistencia */
+    .asist-input {
+        border: none !important;
+        height: 50px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        text-align: center;
+        padding: 0;
+        border-radius: 0;
+    }
+    .asist-input:focus {
+        background-color: #fff9c4 !important;
+        box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+        outline: none;
+    }
+    .table-clean th, .table-clean td {
+        border-color: #dee2e6 !important;
+    }
+    .table-responsive {
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+    .bg-success { background-color: #28a745 !important; }
+    .opacity-25 { opacity: 0.25; }
+    .text-navy { color: #002d54; }

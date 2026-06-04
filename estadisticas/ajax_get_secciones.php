@@ -1,4 +1,10 @@
 <?php
+session_start();
+if (!isset($_SESSION['usuario'])) {
+    http_response_code(403);
+    exit('Acceso denegado');
+}
+
 require_once "../config/conexion.php";
 
 $sala = $_POST['sala'] ?? '';

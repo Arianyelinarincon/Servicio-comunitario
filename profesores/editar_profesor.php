@@ -42,7 +42,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // Cargar datos para mostrar en el formulario
-$profesor = $conexion->query("SELECT * FROM profesores WHERE id = $id")->fetch_assoc();
+$stmt = $conexion->prepare("SELECT * FROM profesores WHERE id = ?");
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$profesor = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+if (!$profesor) {
+    echo "Profesor no encontrado.";
+    exit();
+}
 
 include('../../includes/header.php'); 
 ?>

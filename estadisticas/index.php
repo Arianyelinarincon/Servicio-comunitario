@@ -1,8 +1,16 @@
 <?php 
 require_once "config_db.php"; 
 
-// ========== AJAX HANDLER ==========
+// ========== AJAX HANDLER con validación de sesión ==========
 if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
+    // Validar sesión
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (!isset($_SESSION['usuario'])) {
+        http_response_code(403);
+        echo json_encode(['error' => 'No autorizado']);
+        exit;
+    }
+    
     header('Content-Type: application/json');
     $action = $_POST['action'] ?? '';
     

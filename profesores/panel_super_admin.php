@@ -4,26 +4,25 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Cache-Control: post-check=0, pre-check=0", false);
 header("Pragma: no-cache");
 
-// Iniciamos sesión si no está iniciada
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// 2. Incluir conexión (ruta ajustada para salir de 'profesores')
-require_once '../config/conexion.php'; 
+require_once '../config/conexion.php';
 
-// 3. Validación estricta: solo super_admin puede entrar
+// Validación estricta: solo super_admin
 if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'super_admin') {
     header("Location: ../Login/login.php");
     exit();
 }
 
-// 4. Consultas para los indicadores
+// Consultas para los indicadores
 $res_prof = $conexion->query("SELECT COUNT(*) as total FROM administradores");
 $total_profesores = $res_prof->fetch_assoc()['total'];
-$acciones_hoy = 0; // Inicializamos contador
 
-// 5. Incluir el diseño (ruta ajustada)
+// Aquí puedes agregar una consulta real para acciones del día si tienes una tabla de logs
+$acciones_hoy = 0;
+
 include('../includes/header.php'); 
 ?>
 
@@ -33,12 +32,14 @@ include('../includes/header.php');
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
             <div style="background: #003366; color: white; padding: 20px; border-radius: 10px;">
-                <h3>Total Profesores</h3>
+                <h3>Total Usuarios</h3>
                 <p style="font-size: 2em;"><?php echo htmlspecialchars($total_profesores); ?></p>
+                <small>Administradores + Super Admin</small>
             </div>
             <div style="background: #28a745; color: white; padding: 20px; border-radius: 10px;">
                 <h3>Acciones del Día</h3>
                 <p style="font-size: 2em;"><?php echo htmlspecialchars($acciones_hoy); ?></p>
+                <small>(Registro pendiente)</small>
             </div>
         </div>
 
@@ -53,16 +54,15 @@ include('../includes/header.php');
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td colspan="3" class="text-center">No hay registros recientes.</td>
+                    <tr class="text-center">
+                        <td colspan="3">No hay registros recientes. (Funcionalidad por implementar)</td>
                     </tr>
                 </tbody>
-            </table>
+             </table>
         </div>
     </div>
 </div>
 
 <?php 
-// 6. Incluir footer (ruta ajustada)
 include('../includes/footer.php'); 
 ?>
