@@ -53,7 +53,7 @@ include('includes/header.php');
     <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
         
         <div class="welcome-message">
-            <h3>Bienvenida, <?php echo htmlspecialchars($_SESSION['nombre_profesor'] ?? $_SESSION['usuario']); ?> 👋</h3>
+            <h3>Bienvenida, <?php echo htmlspecialchars($_SESSION['nombre_profesor'] ?? $_SESSION['usuario']); ?> </h3>
             <p>Rol: <strong><?php echo ucfirst($_SESSION['rol']); ?></strong></p>
         </div>
 
@@ -78,7 +78,7 @@ include('includes/header.php');
             </a>
 
             <?php if ($_SESSION['rol'] === 'super_admin'): ?>
-            <a href="profesores/gestionar_usuarios.php" class="btn-gestion" style="color: #6f42c1;">
+            <a href="profesores/gestionar_profesores.php" class="btn-gestion" style="color: #6f42c1;">
                 <i class="fas fa-users-cog" style="font-size: 2.5em; margin-bottom: 15px;"></i>
                 <h4 style="margin: 0;">Gestionar Usuarios</h4>
             </a>

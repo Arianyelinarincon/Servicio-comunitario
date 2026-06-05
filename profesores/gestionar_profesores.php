@@ -94,16 +94,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
 // ==================== LISTADO Y FILTROS ====================
 $sala_filtro = $_GET['sala'] ?? '';
 $seccion_filtro = $_GET['seccion'] ?? '';
+$busqueda = trim($_GET['busqueda'] ?? ''); // Capturar el término de búsqueda
+
 $sql = "SELECT p.*, s.nombre AS nombre_seccion 
         FROM profesores p 
         LEFT JOIN secciones s ON p.seccion = s.id 
         WHERE p.rol = 'profesor'";
+
 if ($sala_filtro) {
     $sql .= " AND p.sala = '" . mysqli_real_escape_string($conexion, $sala_filtro) . "'";
 }
 if ($seccion_filtro) {
     $sql .= " AND p.seccion = " . intval($seccion_filtro);
 }
+// Nueva condición de búsqueda
+if ($busqueda) {
+    $busqueda_safe = mysqli_real_escape_string($conexion, $busqueda);
+    $sql .= " AND (p.nombre LIKE '%$busqueda_safe%' OR p.apellido LIKE '%$busqueda_safe%' OR p.cedula LIKE '%$busqueda_safe%')";
+}
+
 $sql .= " ORDER BY p.sala, s.nombre, p.nombre";
 $result = $conexion->query($sql);
 $salas = $conexion->query("SELECT DISTINCT sala FROM secciones ORDER BY sala");
@@ -119,6 +128,11 @@ include('../includes/header.php');
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end" id="filtroForm">
+                <div class="col-md-3">
+    <label class="form-label">Buscar Profesor</label>
+    <input type="text" name="busqueda" class="form-control" placeholder="Nombre o Cédula..." 
+           value="<?= htmlspecialchars($_GET['busqueda'] ?? '') ?>">
+</div>
                 <div class="col-md-3">
                     <label class="form-label">Sala / Grado</label>
                     <select name="sala" id="filtro_sala" class="form-select">
@@ -165,8 +179,7 @@ include('../includes/header.php');
                                 <td>
                                     <button class="btn btn-sm btn-primary" onclick="editarProfesor(<?= $p['id'] ?>)">Editar</button>
                                     <button class="btn btn-sm btn-danger" onclick="eliminarProfesor(<?= $p['id'] ?>)">Eliminar</button>
-                                    <a href="../estudiantes/index.php?sala=<?= urlencode($p['sala']) ?>&seccion=<?= $p['seccion'] ?>" class="btn btn-sm btn-info" target="_blank">Ver Estudiantes</a>
-                                 </a>
+                                   <a href="../estudiantes/listado.php?sala=<?= urlencode($p['sala']) ?>&seccion=<?= $p['seccion'] ?>" class="btn btn-sm btn-info" target="_blank">Ver Estudiantes</a>
                                 </td>
                             </tr>
                             <?php endwhile; ?>

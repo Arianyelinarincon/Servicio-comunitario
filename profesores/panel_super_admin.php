@@ -17,7 +17,7 @@ if (!isset($_SESSION['rol']) || $_SESSION['rol'] !== 'super_admin') {
 }
 
 // Consultas para los indicadores
-$res_prof = $conexion->query("SELECT COUNT(*) as total FROM administradores");
+$res_prof = $conexion->query("SELECT COUNT(*) as total FROM profesores");
 $total_profesores = $res_prof->fetch_assoc()['total'];
 
 // Aquí puedes agregar una consulta real para acciones del día si tienes una tabla de logs
@@ -32,7 +32,7 @@ include('../includes/header.php');
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
             <div style="background: #003366; color: white; padding: 20px; border-radius: 10px;">
-                <h3>Total Usuarios</h3>
+                <h3>Total Profesores</h3>
                 <p style="font-size: 2em;"><?php echo htmlspecialchars($total_profesores); ?></p>
                 <small>Administradores + Super Admin</small>
             </div>

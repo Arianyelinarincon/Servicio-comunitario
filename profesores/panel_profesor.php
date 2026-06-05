@@ -2,7 +2,7 @@
 session_start();
 require_once __DIR__ . '/../config/conexion.php'; 
 
-if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
+if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador' && $_SESSION['rol'] !== 'super_admin')) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
 }
@@ -32,24 +32,9 @@ include('../includes/header.php');
         </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-md-3">
-            <a href="mis_estudiantes.php" class="card-link">
-                <div class="card p-4 dashboard-card text-center">
-                    <div class="icon-box text-primary"><i class="fas fa-user-graduate"></i></div>
-                    <h5 class="fw-bold">Estudiantes</h5>
-                </div>
-            </a>
-        </div>
 
-        <div class="col-md-3">
-            <a href="../boletines" class="card-link">
-                <div class="card p-4 dashboard-card text-center">
-                    <div class="icon-box text-purple" style="color: #6f42c1;"><i class="fas fa-file-alt"></i></div>
-                    <h5 class="fw-bold">Gestión Boletines</h5>
-                </div>
-            </a>
-        </div>
+
+        
 
         <div class="col-md-3">
             <a href="gestionar_profesores.php" class="card-link">

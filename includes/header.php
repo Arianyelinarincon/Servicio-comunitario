@@ -60,7 +60,6 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
                 <li><a href="/servicio-comunitario/boletines/paso1_portada.php"><i class="fas fa-file-alt me-2"></i> Boletines</a></li>
                 <li><a href="/servicio-comunitario/rendimiento_final.php"><i class="fas fa-chart-line me-2"></i> Rendimiento Final</a></li>
                 <li><a href="/servicio-comunitario/profesores/panel_profesor.php"><i class="fas fa-users me-2"></i> Profesores</a></li>
-                <li><a href="/servicio-comunitario/profesores/gestionar_profesores.php"><i class="fas fa-user-tie me-2"></i> Gestionar Personal</a></li>
                 <li><a href="/servicio-comunitario/gestionar_permisos.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
                 <?php if ($rol_normalizado === 'super_admin'): ?>
                     <li><a href="/servicio-comunitario/profesores/gestionar_usuarios.php"><i class="fas fa-users-cog me-2"></i> Gestionar Usuarios del Sistema</a></li>
