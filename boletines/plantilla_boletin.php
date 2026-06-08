@@ -1,13 +1,11 @@
 <?php
 session_start();
-// Guardar el último paso (Momento 3) en la sesión
 if (!empty($_POST)) {
     foreach ($_POST as $key => $value) {
         $_SESSION[$key] = $value;
     }
 }
 
-// Extraer todos los datos guardados en el recorrido
 $estudiante = htmlspecialchars($_SESSION['estudiante'] ?? '');
 $ce = htmlspecialchars($_SESSION['ce'] ?? '');
 $grupo = htmlspecialchars($_SESSION['grupo'] ?? '');
@@ -36,21 +34,21 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Imprimir Boletín Tríptico</title>
+    <title>Imprimir Boletín</title>
     <style>
         body { font-family: Arial, sans-serif; background: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; font-size: 11px; }
         .controles { background: white; padding: 15px; width: 279mm; margin-bottom: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; }
         .btn-imprimir { background: rgb(26, 35, 126); color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 4px; }
         .ocultar-impresion { width: 100%; }
 
-        /* Hoja Carta Horizontal Exacta */
+        /* Estilo para la pantalla (Vista Previa) */
         .hoja {
             background: white; width: 279mm; height: 215.9mm; display: flex; box-sizing: border-box;
-            padding: 15mm 10mm; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin-bottom: 20mm;
-            page-break-after: always; /* Obliga a la impresora a saltar a la siguiente página */
+            padding: 10mm; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin-bottom: 20mm;
         }
+        
         .columna { flex: 1; padding: 0 15px; box-sizing: border-box; display: flex; flex-direction: column; }
-        .col-borde { border-right: 1px dashed transparent; } /* Guía sutil para doblez, invisible al imprimir */
+        .col-borde { border-right: 1px dashed transparent; }
 
         .texto-centrado { text-align: center; }
         .texto-justificado { text-align: justify; }
@@ -61,12 +59,52 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
         .firma { text-align: center; border-top: 1px solid black; width: 45%; padding-top: 5px; }
         .firma-larga { text-align: center; border-top: 1px solid black; width: 80%; margin: 0 auto; padding-top: 5px; margin-top: 30px; }
 
-        /* Comportamiento al Imprimir */
+        .linea-lateral { border-left: 2px solid #000; padding-left: 10px; margin-bottom: 10px; }
+        /* ======== CONFIGURACIÓN CRÍTICA DE IMPRESIÓN ======== */
         @media print {
-            @page { size: letter landscape; margin: 0; }
-            body { background: white; margin: 0; padding: 0; display: block; }
-            .controles, .ocultar-impresion { display: none !important; }
-            .hoja { box-shadow: none; margin: 0; border: none; padding: 15mm 10mm; width: 100%; height: 100vh; page-break-after: always; }
+            @page { 
+                size: letter landscape; 
+                margin: 0; /* Anula los márgenes por defecto del navegador */
+            }
+            
+            html, body { 
+                background: white; 
+                margin: 0; 
+                padding: 0; 
+                display: block; /* Quita el flex del body que rompe la impresión */
+                width: 100%;
+                height: 100%;
+            }
+            
+            .controles, .ocultar-impresion { 
+                display: none !important; 
+            }
+            
+            .hoja { 
+                box-shadow: none; 
+                margin: 0; 
+                border: none; 
+                width: 100vw; /* Usa el 100% del ancho de la página impresa */
+                height: 100vh; /* Usa el 100% del alto de la página impresa */
+                max-height: 100vh;
+                padding: 8mm; /* Un poco menos de 10mm para evitar que los bordes de la impresora lo corten */
+                box-sizing: border-box;
+                display: flex;
+                page-break-after: always; 
+                page-break-inside: avoid;
+                overflow: hidden; /* Fuerza a que nada sobresalga y cree hojas en blanco */
+            }
+            
+            /* Evita que se imprima una tercera hoja en blanco al final */
+            .hoja:last-of-type {
+                page-break-after: auto;
+            }
+
+            /* Garantiza que los colores oscuros se impriman nítidos */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
         }
     </style>
 </head>
@@ -75,14 +113,13 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
     <div class="ocultar-impresion">
         <?php include '../includes/header.php'; ?>
     </div>
-
+    
     <div class="controles">
-        <button class="btn-imprimir" onclick="window.print()">IMPRIMIR BOLETÍN (Selecciona Horizontal al imprimir)</button>
+        <button class="btn-imprimir" onclick="window.print()">IMPRIMIR BOLETÍN</button>
         <br><br>
         <a href="paso1_portada.php" style="color: rgb(26,35,126); text-decoration: none; font-weight: bold;">Crear otro boletín</a>
     </div>
 
-    <!-- CARA 1: EXTERIOR DEL TRÍPTICO -->
     <div class="hoja">
         <div class="columna col-borde">
             <div style="margin-bottom: 60px;">
@@ -99,22 +136,20 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
             </div>
         </div>
 
-        <!-- Columna Central con frases estáticas -->
         <div class="columna col-borde" style="justify-content: space-around; padding: 0 30px;">
-            <div class="texto-centrado negrita" style="font-size: 13px; font-style: italic;">
+            <div class="texto-centrado negrita linea-lateral" style="font-size: 13px; font-style: italic;">
                 "Instruye al niño en su camino,<br>Y aun cuando fuere viejo no se apartará de él."<br><br>
                 Proverbios 22:6
             </div>
-            <div class="texto-centrado" style="font-size: 13px; font-style: italic;">
+            <div class="texto-centrado linea-lateral" style="font-size: 13px; font-style: italic;">
                 "Pocos conocen su utilidad"<br><br>
                 Frase de Simón Rodríguez
             </div>
-            <div class="texto-centrado" style="font-size: 13px; font-style: italic;">
+            <div class="texto-centrado linea-lateral" style="font-size: 13px; font-style: italic;">
                 "La enseñanza de las buenas costumbres o hábitos sociales es tan esencial como la instrucción."<br><br>
                 Pensamiento de Simón Bolívar
             </div>
         </div>
-
         <div class="columna">
             <div class="texto-centrado negrita" style="margin-bottom: 20px; line-height: 1.3;">
                 REPÚBLICA BOLIVARIANA DE VENEZUELA<br>MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN<br>
@@ -135,10 +170,8 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
             </div>
         </div>
     </div>
-
-    <!-- CARA 2: INTERIOR DEL TRÍPTICO -->
+    
     <div class="hoja">
-        <!-- Primer Momento -->
         <div class="columna col-borde">
             <div class="negrita" style="margin-bottom: 10px;">PRIMER MOMENTO DE EVALUACIÓN<br>PROYECTOS DE APRENDIZAJES:<br><span style="font-weight: normal; text-decoration: underline;"><?php echo $m1_proy; ?></span></div>
             <div class="negrita" style="border-bottom: 1px solid black; margin-bottom: 10px;">ÁREAS DE APRENDIZAJE</div>
@@ -160,7 +193,6 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
             </div>
         </div>
 
-        <!-- Segundo Momento -->
         <div class="columna col-borde">
             <div class="negrita" style="margin-bottom: 10px;">SEGUNDO MOMENTO DE EVALUACIÓN<br>PROYECTOS DE APRENDIZAJES:<br><span style="font-weight: normal; text-decoration: underline;"><?php echo $m2_proy; ?></span></div>
             <div class="negrita" style="border-bottom: 1px solid black; margin-bottom: 10px;">ÁREAS DE APRENDIZAJE</div>
@@ -171,7 +203,6 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
             <div class="bloque-texto texto-justificado"><?php echo $m2_rel; ?></div>
             <div class="negrita">SUGERENCIAS</div>
             <div class="bloque-texto texto-justificado"><?php echo $m2_sug; ?></div>
-
             <div class="espacio-firmas">
                 <div style="width: 45%;">Director(a) <span class="linea-texto" style="width: 50%;"></span></div>
                 <div style="width: 45%;">Docente: <span class="linea-texto" style="width: 60%;"></span></div>
@@ -182,7 +213,6 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
             </div>
         </div>
 
-        <!-- Tercer Momento -->
         <div class="columna">
             <div class="negrita" style="margin-bottom: 10px;">TERCER MOMENTO DE EVALUACIÓN<br>PROYECTOS DE APRENDIZAJES:<br><span style="font-weight: normal; text-decoration: underline;"><?php echo $m3_proy; ?></span></div>
             <div class="negrita" style="border-bottom: 1px solid black; margin-bottom: 10px;">ÁREAS DE APRENDIZAJE</div>
@@ -193,7 +223,7 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
             <div class="bloque-texto texto-justificado"><?php echo $m3_rel; ?></div>
             <div class="negrita">SUGERENCIAS</div>
             <div class="bloque-texto texto-justificado"><?php echo $m3_sug; ?></div>
-
+            
             <div class="espacio-firmas">
                 <div style="width: 45%;">Director(a) <span class="linea-texto" style="width: 50%;"></span></div>
                 <div style="width: 45%;">Docente: <span class="linea-texto" style="width: 60%;"></span></div>
@@ -208,6 +238,7 @@ $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
     <div class="ocultar-impresion">
         <?php include '../includes/footer.php'; ?>
     </div>
+
 
 </body>
 </html>
