@@ -11,8 +11,8 @@ header("Pragma: no-cache");
     <style>
         body { font-family: sans-serif; background-color: #e0e0e0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
         .header-title { text-align: center; margin-bottom: 20px; }
-        .login-container { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); width: 350px; text-align: center; }
-        .logo { max-width: 300px; height: auto; margin-bottom: 15px; }
+        .login-container { border-top: 4px solid #003366; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); width: 350px; text-align: center; }
+        .logo { max-width: 200px; height: auto; margin-bottom: 5px; }
         .input-group { position: relative; margin-bottom: 15px; text-align: left; }
         .input-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
         .input-group i.fa-user, .input-group i.fa-lock { position: absolute; left: 10px; top: 38px; color: #555; }
@@ -24,13 +24,10 @@ header("Pragma: no-cache");
 </head>
 <body>
 
-<div class="header-title">
-    <h1>SISTEMA DE GESTIÓN EDUCATIVA - UNEFA</h1>
-    <p>SERVICIO COMUNITARIO</p>
-</div>
 
+<img src="../../includes/image/logo1.png" alt="Logo" class="logo">
 <div class="login-container">
-    <img src="../../includes/image/logo1.png" alt="Logo" class="logo">
+    
     <h2>INICIO DE SESIÓN</h2>
 
     <?php
