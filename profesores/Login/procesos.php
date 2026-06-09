@@ -10,6 +10,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 $usuario = trim($_POST['usuario']);
 $password = trim($_POST['password']);
 
+// Buscar en la tabla profesores (donde están los administradores y super_admin)
 $sql = "SELECT * FROM profesores WHERE BINARY usuario = ?";
 $stmt = $conexion->prepare($sql);
 $stmt->bind_param("s", $usuario);
@@ -23,7 +24,8 @@ if ($result->num_rows === 0) {
 
 $user = $result->fetch_assoc();
 
-if ($password !== $user['password']) {
+// ==== CAMBIO IMPORTANTE: usar password_verify ====
+if (!password_verify($password, $user['password'])) {
     header("Location: login.php?error=clave_incorrecta");
     exit();
 }
@@ -45,7 +47,6 @@ $_SESSION['nombre_profesor'] = $user['nombre'] . ' ' . ($user['apellido'] ?? '')
 $_SESSION['rol']          = $rol;
 $_SESSION['sala']         = $user['sala'] ?? '';
 
-// Redirigir al index de la raíz
 header("Location: ../../index.php");
 exit();
 ?>

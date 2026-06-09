@@ -1,244 +1,406 @@
 <?php
 session_start();
-if (!empty($_POST)) {
-    foreach ($_POST as $key => $value) {
-        $_SESSION[$key] = $value;
-    }
-}
 
-$estudiante = htmlspecialchars($_SESSION['estudiante'] ?? '');
-$ce = htmlspecialchars($_SESSION['ce'] ?? '');
-$grupo = htmlspecialchars($_SESSION['grupo'] ?? '');
-$ano_escolar = htmlspecialchars($_SESSION['ano_escolar'] ?? '');
-$docente = htmlspecialchars($_SESSION['docente'] ?? '');
-$representante = htmlspecialchars($_SESSION['representante'] ?? '');
-
-$observacion = nl2br(htmlspecialchars($_SESSION['observacion'] ?? ''));
+$estudiante     = htmlspecialchars($_SESSION['estudiante'] ?? '');
+$ce             = htmlspecialchars($_SESSION['ce'] ?? '');
+$grupo          = htmlspecialchars($_SESSION['grupo'] ?? '');
+$ano_escolar    = htmlspecialchars($_SESSION['ano_escolar'] ?? '2025 / 2026');
+$docente        = htmlspecialchars($_SESSION['docente'] ?? '');
+$representante  = htmlspecialchars($_SESSION['representante'] ?? '');
+$observacion    = nl2br(htmlspecialchars($_SESSION['observacion'] ?? ''));
 
 $m1_proy = htmlspecialchars($_SESSION['m1_proyecto'] ?? '');
 $m1_form = nl2br(htmlspecialchars($_SESSION['m1_formacion'] ?? ''));
-$m1_rel = nl2br(htmlspecialchars($_SESSION['m1_relacion'] ?? ''));
-$m1_sug = nl2br(htmlspecialchars($_SESSION['m1_sugerencias'] ?? ''));
+$m1_rel  = nl2br(htmlspecialchars($_SESSION['m1_relacion'] ?? ''));
+$m1_sug  = nl2br(htmlspecialchars($_SESSION['m1_sugerencias'] ?? ''));
 
 $m2_proy = htmlspecialchars($_SESSION['m2_proyecto'] ?? '');
 $m2_form = nl2br(htmlspecialchars($_SESSION['m2_formacion'] ?? ''));
-$m2_rel = nl2br(htmlspecialchars($_SESSION['m2_relacion'] ?? ''));
-$m2_sug = nl2br(htmlspecialchars($_SESSION['m2_sugerencias'] ?? ''));
+$m2_rel  = nl2br(htmlspecialchars($_SESSION['m2_relacion'] ?? ''));
+$m2_sug  = nl2br(htmlspecialchars($_SESSION['m2_sugerencias'] ?? ''));
 
 $m3_proy = htmlspecialchars($_SESSION['m3_proyecto'] ?? '');
 $m3_form = nl2br(htmlspecialchars($_SESSION['m3_formacion'] ?? ''));
-$m3_rel = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
-$m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
+$m3_rel  = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
+$m3_sug  = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Imprimir Boletín</title>
+    <title>Boletín Informativo</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; font-size: 11px; }
-        .controles { background: white; padding: 15px; width: 279mm; margin-bottom: 20px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; }
-        .btn-imprimir { background: rgb(26, 35, 126); color: white; padding: 10px 20px; border: none; cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 4px; }
-        .ocultar-impresion { width: 100%; }
-
-        /* Estilo para la pantalla (Vista Previa) */
-        .hoja {
-            background: white; width: 279mm; height: 215.9mm; display: flex; box-sizing: border-box;
-            padding: 10mm; box-shadow: 0 4px 8px rgba(0,0,0,0.2); margin-bottom: 20mm;
+        /* RESET para impresión */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
-        .columna { flex: 1; padding: 0 15px; box-sizing: border-box; display: flex; flex-direction: column; }
-        .col-borde { border-right: 1px dashed transparent; }
 
-        .texto-centrado { text-align: center; }
-        .texto-justificado { text-align: justify; }
-        .negrita { font-weight: bold; }
-        .linea-texto { border-bottom: 1px solid black; display: inline-block; min-width: 40px; padding-left: 5px; }
-        .bloque-texto { min-height: 80px; margin-top: 5px; margin-bottom: 15px; }
-        .espacio-firmas { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; font-size: 10px; }
-        .firma { text-align: center; border-top: 1px solid black; width: 45%; padding-top: 5px; }
-        .firma-larga { text-align: center; border-top: 1px solid black; width: 80%; margin: 0 auto; padding-top: 5px; margin-top: 30px; }
+        /* Configuración de página: carta horizontal */
+        @page {
+            size: letter landscape;
+            margin: 12mm 10mm;
+        }
 
-        .linea-lateral { border-left: 2px solid #000; padding-left: 10px; margin-bottom: 10px; }
-        /* ======== CONFIGURACIÓN CRÍTICA DE IMPRESIÓN ======== */
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            background: white;
+            font-size: 12pt;
+            line-height: 1.3;
+        }
+
+        /* Cada cara del tríptico ocupa una página completa */
+        .cara {
+            width: 100%;
+            page-break-after: always;  /* fuerza salto entre cara exterior e interior */
+        }
+        .cara:last-child {
+            page-break-after: auto;
+        }
+
+        /* Tabla de 3 columnas (paneles) */
+        .paneles {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+        .panel {
+            width: 33.33%;
+            vertical-align: top;
+            padding: 0 6px;
+        }
+        .borde-derecho {
+            border-right: 1px dashed #aaa;
+        }
+
+        /* Contenido interno de cada panel (para alinear verticalmente) */
+        .panel-contenido {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 245mm; /* altura útil dentro de la página */
+        }
+        .panel-top { flex: 1; }
+        .panel-middle { flex: 0; }
+        .panel-bottom { flex: 0; }
+
+        /* Estilos generales */
+        .titulo-seccion {
+            font-weight: bold;
+            margin: 4mm 0 2mm 0;
+            font-size: 12pt;
+        }
+        .linea {
+            border-bottom: 1px solid #000;
+            margin: 3mm 0;
+            width: 100%;
+        }
+        .linea-corta {
+            border-bottom: 1px solid #000;
+            width: 60%;
+            margin: 2mm auto;
+        }
+        .centrado {
+            text-align: center;
+        }
+        .cita {
+            font-style: italic;
+            font-size: 10pt;
+            text-align: center;
+            margin: 6mm 0;
+        }
+        .cita-autor {
+            font-size: 9pt;
+            font-weight: bold;
+        }
+        .logo {
+            font-weight: bold;
+            font-size: 14pt;
+            text-align: center;
+            margin: 8mm 0;
+        }
+        .encabezado-escuela {
+            text-align: center;
+            font-size: 10pt;
+            line-height: 1.3;
+            text-transform: uppercase;
+            margin-bottom: 5mm;
+        }
+        .escudo {
+            text-align: center;
+            margin: 3mm 0;
+        }
+        .escudo-figura {
+            display: inline-block;
+            width: 18mm;
+            height: 18mm;
+            border: 1px solid #000;
+            line-height: 18mm;
+            font-size: 9pt;
+        }
+        .titulo-boletin {
+            text-align: center;
+            margin: 5mm 0;
+        }
+        .titulo-boletin strong {
+            font-size: 16pt;
+        }
+        .dato-fila {
+            margin: 3mm 0;
+        }
+        .dato-etiqueta {
+            font-weight: bold;
+            display: inline-block;
+            width: 30mm;
+        }
+        .dato-texto {
+            border-bottom: 1px solid #000;
+            display: inline-block;
+            width: 50mm;
+        }
+        .sello {
+            border: 1px solid #000;
+            width: 25mm;
+            height: 25mm;
+            margin: 5mm auto;
+            text-align: center;
+            line-height: 25mm;
+            font-size: 10pt;
+        }
+        .firmas {
+            margin-top: 8mm;
+        }
+        .firma-item {
+            margin: 4mm 0;
+            text-align: center;
+        }
+        .firma-linea {
+            border-top: 1px solid #000;
+            width: 70%;
+            margin: 2mm auto 0 auto;
+        }
+
+        /* Estilos para los momentos (interior) */
+        .momento {
+            border: 1px solid #ccc;
+            padding: 3mm;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .momento-titulo {
+            background: #f0f0f0;
+            text-align: center;
+            font-weight: bold;
+            font-size: 11pt;
+            padding: 2mm;
+            margin-bottom: 3mm;
+        }
+        .momento-contenido {
+            flex: 1;
+        }
+        .momento-firmas {
+            margin-top: 5mm;
+            border-top: 1px solid #aaa;
+            padding-top: 3mm;
+        }
+        .area {
+            font-weight: bold;
+            margin: 3mm 0 1mm 0;
+        }
+        .texto-area {
+            margin-bottom: 3mm;
+            border-bottom: 1px dotted #aaa;
+            padding-bottom: 1mm;
+        }
+
+        /* Botones en pantalla (no se imprimen) */
+        .botones {
+            text-align: center;
+            margin: 10mm 0;
+        }
         @media print {
-            @page { 
-                size: letter landscape; 
-                margin: 0; /* Anula los márgenes por defecto del navegador */
-            }
-            
-            html, body { 
-                background: white; 
-                margin: 0; 
-                padding: 0; 
-                display: block; /* Quita el flex del body que rompe la impresión */
-                width: 100%;
-                height: 100%;
-            }
-            
-            .controles, .ocultar-impresion { 
-                display: none !important; 
-            }
-            
-            .hoja { 
-                box-shadow: none; 
-                margin: 0; 
-                border: none; 
-                width: 100vw; /* Usa el 100% del ancho de la página impresa */
-                height: 100vh; /* Usa el 100% del alto de la página impresa */
-                max-height: 100vh;
-                padding: 8mm; /* Un poco menos de 10mm para evitar que los bordes de la impresora lo corten */
-                box-sizing: border-box;
-                display: flex;
-                page-break-after: always; 
-                page-break-inside: avoid;
-                overflow: hidden; /* Fuerza a que nada sobresalga y cree hojas en blanco */
-            }
-            
-            /* Evita que se imprima una tercera hoja en blanco al final */
-            .hoja:last-of-type {
-                page-break-after: auto;
-            }
-
-            /* Garantiza que los colores oscuros se impriman nítidos */
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
+            .botones {
+                display: none;
             }
         }
     </style>
 </head>
 <body>
 
-    <div class="ocultar-impresion">
-        <?php include '../includes/header.php'; ?>
-    </div>
-    
-    <div class="controles">
-        <button class="btn-imprimir" onclick="window.print()">IMPRIMIR BOLETÍN</button>
-        <br><br>
-        <a href="paso1_portada.php" style="color: rgb(26,35,126); text-decoration: none; font-weight: bold;">Crear otro boletín</a>
-    </div>
+<div class="botones">
+    <button onclick="window.print()">🖨️ Guardar como PDF / Imprimir</button>
+    <button onclick="window.location.href='index.php'">← Volver al inicio</button>
+</div>
 
-    <div class="hoja">
-        <div class="columna col-borde">
-            <div style="margin-bottom: 60px;">
-                <span class="negrita">Observación:</span>
-                <div class="bloque-texto texto-justificado"><?php echo $observacion; ?></div>
-            </div>
-            <div class="texto-centrado" style="margin: 40px 0; color: #555;">SELLO</div>
-            <div style="margin-top: auto;">
-                <div class="espacio-firmas">
-                    <div class="firma">Docente</div>
-                    <div class="firma">Director(a)</div>
+<!-- ==================== CARA EXTERIOR (PÁGINA 1) ==================== -->
+<div class="cara">
+    <table class="paneles">
+        <tr>
+            <!-- PANEL IZQUIERDO: Observación, sello, firmas -->
+            <td class="panel borde-derecho">
+                <div class="panel-contenido">
+                    <div class="panel-top">
+                        <div class="titulo-seccion">Observación:</div>
+                        <div><?php echo $observacion ?: '(Sin observación)'; ?></div>
+                        <div class="linea"></div>
+                        <div class="sello">SELLO</div>
+                    </div>
+                    <div class="panel-bottom">
+                        <div class="firmas">
+                            <div class="firma-item">
+                                <div>Docente</div>
+                                <div class="firma-linea"></div>
+                            </div>
+                            <div class="firma-item">
+                                <div>Director(a)</div>
+                                <div class="firma-linea"></div>
+                            </div>
+                            <div class="firma-item">
+                                <div>Vocera de investigación y formación</div>
+                                <div class="firma-linea"></div>
+                            </div>
+                        </div>
+                        <div class="cita">
+                            "Instruye al niño en su camino,<br>y aun cuando fuere viejo no se apartará de él."
+                            <div class="cita-autor">Proverbios 22:6</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="firma-larga">Vocera de investigación y formación</div>
-            </div>
-        </div>
+            </td>
 
-        <div class="columna col-borde" style="justify-content: space-around; padding: 0 30px;">
-            <div class="texto-centrado negrita linea-lateral" style="font-size: 13px; font-style: italic;">
-                "Instruye al niño en su camino,<br>Y aun cuando fuere viejo no se apartará de él."<br><br>
-                Proverbios 22:6
-            </div>
-            <div class="texto-centrado linea-lateral" style="font-size: 13px; font-style: italic;">
-                "Pocos conocen su utilidad"<br><br>
-                Frase de Simón Rodríguez
-            </div>
-            <div class="texto-centrado linea-lateral" style="font-size: 13px; font-style: italic;">
-                "La enseñanza de las buenas costumbres o hábitos sociales es tan esencial como la instrucción."<br><br>
-                Pensamiento de Simón Bolívar
-            </div>
-        </div>
-        <div class="columna">
-            <div class="texto-centrado negrita" style="margin-bottom: 20px; line-height: 1.3;">
-                REPÚBLICA BOLIVARIANA DE VENEZUELA<br>MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN<br>
-                E.B.N "JUAN PABLO PÉREZ ALFONZO"<br>CODIGO DEA OD02912313<br>MARACAIBO - ZULIA
-            </div>
-            <div class="texto-centrado" style="margin: 20px 0;">
-                <div style="width: 80px; height: 80px; border: 1px solid #000; display: inline-block; line-height: 80px; color: #555; font-size: 10px;">LOGO ESCUELA</div>
-            </div>
-            <div class="texto-centrado negrita" style="font-size: 14px; margin: 30px 0;">
-                BOLETÍN INFORMATIVO INICIAL<br><br>
-                AÑO ESCOLAR <span class="linea-texto" style="min-width: 80px;"><?php echo $ano_escolar; ?></span>
-            </div>
-            <div style="margin-top: 30px; line-height: 2;">
-                <div>Estudiante: <span class="linea-texto" style="width: 73%;"><?php echo $estudiante; ?></span></div>
-                <div>CE: <span class="linea-texto" style="width: 38%;"><?php echo $ce; ?></span> Grupo: <span class="linea-texto" style="width: 30%;"><?php echo $grupo; ?></span></div>
-                <div>Docente: <span class="linea-texto" style="width: 78%;"><?php echo $docente; ?></span></div>
-                <div>Representante: <span class="linea-texto" style="width: 70%;"><?php echo $representante; ?></span></div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="hoja">
-        <div class="columna col-borde">
-            <div class="negrita" style="margin-bottom: 10px;">PRIMER MOMENTO DE EVALUACIÓN<br>PROYECTOS DE APRENDIZAJES:<br><span style="font-weight: normal; text-decoration: underline;"><?php echo $m1_proy; ?></span></div>
-            <div class="negrita" style="border-bottom: 1px solid black; margin-bottom: 10px;">ÁREAS DE APRENDIZAJE</div>
-            
-            <div class="negrita">Formación personal, social y comunicación</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m1_form; ?></div>
-            <div class="negrita">Relación entre los Componentes del Ambiente</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m1_rel; ?></div>
-            <div class="negrita">SUGERENCIAS</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m1_sug; ?></div>
+            <!-- PANEL CENTRAL: Logo y citas -->
+            <td class="panel borde-derecho">
+                <div class="panel-contenido">
+                    <div class="panel-top">
+                        <div class="logo">E.B.N "JUAN PABLO<br>PÉREZ ALFONZO"</div>
+                    </div>
+                    <div class="panel-middle">
+                        <div class="cita">
+                            "Pocos conocen su utilidad"<br>
+                            <span class="cita-autor">— Simón Rodríguez</span>
+                        </div>
+                        <div class="cita">
+                            "La enseñanza de las buenas costumbres<br>o hábitos sociales es tan esencial<br>como la instrucción."<br>
+                            <span class="cita-autor">— Simón Bolívar</span>
+                        </div>
+                    </div>
+                    <div class="panel-bottom"></div>
+                </div>
+            </td>
 
-            <div class="espacio-firmas">
-                <div style="width: 45%;">Director(a) <span class="linea-texto" style="width: 50%;"></span></div>
-                <div style="width: 45%;">Docente: <span class="linea-texto" style="width: 60%;"></span></div>
-            </div>
-            <div style="margin-top: 10px; font-size: 10px; display: flex; justify-content: space-between;">
-                <div style="width: 60%;">Representante: <span class="linea-texto" style="width: 50%;"></span></div>
-                <div style="width: 35%;">Fecha: <span class="linea-texto" style="width: 60%;"></span></div>
-            </div>
-        </div>
+            <!-- PANEL DERECHO: Datos del estudiante -->
+            <td class="panel">
+                <div class="panel-contenido">
+                    <div class="panel-top">
+                        <div class="encabezado-escuela">
+                            REPÚBLICA BOLIVARIANA DE VENEZUELA<br>
+                            MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN<br>
+                            <strong>E.B.N "JUAN PABLO PÉREZ ALFONZO"</strong><br>
+                            CÓDIGO DEA OD02912313<br>
+                            MARACAIBO - ZULIA
+                        </div>
+                        <div class="escudo">
+                            <div class="escudo-figura">ESCUDO</div>
+                        </div>
+                        <div class="titulo-boletin">
+                            <strong>BOLETÍN INFORMATIVO INICIAL</strong><br>
+                            AÑO ESCOLAR <?php echo $ano_escolar; ?>
+                        </div>
+                    </div>
+                    <div class="panel-bottom">
+                        <div class="dato-fila"><span class="dato-etiqueta">Estudiante:</span><span class="dato-texto"><?php echo $estudiante; ?></span></div>
+                        <div class="dato-fila"><span class="dato-etiqueta">CE:</span><span class="dato-texto"><?php echo $ce; ?></span></div>
+                        <div class="dato-fila"><span class="dato-etiqueta">Grupo:</span><span class="dato-texto"><?php echo $grupo; ?></span></div>
+                        <div class="dato-fila"><span class="dato-etiqueta">Docente:</span><span class="dato-texto"><?php echo $docente; ?></span></div>
+                        <div class="dato-fila"><span class="dato-etiqueta">Representante:</span><span class="dato-texto"><?php echo $representante; ?></span></div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+</div>
 
-        <div class="columna col-borde">
-            <div class="negrita" style="margin-bottom: 10px;">SEGUNDO MOMENTO DE EVALUACIÓN<br>PROYECTOS DE APRENDIZAJES:<br><span style="font-weight: normal; text-decoration: underline;"><?php echo $m2_proy; ?></span></div>
-            <div class="negrita" style="border-bottom: 1px solid black; margin-bottom: 10px;">ÁREAS DE APRENDIZAJE</div>
-            
-            <div class="negrita">Formación personal, social y comunicación</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m2_form; ?></div>
-            <div class="negrita">Relación entre los Componentes del Ambiente</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m2_rel; ?></div>
-            <div class="negrita">SUGERENCIAS</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m2_sug; ?></div>
-            <div class="espacio-firmas">
-                <div style="width: 45%;">Director(a) <span class="linea-texto" style="width: 50%;"></span></div>
-                <div style="width: 45%;">Docente: <span class="linea-texto" style="width: 60%;"></span></div>
-            </div>
-            <div style="margin-top: 10px; font-size: 10px; display: flex; justify-content: space-between;">
-                <div style="width: 60%;">Representante: <span class="linea-texto" style="width: 50%;"></span></div>
-                <div style="width: 35%;">Fecha: <span class="linea-texto" style="width: 60%;"></span></div>
-            </div>
-        </div>
+<!-- ==================== CARA INTERIOR (PÁGINA 2) ==================== -->
+<div class="cara">
+    <table class="paneles">
+        <tr>
+            <!-- PRIMER MOMENTO -->
+            <td class="panel borde-derecho">
+                <div class="momento">
+                    <div>
+                        <div class="momento-titulo">PRIMER MOMENTO DE EVALUACIÓN</div>
+                        <div class="area">PROYECTOS DE APRENDIZAJES:</div>
+                        <div class="texto-area"><?php echo $m1_proy; ?></div>
+                        <div class="area">ÁREAS DE APRENDIZAJE</div>
+                        <div>Formación personal, social y comunicación</div>
+                        <div class="texto-area"><?php echo $m1_form; ?></div>
+                        <div>Relación entre los Componentes del Ambiente</div>
+                        <div class="texto-area"><?php echo $m1_rel; ?></div>
+                        <div class="area">SUGERENCIAS</div>
+                        <div class="texto-area"><?php echo $m1_sug; ?></div>
+                    </div>
+                    <div class="momento-firmas">
+                        <div class="firma-item">Director(a): <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Docente: <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Representante: <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Fecha: ___ / ___ / _____</div>
+                    </div>
+                </div>
+            </td>
 
-        <div class="columna">
-            <div class="negrita" style="margin-bottom: 10px;">TERCER MOMENTO DE EVALUACIÓN<br>PROYECTOS DE APRENDIZAJES:<br><span style="font-weight: normal; text-decoration: underline;"><?php echo $m3_proy; ?></span></div>
-            <div class="negrita" style="border-bottom: 1px solid black; margin-bottom: 10px;">ÁREAS DE APRENDIZAJE</div>
-            
-            <div class="negrita">Formación personal, social y comunicación</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m3_form; ?></div>
-            <div class="negrita">Relación entre los Componentes del Ambiente</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m3_rel; ?></div>
-            <div class="negrita">SUGERENCIAS</div>
-            <div class="bloque-texto texto-justificado"><?php echo $m3_sug; ?></div>
-            
-            <div class="espacio-firmas">
-                <div style="width: 45%;">Director(a) <span class="linea-texto" style="width: 50%;"></span></div>
-                <div style="width: 45%;">Docente: <span class="linea-texto" style="width: 60%;"></span></div>
-            </div>
-            <div style="margin-top: 10px; font-size: 10px; display: flex; justify-content: space-between;">
-                <div style="width: 60%;">Representante: <span class="linea-texto" style="width: 50%;"></span></div>
-                <div style="width: 35%;">Fecha: <span class="linea-texto" style="width: 60%;"></span></div>
-            </div>
-        </div>
-    </div>
+            <!-- SEGUNDO MOMENTO -->
+            <td class="panel borde-derecho">
+                <div class="momento">
+                    <div>
+                        <div class="momento-titulo">SEGUNDO MOMENTO DE EVALUACIÓN</div>
+                        <div class="area">PROYECTOS DE APRENDIZAJES:</div>
+                        <div class="texto-area"><?php echo $m2_proy; ?></div>
+                        <div class="area">ÁREAS DE APRENDIZAJE</div>
+                        <div>Formación personal, social y comunicación</div>
+                        <div class="texto-area"><?php echo $m2_form; ?></div>
+                        <div>Relación entre los Componentes del Ambiente</div>
+                        <div class="texto-area"><?php echo $m2_rel; ?></div>
+                        <div class="area">SUGERENCIAS</div>
+                        <div class="texto-area"><?php echo $m2_sug; ?></div>
+                    </div>
+                    <div class="momento-firmas">
+                        <div class="firma-item">Director(a): <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Docente: <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Representante: <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Fecha: ___ / ___ / _____</div>
+                    </div>
+                </div>
+            </td>
 
-    <div class="ocultar-impresion">
-        <?php include '../includes/footer.php'; ?>
-    </div>
-
+            <!-- TERCER MOMENTO -->
+            <td class="panel">
+                <div class="momento">
+                    <div>
+                        <div class="momento-titulo">TERCER MOMENTO DE EVALUACIÓN</div>
+                        <div class="area">PROYECTOS DE APRENDIZAJES:</div>
+                        <div class="texto-area"><?php echo $m3_proy; ?></div>
+                        <div class="area">ÁREAS DE APRENDIZAJE</div>
+                        <div>Formación personal, social y comunicación</div>
+                        <div class="texto-area"><?php echo $m3_form; ?></div>
+                        <div>Relación entre los Componentes del Ambiente</div>
+                        <div class="texto-area"><?php echo $m3_rel; ?></div>
+                        <div class="area">SUGERENCIAS</div>
+                        <div class="texto-area"><?php echo $m3_sug; ?></div>
+                    </div>
+                    <div class="momento-firmas">
+                        <div class="firma-item">Director(a): <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Docente: <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Representante: <span class="linea-corta" style="display:inline-block;"></span></div>
+                        <div class="firma-item">Fecha: ___ / ___ / _____</div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+</div>
 
 </body>
 </html>

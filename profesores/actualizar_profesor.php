@@ -1,26 +1,40 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador')) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
 }
 
 include_once('../../config/conexion.php');
+
+// ==================== GENERAR TOKEN CSRF ====================
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $mensaje = "";
 
-// Lógica para inactivar (si se recibe el ID)
-if (isset($_GET['inactivar_id'])) {
-    $id_profesor = intval($_GET['inactivar_id']);
-    $sql_update = "UPDATE profesores SET estatus = 'Inactivo' WHERE id = ?";
-    $stmt = $conexion->prepare($sql_update);
-    $stmt->bind_param("i", $id_profesor);
-    if ($stmt->execute()) {
-        $mensaje = "<div style='background:#d4edda; color:#155724; padding:10px; border-radius:6px; margin-bottom:20px;'><i class='fas fa-check-circle'></i> Docente inactivado correctamente.</div>";
+// ==================== PROCESAR INACTIVACIÓN POR POST ====================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['inactivar_id'])) {
+    // Validar token CSRF
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $mensaje = "<div style='background:#f8d7da; color:#721c24; padding:10px; border-radius:6px; margin-bottom:20px;'>Error de seguridad: token inválido.</div>";
+    } else {
+        $id_profesor = intval($_POST['inactivar_id']);
+        $sql_update = "UPDATE profesores SET estatus = 'Inactivo' WHERE id = ?";
+        $stmt = $conexion->prepare($sql_update);
+        $stmt->bind_param("i", $id_profesor);
+        if ($stmt->execute()) {
+            $mensaje = "<div style='background:#d4edda; color:#155724; padding:10px; border-radius:6px; margin-bottom:20px;'><i class='fas fa-check-circle'></i> Docente inactivado correctamente.</div>";
+        } else {
+            $mensaje = "<div style='background:#f8d7da; color:#721c24; padding:10px; border-radius:6px; margin-bottom:20px;'>Error al inactivar.</div>";
+        }
+        $stmt->close();
     }
 }
 
-// Consulta de lista (Uniendo con secciones y excluyendo administradores)
-$sql_lista = "SELECT p.id, p.nombre AS nombre_profesor, p.apellido As apellido_profesor,   p.sala, p.estatus, s.nombre AS nombre_seccion
+// Consulta de lista (sin cambios)
+$sql_lista = "SELECT p.id, p.nombre AS nombre_profesor, p.apellido AS apellido_profesor, p.sala, p.estatus, s.nombre AS nombre_seccion
               FROM profesores p 
               LEFT JOIN secciones s ON p.seccion = s.id
               WHERE p.rol != 'administrador' AND p.rol != 'super_admin'";
@@ -44,9 +58,10 @@ $resultado_lista = $conexion->query($sql_lista);
         .badge { padding: 5px 10px; border-radius: 4px; color: white; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
         .bg-activo { background: #28a745; }
         .bg-inactivo { background: #dc3545; }
-        .btn { padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: bold; color: white; }
+        .btn { padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: bold; color: white; display: inline-block; }
         .btn-editar { background: #003366; }
-        .btn-inactivar { background: #dc3545; }
+        .btn-inactivar { background: #dc3545; border: none; cursor: pointer; }
+        .btn-inactivar:hover { background: #c82333; }
     </style>
 </head>
 <body>
@@ -71,12 +86,13 @@ $resultado_lista = $conexion->query($sql_lista);
         </thead>
         <tbody>
             <?php 
-            $contador = 1; // Inicializamos el contador
+            $contador = 1;
             while($row = $resultado_lista->fetch_assoc()): 
                 $esActivo = (strtolower(trim($row['estatus'])) == 'activo');
             ?>
             <tr>
-                <td><?php echo $contador++; ?></td> <td><?php echo htmlspecialchars($row['nombre_profesor']); ?></td>
+                <td><?php echo $contador++; ?></td>
+                <td><?php echo htmlspecialchars($row['nombre_profesor']); ?></td>
                 <td><?php echo htmlspecialchars($row['apellido_profesor']); ?></td>
                 <td><?php echo htmlspecialchars($row['sala']); ?></td>
                 <td><?php echo htmlspecialchars($row['nombre_seccion'] ?? 'N/A'); ?></td>
@@ -84,12 +100,21 @@ $resultado_lista = $conexion->query($sql_lista);
                     <span class="badge <?php echo $esActivo ? 'bg-activo' : 'bg-inactivo'; ?>">
                         <?php echo htmlspecialchars($row['estatus']); ?>
                     </span>
-                </td>
+                 </a>
                 <td>
                     <a href="editar_profesor.php?id=<?php echo $row['id']; ?>" class="btn btn-editar">
                         <i class="fas fa-edit"></i> Editar
                     </a>
-                </td>
+                    <?php if ($esActivo): ?>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('¿Inactivar este profesor?');">
+                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                        <input type="hidden" name="inactivar_id" value="<?= $row['id'] ?>">
+                        <button type="submit" class="btn btn-inactivar">
+                            <i class="fas fa-ban"></i> Inactivar
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                 </a>
             </tr>
             <?php endwhile; ?>
         </tbody>

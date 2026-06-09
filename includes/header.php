@@ -57,7 +57,7 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
                 <?php endif; ?>
                 <li><a href="/servicio-comunitario/estudiantes/index.php"><i class="fas fa-user-plus me-2"></i> Estudiantes</a></li>
                 <li><a href="/servicio-comunitario/estadisticas/index.php"><i class="fas fa-calendar-check me-2"></i> Asistencia Global</a></li>
-                <li><a href="/servicio-comunitario/boletines/paso1_portada.php"><i class="fas fa-file-alt me-2"></i> Boletines</a></li>
+                <li><a href="/servicio-comunitario/boletines/index.php"><i class="fas fa-file-alt me-2"></i> Boletines</a></li>
                 <li><a href="/servicio-comunitario/rendimientofinal/rendimientofinalindex.php"><i class="fas fa-chart-line me-2"></i> Rendimiento Final</a></li>
                 <li><a href="/servicio-comunitario/profesores/panel_profesor.php"><i class="fas fa-users me-2"></i> Profesores</a></li>
                 <li><a href="/servicio-comunitario/gestionar_permisos.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
