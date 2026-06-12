@@ -6,7 +6,7 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 require_once __DIR__ . '/../config/conexion.php';
 
-// ==================== AJAX PARA CARGAR SECCIONES ====================
+// ==================== AJAX PARA CARGAR SECCIONES (para el modal) ====================
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'secciones') {
     header('Content-Type: application/json');
     $sala = $_GET['sala'] ?? '';
@@ -91,31 +91,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
     }
 }
 
-// ==================== LISTADO Y FILTROS ====================
-$sala_filtro = $_GET['sala'] ?? '';
-$seccion_filtro = $_GET['seccion'] ?? '';
-$busqueda = trim($_GET['busqueda'] ?? ''); // Capturar el término de búsqueda
+// ==================== FILTROS (REDISEÑADOS) ====================
+$busqueda = trim($_GET['busqueda'] ?? '');
+$estatus_filtro = trim($_GET['estatus'] ?? '');
+$seccion_filtro = trim($_GET['seccion'] ?? '');
 
+// ========== PAGINACIÓN ==========
+$registros_por_pagina = 10;
+$pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
+$offset = ($pagina_actual - 1) * $registros_por_pagina;
+
+// Consulta para contar total
+$sql_count = "SELECT COUNT(*) as total FROM profesores p WHERE p.rol = 'profesor'";
+if ($busqueda) {
+    $busqueda_safe = mysqli_real_escape_string($conexion, $busqueda);
+    $sql_count .= " AND (p.nombre LIKE '%$busqueda_safe%' OR p.apellido LIKE '%$busqueda_safe%' OR p.cedula LIKE '%$busqueda_safe%')";
+}
+if ($estatus_filtro) {
+    $sql_count .= " AND p.estatus = '" . mysqli_real_escape_string($conexion, $estatus_filtro) . "'";
+}
+if ($seccion_filtro) {
+    $sql_count .= " AND p.seccion = " . intval($seccion_filtro);
+}
+$total_registros = $conexion->query($sql_count)->fetch_assoc()['total'];
+$total_paginas = ceil($total_registros / $registros_por_pagina);
+
+// Consulta principal con LIMIT
 $sql = "SELECT p.*, s.nombre AS nombre_seccion 
         FROM profesores p 
         LEFT JOIN secciones s ON p.seccion = s.id 
         WHERE p.rol = 'profesor'";
-
-if ($sala_filtro) {
-    $sql .= " AND p.sala = '" . mysqli_real_escape_string($conexion, $sala_filtro) . "'";
-}
-if ($seccion_filtro) {
-    $sql .= " AND p.seccion = " . intval($seccion_filtro);
-}
-// Nueva condición de búsqueda
 if ($busqueda) {
     $busqueda_safe = mysqli_real_escape_string($conexion, $busqueda);
     $sql .= " AND (p.nombre LIKE '%$busqueda_safe%' OR p.apellido LIKE '%$busqueda_safe%' OR p.cedula LIKE '%$busqueda_safe%')";
 }
-
-$sql .= " ORDER BY p.sala, s.nombre, p.nombre";
+if ($estatus_filtro) {
+    $sql .= " AND p.estatus = '" . mysqli_real_escape_string($conexion, $estatus_filtro) . "'";
+}
+if ($seccion_filtro) {
+    $sql .= " AND p.seccion = " . intval($seccion_filtro);
+}
+$sql .= " ORDER BY p.sala, s.nombre, p.nombre LIMIT $offset, $registros_por_pagina";
 $result = $conexion->query($sql);
-$salas = $conexion->query("SELECT DISTINCT sala FROM secciones ORDER BY sala");
+
+// Obtener listas para los combos de filtros
+$secciones_lista = $conexion->query("SELECT id, nombre, sala FROM secciones ORDER BY sala, nombre");
+$estatus_opciones = ['Activo', 'Inactivo'];
 
 include('../includes/header.php');
 ?>
@@ -124,35 +145,43 @@ include('../includes/header.php');
     <h2 class="mt-4 mb-4">Gestión de Profesores</h2>
     <div id="mensaje"></div>
     
-    <!-- Filtros -->
+    <!-- Filtros rediseñados -->
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end" id="filtroForm">
+                <div class="col-md-4">
+                    <label class="form-label">Buscar (nombre, apellido o cédula)</label>
+                    <input type="text" name="busqueda" class="form-control" placeholder="Ej: Juan Pérez" 
+                           value="<?= htmlspecialchars($busqueda) ?>">
+                </div>
                 <div class="col-md-3">
-    <label class="form-label">Buscar Profesor</label>
-    <input type="text" name="busqueda" class="form-control" placeholder="Nombre o Cédula..." 
-           value="<?= htmlspecialchars($_GET['busqueda'] ?? '') ?>">
-</div>
-                <div class="col-md-3">
-                    <label class="form-label">Sala / Grado</label>
-                    <select name="sala" id="filtro_sala" class="form-select">
-                        <option value="">Todas</option>
-                        <?php while($row = $salas->fetch_assoc()): ?>
-                            <option value="<?= $row['sala'] ?>" <?= ($sala_filtro == $row['sala']) ? 'selected' : '' ?>><?= ucfirst($row['sala']) ?></option>
-                        <?php endwhile; ?>
+                    <label class="form-label">Estatus</label>
+                    <select name="estatus" class="form-select">
+                        <option value="">Todos</option>
+                        <?php foreach($estatus_opciones as $est): ?>
+                            <option value="<?= $est ?>" <?= ($estatus_filtro == $est) ? 'selected' : '' ?>><?= $est ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Sección</label>
-                    <select name="seccion" id="filtro_seccion" class="form-select" <?= empty($sala_filtro) ? 'disabled' : '' ?>>
+                    <select name="seccion" class="form-select">
                         <option value="">Todas</option>
+                        <?php while($sec = $secciones_lista->fetch_assoc()): ?>
+                            <option value="<?= $sec['id'] ?>" <?= ($seccion_filtro == $sec['id']) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) ?>
+                            </option>
+                        <?php endwhile; ?>
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <a href="gestionar_profesores.php" class="btn btn-secondary">Limpiar</a>
+                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Filtrar</button>
                 </div>
-                <div class="col-md-4 text-end">
-                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalProfesor" onclick="abrirModalAgregar()">+ Agregar Profesor</button>
+                <div class="col-md-12 text-end">
+                    <a href="gestionar_profesores.php" class="btn btn-secondary btn-sm">Limpiar filtros</a>
+                    <button type="button" class="btn btn-success btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#modalProfesor" onclick="abrirModalAgregar()">
+                        <i class="fas fa-plus"></i> Agregar Profesor
+                    </button>
                 </div>
             </form>
         </div>
@@ -164,7 +193,9 @@ include('../includes/header.php');
             <div class="table-responsive">
                 <table class="table table-bordered table-hover">
                     <thead class="table-light">
-                        <tr><th>Nombre</th><th>Cédula</th><th>Sala</th><th>Sección</th><th>Teléfono</th><th>Estatus</th><th>Acciones</th></tr>
+                        <tr>
+                            <th>Nombre</th><th>Cédula</th><th>Sala</th><th>Sección</th><th>Teléfono</th><th>Estatus</th><th>Acciones</th>
+                        </tr>
                     </thead>
                     <tbody>
                         <?php if ($result && $result->num_rows > 0): ?>
@@ -179,20 +210,33 @@ include('../includes/header.php');
                                 <td>
                                     <button class="btn btn-sm btn-primary" onclick="editarProfesor(<?= $p['id'] ?>)">Editar</button>
                                     <button class="btn btn-sm btn-danger" onclick="eliminarProfesor(<?= $p['id'] ?>)">Eliminar</button>
-                                   <a href="../estudiantes/listado.php?sala=<?= urlencode($p['sala']) ?>&seccion=<?= $p['seccion'] ?>" class="btn btn-sm btn-info" target="_blank">Ver Estudiantes</a>
+                                    <a href="../estudiantes/listado.php?sala=<?= urlencode($p['sala']) ?>&seccion=<?= $p['seccion'] ?>" class="btn btn-sm btn-info" target="_blank">Ver Estudiantes</a>
+                                 </a>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="7" class="text-center">No hay profesores registrados.<?php endif; ?>
+                            <tr><td colspan="7" class="text-center">No hay profesores registrados con esos filtros.<?php endif; ?>
                     </tbody>
                 </table>
             </div>
+            <!-- Paginación -->
+            <?php if ($total_paginas > 1): ?>
+                <nav class="mt-3">
+                    <ul class="pagination justify-content-center">
+                        <?php for($i = 1; $i <= $total_paginas; $i++): ?>
+                            <li class="page-item <?= ($i == $pagina_actual) ? 'active' : '' ?>">
+                                <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['pagina' => $i])) ?>"><?= $i ?></a>
+                            </li>
+                        <?php endfor; ?>
+                    </ul>
+                </nav>
+            <?php endif; ?>
         </div>
     </div>
 </div>
 
-<!-- Modal -->
+<!-- Modal para Agregar/Editar Profesor (igual que antes) -->
 <div class="modal fade" id="modalProfesor" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -242,7 +286,7 @@ include('../includes/header.php');
 </div>
 
 <script>
-// Función para cargar secciones al cambiar sala en el modal
+// Cargar secciones según sala en el modal (igual que antes)
 document.getElementById('sala').addEventListener('change', function() {
     let sala = this.value;
     let sel = document.getElementById('seccion');
@@ -260,10 +304,7 @@ document.getElementById('sala').addEventListener('change', function() {
             });
             sel.innerHTML = options;
         })
-        .catch(error => {
-            console.error('Error:', error);
-            sel.innerHTML = '<option value="">Error al cargar</option>';
-        });
+        .catch(() => sel.innerHTML = '<option value="">Error al cargar</option>');
 });
 
 function abrirModalAgregar() {
@@ -272,7 +313,6 @@ function abrirModalAgregar() {
     document.getElementById('estatus_div').style.display = 'none';
     document.getElementById('modalTitulo').innerText = 'Registrar Profesor';
     document.getElementById('seccion').innerHTML = '<option value="">Primero seleccione sala</option>';
-    // Limpiar el select de sala si es necesario
 }
 
 function editarProfesor(id) {
@@ -292,7 +332,6 @@ function editarProfesor(id) {
             document.getElementById('direccion').value = data.direccion;
             document.getElementById('sala').value = data.sala;
             
-            // Cargar secciones según la sala y luego seleccionar la sección asignada
             let sala = data.sala;
             let sel = document.getElementById('seccion');
             fetch(`gestionar_profesores.php?ajax=secciones&sala=${encodeURIComponent(sala)}`)
@@ -353,49 +392,6 @@ function mostrarMensaje(msg, tipo) {
     let div = document.getElementById('mensaje');
     div.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
     setTimeout(() => div.innerHTML = '', 3000);
-}
-
-// Filtros dependientes en la cabecera
-let filtroSala = document.getElementById('filtro_sala');
-let filtroSeccion = document.getElementById('filtro_seccion');
-
-function cargarSeccionesFiltro(sala, seleccionada) {
-    if (!sala) {
-        filtroSeccion.innerHTML = '<option value="">Todas</option>';
-        filtroSeccion.disabled = true;
-        return;
-    }
-    filtroSeccion.disabled = true;
-    filtroSeccion.innerHTML = '<option value="">Cargando...</option>';
-    fetch(`gestionar_profesores.php?ajax=secciones&sala=${encodeURIComponent(sala)}`)
-        .then(res => res.json())
-        .then(data => {
-            let opts = '<option value="">Todas</option>';
-            data.forEach(sec => {
-                let selected = (seleccionada == sec.id) ? 'selected' : '';
-                opts += `<option value="${sec.id}" ${selected}>${sec.nombre}</option>`;
-            });
-            filtroSeccion.innerHTML = opts;
-            filtroSeccion.disabled = false;
-        })
-        .catch(() => {
-            filtroSeccion.innerHTML = '<option value="">Error</option>';
-            filtroSeccion.disabled = false;
-        });
-}
-
-filtroSala.addEventListener('change', function() {
-    cargarSeccionesFiltro(this.value, null);
-    document.getElementById('filtroForm').submit();
-});
-filtroSeccion.addEventListener('change', () => document.getElementById('filtroForm').submit());
-
-// Inicializar filtros si ya hay sala seleccionada
-if (filtroSala.value) {
-    cargarSeccionesFiltro(filtroSala.value, <?= json_encode($seccion_filtro) ?>);
-} else {
-    filtroSeccion.disabled = true;
-    filtroSeccion.innerHTML = '<option value="">Todas</option>';
 }
 </script>
 

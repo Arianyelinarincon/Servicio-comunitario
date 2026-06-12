@@ -9,7 +9,7 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $conexion->begin_transaction();
     try {
-        // ==================== 1. INSERTAR REPRESENTANTE ====================
+        // ==================== 1. REPRESENTANTE ====================
         $rep_nombre = trim($_POST['rep_nombre']);
         $rep_cedula = trim($_POST['rep_cedula']);
         $rep_telefono = trim($_POST['rep_telefono']);
@@ -39,9 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $representante_id = $conexion->insert_id;
         $stmt->close();
 
-        // ==================== 2. INSERTAR ESTUDIANTE ====================
+        // ==================== 2. ESTUDIANTE ====================
         $nombre = strtoupper(trim($_POST['nombre']));
-        $cedula_escolar = trim($_POST['cedula_escolar']);
+        $apellido = strtoupper(trim($_POST['apellido']));
         $fecha_nac = $_POST['fecha_nacimiento'];
         $genero = $_POST['genero'];
         $orden_nacimiento = intval($_POST['orden_nacimiento'] ?? 1);
@@ -60,14 +60,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $alergia = $_POST['alergia'] ?? 'No';
         $alergia_cual = $_POST['alergia_cual'] ?? '';
         $madre_nombre = $_POST['madre_nombre'] ?? '';
-        $madre_cedula = $_POST['madre_cedula'] ?? '';
+        $madre_cedula = trim($_POST['madre_cedula_temp']); // usamos el campo temporal del paso 1
         $madre_telefono = $_POST['madre_telefono'] ?? '';
         $padre_nombre = $_POST['padre_nombre'] ?? '';
         $padre_cedula = $_POST['padre_cedula'] ?? '';
         $padre_telefono = $_POST['padre_telefono'] ?? '';
+        $sala = ''; // se actualizará después
 
-        // La sala se actualizará después con el último grado registrado (por ahora vacío)
-        $sala = '';
+        // Generar Cédula Escolar (formato institucional)
+        $año = date('Y', strtotime($fecha_nac));
+        $año2Dig = substr($año, -2);
+        $cedulaLimpia = preg_replace('/\D/', '', $madre_cedula);
+        $cedulaLimpia = str_pad($cedulaLimpia, 8, '0', STR_PAD_LEFT);
+        $cedulaLimpia = substr($cedulaLimpia, -8);
+        $cedula_escolar = $orden_nacimiento . $año2Dig . $cedulaLimpia;
+        if (strlen($cedula_escolar) != 11) {
+            // Si por algún motivo no tiene 11 dígitos, se puede ajustar, pero debería tenerlos.
+            $cedula_escolar = str_pad($cedula_escolar, 11, '0', STR_PAD_RIGHT);
+        }
 
         $stmt = $conexion->prepare("INSERT INTO estudiantes 
             (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, alergias_condiciones, 
@@ -76,19 +86,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              educacion_fisica, educacion_fisica_porque, alergia, alergia_cual, 
              madre_nombre, madre_cedula, madre_telefono, padre_nombre, padre_cedula, padre_telefono, 
              orden_nacimiento, estatus, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
+            VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
+
         $stmt->bind_param("ssssssissssssssssssssssssssi", 
-            $nombre, '', $cedula_escolar, $fecha_nac, $genero, $sala, '', 
-            $representante_id, $nacionalidad, $pais_nac, $estado_nac, $direccion, 
-            $estado_res, $municipio, $parroquia, $ciudad, $enfermedad, $enfermedad_cual, 
-            $educacion_fisica, $educacion_fisica_porque, $alergia, $alergia_cual, 
-            $madre_nombre, $madre_cedula, $madre_telefono, $padre_nombre, $padre_cedula, $padre_telefono, 
-            $orden_nacimiento);
+            $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
+            $nacionalidad, $pais_nac, $estado_nac, $direccion, $estado_res, $municipio, $parroquia, $ciudad,
+            $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
+            $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
+            $padre_nombre, $padre_cedula, $padre_telefono, $orden_nacimiento);
         $stmt->execute();
         $estudiante_id = $conexion->insert_id;
         $stmt->close();
 
-        // ==================== 3. INSERTAR INSCRIPCIONES ====================
+        // ==================== 3. INSCRIPCIONES ====================
         $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
         $grado_seccion_arr = $_POST['grado_seccion'] ?? [];
         $registro_arr = $_POST['registro'] ?? [];
@@ -140,7 +150,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     } catch (Exception $e) {
         $conexion->rollback();
-        // Para depuración, puedes guardar el error en un log
         error_log("Error en inscripción: " . $e->getMessage());
         header("Location: inscripcion.php?error=1");
         exit();

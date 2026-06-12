@@ -34,6 +34,15 @@ include '../includes/header.php';
                 </div>
             </a>
         </div>
+        <div class="col-md-6 mb-4">
+    <a href="historial_boletines.php" class="text-decoration-none">
+        <div class="card p-4 dashboard-card text-center">
+            <div class="icon-box text-primary"><i class="fas fa-history fa-3x"></i></div>
+            <h5 class="fw-bold mt-3">Historial de Boletines</h5>
+            <p class="text-muted">Consultar boletines generados anteriormente</p>
+        </div>
+    </a>
+</div>
     </div>
 </div>
 

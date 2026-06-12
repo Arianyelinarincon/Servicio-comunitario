@@ -1,53 +1,64 @@
 <?php
 session_start();
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
+}
+require_once '../config/conexion.php';
 
-if (!isset($_SESSION['estudiante'])) {
-    // header("Location: index.php");
-    // exit();
+$id = intval($_GET['id'] ?? 0);
+if (!$id) {
+    die("ID de boletín no válido.");
 }
 
-require_once '../estadisticas/dompdf/autoload.inc.php';
-require_once '../config/conexion.php';   // <-- CONEXIÓN A BD
+// Obtener datos del boletín y del estudiante
+$stmt = $conexion->prepare("
+    SELECT b.*, 
+           CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante,
+           e.cedula_escolar, e.sala,
+           r.nombre_completo AS representante
+    FROM boletines b
+    JOIN estudiantes e ON b.estudiante_id = e.id
+    LEFT JOIN representantes r ON e.representante_id = r.id
+    WHERE b.id = ?
+");
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$boletin = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-use Dompdf\Dompdf;
-use Dompdf\Options;
+if (!$boletin) {
+    die("Boletín no encontrado.");
+}
 
-// Recuperar datos de la sesión
-$estudiante = htmlspecialchars($_SESSION['estudiante'] ?? '');
-$ce = htmlspecialchars($_SESSION['ce'] ?? '');
-$grupo = htmlspecialchars($_SESSION['grupo'] ?? '');
-$ano_escolar = htmlspecialchars($_SESSION['ano_escolar'] ?? '2025 / 2026');
-$docente = htmlspecialchars($_SESSION['docente'] ?? '');
-$representante = htmlspecialchars($_SESSION['representante'] ?? '');
-$observacion = nl2br(htmlspecialchars($_SESSION['observacion'] ?? ''));
-
-$m1_proy = htmlspecialchars($_SESSION['m1_proyecto'] ?? '');
-$m1_form = nl2br(htmlspecialchars($_SESSION['m1_formacion'] ?? ''));
-$m1_rel = nl2br(htmlspecialchars($_SESSION['m1_relacion'] ?? ''));
-$m1_sug = nl2br(htmlspecialchars($_SESSION['m1_sugerencias'] ?? ''));
-
-$m2_proy = htmlspecialchars($_SESSION['m2_proyecto'] ?? '');
-$m2_form = nl2br(htmlspecialchars($_SESSION['m2_formacion'] ?? ''));
-$m2_rel = nl2br(htmlspecialchars($_SESSION['m2_relacion'] ?? ''));
-$m2_sug = nl2br(htmlspecialchars($_SESSION['m2_sugerencias'] ?? ''));
-
-$m3_proy = htmlspecialchars($_SESSION['m3_proyecto'] ?? '');
-$m3_form = nl2br(htmlspecialchars($_SESSION['m3_formacion'] ?? ''));
-$m3_rel = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
-$m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
-
-$options = new Options();
-$options->set('isHtml5ParserEnabled', true);
-$options->set('isRemoteEnabled', true);
-$dompdf = new Dompdf($options);
-
-ob_start();
+// Asignar variables igual que en la plantilla original (sin nl2br aquí, se aplicará en el HTML)
+$estudiante = htmlspecialchars($boletin['nombre_estudiante']);
+$ce = htmlspecialchars($boletin['cedula_escolar']);
+$grupo = htmlspecialchars($boletin['sala']);
+$ano_escolar = htmlspecialchars($boletin['periodo']);
+$docente = ''; // No se guarda en boletines, puedes dejarlo vacío o buscarlo aparte
+$representante = htmlspecialchars($boletin['representante'] ?? 'No registrado');
+$observacion = htmlspecialchars($boletin['observacion'] ?? '');
+$m1_proy = htmlspecialchars($boletin['m1_proyecto'] ?? '');
+$m1_form = htmlspecialchars($boletin['m1_formacion'] ?? '');
+$m1_rel = htmlspecialchars($boletin['m1_relacion'] ?? '');
+$m1_sug = htmlspecialchars($boletin['m1_sugerencias'] ?? '');
+$m2_proy = htmlspecialchars($boletin['m2_proyecto'] ?? '');
+$m2_form = htmlspecialchars($boletin['m2_formacion'] ?? '');
+$m2_rel = htmlspecialchars($boletin['m2_relacion'] ?? '');
+$m2_sug = htmlspecialchars($boletin['m2_sugerencias'] ?? '');
+$m3_proy = htmlspecialchars($boletin['m3_proyecto'] ?? '');
+$m3_form = htmlspecialchars($boletin['m3_formacion'] ?? '');
+$m3_rel = htmlspecialchars($boletin['m3_relacion'] ?? '');
+$m3_sug = htmlspecialchars($boletin['m3_sugerencias'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <title>Boletín Informativo Inicial</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         /* CONFIGURACIÓN DE HOJA CARTA HORIZONTAL */
         @page {
@@ -203,12 +214,25 @@ ob_start();
             padding-bottom: 5px;
         }
         
-        
         .page-break { page-break-before: always; }
+     
+        @media print {
+    .text-center {
+        display: none;
+    }
+}
     </style>
 </head>
 <body>
 
+<div class="text-center my-3">
+    <button onclick="window.print()" class="btn btn-primary me-2">
+        <i class="fas fa-print"></i> Guardar como PDF / Imprimir
+    </button>
+    <button onclick="window.location.href='historial_boletines.php'" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Volver al historial
+    </button>
+</div>
 <table class="tabla-triptico">
     <tr>
         <td class="columna-triptico">
@@ -448,74 +472,3 @@ ob_start();
 
 </body>
 </html>
-<?php
-$html = ob_get_clean();
-
-$dompdf->setPaper('letter', 'landscape');
-$dompdf->loadHtml($html);
-$dompdf->render();
-
-// ========== GUARDAR BOLETÍN EN TABLA boletines (CORREGIDO) ==========
-$estudiante_id = $_SESSION['estudiante_id'] ?? 0;
-if (!$estudiante_id && isset($_SESSION['estudiante'])) {
-    $nombre_est = $_SESSION['estudiante'];
-    $ce_est = $_SESSION['ce'];
-    $stmt_buscar = $conexion->prepare("SELECT id FROM estudiantes WHERE CONCAT(nombre, ' ', apellido) = ? AND cedula_escolar = ? LIMIT 1");
-    $stmt_buscar->bind_param("ss", $nombre_est, $ce_est);
-    $stmt_buscar->execute();
-    $res_buscar = $stmt_buscar->get_result();
-    if ($fila = $res_buscar->fetch_assoc()) {
-        $estudiante_id = $fila['id'];
-        $_SESSION['estudiante_id'] = $estudiante_id;
-    }
-    $stmt_buscar->close();
-}
-
-if ($estudiante_id) {
-    $tipo = $_SESSION['tipo_boletin'] ?? 'inicial';
-    $periodo_escolar = $_SESSION['ano_escolar'] ?? date('Y') . '-' . (date('Y')+1);
-    
-    // Eliminar boletín anterior del mismo estudiante y período (opcional)
-    $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ?");
-    $stmt_del->bind_param("is", $estudiante_id, $periodo_escolar);
-    $stmt_del->execute();
-    $stmt_del->close();
-    
-    // Asignar valores de sesión (con null si no existen)
-    $obs = $_SESSION['observacion'] ?? '';
-    $m1_proy = $_SESSION['m1_proyecto'] ?? '';
-    $m1_form = $_SESSION['m1_formacion'] ?? '';
-    $m1_rel = $_SESSION['m1_relacion'] ?? '';
-    $m1_sug = $_SESSION['m1_sugerencias'] ?? '';
-    $m2_proy = $_SESSION['m2_proyecto'] ?? '';
-    $m2_form = $_SESSION['m2_formacion'] ?? '';
-    $m2_rel = $_SESSION['m2_relacion'] ?? '';
-    $m2_sug = $_SESSION['m2_sugerencias'] ?? '';
-    $m3_proy = $_SESSION['m3_proyecto'] ?? '';
-    $m3_form = $_SESSION['m3_formacion'] ?? '';
-    $m3_rel = $_SESSION['m3_relacion'] ?? '';
-    $m3_sug = $_SESSION['m3_sugerencias'] ?? '';
-    
-    // Depuración (opcional: comenta después de probar)
-    // error_log("Guardando boletín - m3_proy: $m3_proy, m3_form: $m3_form");
-    
-    $stmt_bol = $conexion->prepare("INSERT INTO boletines 
-        (estudiante_id, periodo, tipo_boletin, observacion, 
-         m1_proyecto, m1_formacion, m1_relacion, m1_sugerencias,
-         m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
-         m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    
-    $tipos = 'i' . str_repeat('s', 15); // 1 entero + 15 strings
-    $stmt_bol->bind_param($tipos, 
-        $estudiante_id, $periodo_escolar, $tipo,
-        $obs, $m1_proy, $m1_form, $m1_rel, $m1_sug,
-        $m2_proy, $m2_form, $m2_rel, $m2_sug,
-        $m3_proy, $m3_form, $m3_rel, $m3_sug
-    );
-    $stmt_bol->execute();
-    $stmt_bol->close();
-}
-
-$dompdf->stream("boletin_{$estudiante}.pdf", array('Attachment' => 0));
-?>

@@ -17,7 +17,7 @@ while($sec = $secciones->fetch_assoc()) {
 <div class="container mt-4 mb-5">
     <div class="card shadow-sm border-0">
         <div class="card-header bg-navy text-white rounded-top">
-            <h4 class="mb-0"><i class="fas fa-edit me-2"></i> Inscripción de Estudiante</h4>
+            <h4 class="mb-0"><i class="fas fa-edit me-2"></i> FICHA DE INSCRIPCIÓN (Formato Institucional)</h4>
         </div>
         <div class="card-body p-4">
             <div class="progress mb-4" style="height: 6px;">
@@ -25,7 +25,6 @@ while($sec = $secciones->fetch_assoc()) {
             </div>
 
             <form id="wizardForm" action="procesar_inscripcion.php" method="POST">
-                <!-- Indicador de pasos -->
                 <ul class="nav nav-tabs nav-justified mb-4 border-0" id="stepTabs">
                     <li class="nav-item"><a class="nav-link active rounded-0" href="#step1" data-step="1">1. Datos del Alumno</a></li>
                     <li class="nav-item"><a class="nav-link disabled rounded-0" href="#step2" data-step="2">2. Datos del Representante</a></li>
@@ -33,15 +32,17 @@ while($sec = $secciones->fetch_assoc()) {
                     <li class="nav-item"><a class="nav-link disabled rounded-0" href="#step4" data-step="4">4. Historial Escolar</a></li>
                 </ul>
 
-                <!-- ================= PASO 1 ================= -->
+                <!-- ================= PASO 1: ALUMNO ================= -->
                 <div id="step1" class="step p-3 bg-light rounded-3 mb-3">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">Datos del Alumno</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DEL ALUMNO</h5>
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Nombres y Apellidos <span class="text-danger">*</span>
-                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Nombre completo del estudiante (tal como aparece en la cédula escolar)"></i>
-                            </label>
+                            <label class="form-label fw-semibold">Nombres <span class="text-danger">*</span></label>
                             <input type="text" name="nombre" class="form-control text-uppercase" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Apellidos <span class="text-danger">*</span></label>
+                            <input type="text" name="apellido" class="form-control text-uppercase" required>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Fecha Nacimiento <span class="text-danger">*</span></label>
@@ -52,15 +53,17 @@ while($sec = $secciones->fetch_assoc()) {
                             <select name="genero" class="form-select" required><option value="">--</option><option value="V">Varón</option><option value="H">Hembra</option></select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Orden nacimiento en el año
-                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Número de orden si hay más de un hijo nacido en el mismo año (1,2,3...). Por defecto 1."></i>
-                            </label>
+                            <label class="form-label fw-semibold">Orden nacimiento en el año</label>
                             <input type="number" name="orden_nacimiento" id="orden_nacimiento" class="form-control" value="1" min="1" max="9">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Cédula Escolar (automática)
-                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Se genera automáticamente con la cédula del representante y la fecha de nacimiento"></i>
+                            <label class="form-label fw-semibold">Cédula de la Madre (para generar Cédula Escolar) <span class="text-danger">*</span>
+                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Se usará para generar la Cédula Escolar de 11 dígitos"></i>
                             </label>
+                            <input type="text" name="madre_cedula_temp" id="madre_cedula_temp" class="form-control" placeholder="Ej: 09799555" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Cédula Escolar (automática)</label>
                             <input type="text" id="cedula_escolar_auto" class="form-control bg-light" readonly>
                             <input type="hidden" name="cedula_escolar" id="cedula_escolar_hidden">
                         </div>
@@ -132,14 +135,12 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-                <!-- ================= PASO 2 (Representante) con tooltips ================= -->
+                <!-- ================= PASO 2: REPRESENTANTE ================= -->
                 <div id="step2" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">Datos del Representante</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DEL REPRESENTANTE</h5>
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Cédula <span class="text-danger">*</span>
-                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Cédula del representante. Se usará para generar la Cédula Escolar del alumno."></i>
-                            </label>
+                            <label class="form-label fw-semibold">Cédula <span class="text-danger">*</span></label>
                             <input type="text" name="rep_cedula" id="rep_cedula" class="form-control" required>
                         </div>
                         <div class="col-md-6">
@@ -205,12 +206,12 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-                <!-- ================= PASO 3 ================= -->
+                <!-- ================= PASO 3: PADRES ================= -->
                 <div id="step3" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">Datos de los Padres</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DE LOS PADRES</h5>
                     <div class="row g-3">
-                        <div class="col-md-6"><label>Nombres y Apellidos de la Madre</label><input type="text" name="madre_nombre" class="form-control text-uppercase"></div>
-                        <div class="col-md-3"><label>Cédula</label><input type="text" name="madre_cedula" class="form-control"></div>
+                        <div class="col-md-6"><label>Nombres y Apellidos de la Madre</label><input type="text" name="madre_nombre" id="madre_nombre" class="form-control text-uppercase"></div>
+                        <div class="col-md-3"><label>Cédula</label><input type="text" name="madre_cedula" id="madre_cedula" class="form-control"></div>
                         <div class="col-md-3"><label>Teléfono</label><input type="text" name="madre_telefono" class="form-control"></div>
                         <div class="col-md-6"><label>Nombre y Apellido del Padre</label><input type="text" name="padre_nombre" class="form-control text-uppercase"></div>
                         <div class="col-md-3"><label>Cédula</label><input type="text" name="padre_cedula" class="form-control"></div>
@@ -222,20 +223,20 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-                <!-- ================= PASO 4 ================= -->
+                <!-- ================= PASO 4: HISTORIAL ESCOLAR ================= -->
                 <div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">Historial Escolar</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">GRADO Y SECCIÓN (Historial Escolar)</h5>
                     <div class="alert alert-info py-2">
-                        <i class="fas fa-info-circle me-2"></i> Registre los años escolares. Puede agregar varias filas. Los campos con <i class="fas fa-question-circle"></i> tienen ayuda.
+                        <i class="fas fa-info-circle me-2"></i> Registre los años escolares. Puede agregar varias filas.
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm table-bordered" id="tablaHistorial">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Año Escolar <i class="fas fa-question-circle text-muted" data-bs-toggle="tooltip" title="Ejemplo: 2024-2025"></i></th>
-                                    <th>Grado y Sección <i class="fas fa-question-circle text-muted" data-bs-toggle="tooltip" title="Seleccione de la lista desplegable"></i></th>
-                                    <th>Reg. <i class="fas fa-question-circle text-muted" data-bs-toggle="tooltip" title="Número de registro del estudiante"></i></th>
-                                    <th>Rep. <i class="fas fa-question-circle text-muted" data-bs-toggle="tooltip" title="¿Repite el año?"></i></th>
+                                    <th>Año Escolar</th>
+                                    <th>Grado y Sección</th>
+                                    <th>Reg.</th>
+                                    <th>Rep.</th>
                                     <th>C</th><th>F</th><th>P</th>
                                     <th>Peso (kg)</th><th>Talla (cm)</th>
                                     <th>Acción</th>
@@ -272,53 +273,70 @@ while($sec = $secciones->fetch_assoc()) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Inicializar tooltips
+    // Tooltips
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
 
-    // ========== CÉDULA ESCOLAR AUTOMÁTICA ==========
+    // ========== GENERAR CÉDULA ESCOLAR (formato institucional) ==========
     function generarCedulaEscolar() {
-        const repCedula = document.getElementById('rep_cedula')?.value.trim();
+        const madreCedulaRaw = document.getElementById('madre_cedula_temp')?.value.trim();
         const fechaNac = document.getElementById('fecha_nacimiento')?.value;
         const orden = parseInt(document.getElementById('orden_nacimiento')?.value) || 1;
-        if (!repCedula || !fechaNac) {
+        if (!madreCedulaRaw || !fechaNac) {
             document.getElementById('cedula_escolar_auto').value = '';
             document.getElementById('cedula_escolar_hidden').value = '';
             return;
         }
+        // Extraer año (2 últimos dígitos)
         const año = new Date(fechaNac).getFullYear().toString();
         const año2Dig = año.slice(-2);
-        let cedulaLimpia = repCedula.replace(/\D/g, '');
-        if (cedulaLimpia.length < 8) cedulaLimpia = cedulaLimpia.padStart(8, '0');
-        else if (cedulaLimpia.length > 8) cedulaLimpia = cedulaLimpia.slice(-8);
+        // Limpiar cédula de la madre: solo números
+        let cedulaLimpia = madreCedulaRaw.replace(/\D/g, '');
+        // Completar a 8 dígitos con ceros a la izquierda
+        if (cedulaLimpia.length < 8) {
+            cedulaLimpia = cedulaLimpia.padStart(8, '0');
+        } else if (cedulaLimpia.length > 8) {
+            cedulaLimpia = cedulaLimpia.slice(-8);
+        }
         const ce = orden.toString() + año2Dig + cedulaLimpia;
+        // Asegurar 11 dígitos
+        if (ce.length !== 11) {
+            console.warn("Cédula escolar generada con longitud incorrecta:", ce);
+        }
         document.getElementById('cedula_escolar_auto').value = ce;
         document.getElementById('cedula_escolar_hidden').value = ce;
+        
+        // Sincronizar con el campo oculto de madre_cedula (paso 3) si existe
+        const madreCedulaStep3 = document.getElementById('madre_cedula');
+        if (madreCedulaStep3 && madreCedulaStep3.value !== madreCedulaRaw) {
+            madreCedulaStep3.value = madreCedulaRaw;
+        }
     }
-    document.getElementById('rep_cedula')?.addEventListener('input', generarCedulaEscolar);
+    document.getElementById('madre_cedula_temp')?.addEventListener('input', generarCedulaEscolar);
     document.getElementById('fecha_nacimiento')?.addEventListener('change', generarCedulaEscolar);
     document.getElementById('orden_nacimiento')?.addEventListener('input', generarCedulaEscolar);
     generarCedulaEscolar();
 
-    // ========== CAMPOS CONDICIONALES (Sí/No) ==========
-    function toggleEnfermedad() {
-        const val = document.getElementById('enfermedad').value;
-        document.getElementById('div_enfermedad_cual').style.display = val === 'Si' ? 'block' : 'none';
-    }
-    function toggleEducacionFisica() {
-        const val = document.getElementById('educacion_fisica').value;
-        document.getElementById('div_educacion_fisica_porque').style.display = val === 'No' ? 'block' : 'none';
-    }
-    function toggleAlergia() {
-        const val = document.getElementById('alergia').value;
-        document.getElementById('div_alergia_cual').style.display = val === 'Si' ? 'block' : 'none';
-    }
+    // Sincronizar cédula de la madre desde el paso 3 al paso 1
+    document.getElementById('madre_cedula')?.addEventListener('input', function() {
+        const madreStep3 = this.value.trim();
+        const madreTemp = document.getElementById('madre_cedula_temp');
+        if (madreTemp && madreTemp.value !== madreStep3) {
+            madreTemp.value = madreStep3;
+            generarCedulaEscolar();
+        }
+    });
+
+    // Mostrar/ocultar campos condicionales
+    function toggleEnfermedad() { document.getElementById('div_enfermedad_cual').style.display = document.getElementById('enfermedad').value === 'Si' ? 'block' : 'none'; }
+    function toggleEducacionFisica() { document.getElementById('div_educacion_fisica_porque').style.display = document.getElementById('educacion_fisica').value === 'No' ? 'block' : 'none'; }
+    function toggleAlergia() { document.getElementById('div_alergia_cual').style.display = document.getElementById('alergia').value === 'Si' ? 'block' : 'none'; }
     document.getElementById('enfermedad')?.addEventListener('change', toggleEnfermedad);
     document.getElementById('educacion_fisica')?.addEventListener('change', toggleEducacionFisica);
     document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
     toggleEnfermedad(); toggleEducacionFisica(); toggleAlergia();
 
-    // ========== WIZARD (siguiente/anterior) ==========
+    // Wizard
     const steps = document.querySelectorAll('.step');
     const nextBtns = document.querySelectorAll('.next-step');
     const prevBtns = document.querySelectorAll('.prev-step');
@@ -342,10 +360,10 @@ document.addEventListener('DOMContentLoaded', function() {
     tabs.forEach((tab,idx)=>tab.addEventListener('click',(e)=>{ e.preventDefault(); if(idx <= currentStep+1) showStep(idx); }));
     showStep(0);
 
-    // Tabla dinámica (Historial Escolar)
+    // Tabla dinámica
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
-    function agregarFila() {
+    function agregarFilaHistorial() {
         const originalRow = historialBody.querySelector('.fila-historial');
         const newRow = originalRow.cloneNode(true);
         newRow.querySelectorAll('input, select').forEach(inp=>{
@@ -353,10 +371,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if(inp.tagName==='SELECT') inp.selectedIndex=0;
         });
         historialBody.appendChild(newRow);
-        // Reinicializar tooltips en la nueva fila
         newRow.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
     }
-    agregarBtn?.addEventListener('click', agregarFila);
+    agregarBtn?.addEventListener('click', agregarFilaHistorial);
     historialBody?.addEventListener('click', e=>{
         if(e.target.classList.contains('eliminar-fila')) {
             if(document.querySelectorAll('.fila-historial').length>1) e.target.closest('tr').remove();

@@ -6,12 +6,12 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 require_once '../config/conexion.php';
 
-// Generar token CSRF
+// CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// Procesar eliminación por POST
+// Eliminación (baja lógica)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         die("Error CSRF");
@@ -29,7 +29,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $sala_filtro = $_GET['sala'] ?? '';
 $ano_filtro = $_GET['ano'] ?? '';
 
-// Obtener estudiantes con su último año escolar (de la tabla inscripciones)
+// ========== PAGINACIÓN ==========
+$registros_por_pagina = 10;
+$pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
+$offset = ($pagina_actual - 1) * $registros_por_pagina;
+
+// Consulta para contar total (con los mismos filtros)
+$sql_count = "SELECT COUNT(*) as total 
+              FROM estudiantes e
+              WHERE e.estatus = 'Activo'";
+if ($sala_filtro) {
+    $sql_count .= " AND e.sala = '" . mysqli_real_escape_string($conexion, $sala_filtro) . "'";
+}
+if ($ano_filtro) {
+    $sql_count .= " AND EXISTS (SELECT 1 FROM inscripciones WHERE estudiante_id = e.id AND ano_escolar LIKE '$ano_filtro%')";
+}
+$total_registros = $conexion->query($sql_count)->fetch_assoc()['total'];
+$total_paginas = ceil($total_registros / $registros_por_pagina);
+
+// Consulta principal con LIMIT
 $sql = "SELECT e.*, r.nombre_completo AS rep_nombre,
                (SELECT ano_escolar FROM inscripciones WHERE estudiante_id = e.id ORDER BY fecha_inscripcion DESC LIMIT 1) AS ano_escolar_actual
         FROM estudiantes e
@@ -40,10 +58,9 @@ if ($sala_filtro) {
     $sql .= " AND e.sala = '" . mysqli_real_escape_string($conexion, $sala_filtro) . "'";
 }
 if ($ano_filtro) {
-    // Filtro por año escolar (ej: 2024 coincide con "2024-2025")
     $sql .= " AND EXISTS (SELECT 1 FROM inscripciones WHERE estudiante_id = e.id AND ano_escolar LIKE '$ano_filtro%')";
 }
-$sql .= " ORDER BY e.sala, e.apellido, e.nombre";
+$sql .= " ORDER BY e.sala, e.apellido, e.nombre LIMIT $offset, $registros_por_pagina";
 
 $result = $conexion->query($sql);
 $salas = $conexion->query("SELECT DISTINCT sala FROM secciones ORDER BY sala");
@@ -65,7 +82,7 @@ include '../includes/header.php';
     <div class="card mb-4">
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end" id="filtroForm">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Sala / Grado</label>
                     <select name="sala" id="filtro_sala" class="form-select">
                         <option value="">Todas</option>
@@ -86,7 +103,7 @@ include '../includes/header.php';
                 <div class="col-md-2">
                     <a href="listado.php" class="btn btn-secondary w-100">Limpiar</a>
                 </div>
-                <div class="col-md-3 text-end">
+                <div class="col-md-4 text-end">
                     <a href="inscripcion.php" class="btn btn-primary w-100">+ Nueva Inscripción</a>
                 </div>
             </form>
@@ -147,6 +164,18 @@ include '../includes/header.php';
                     </tbody>
                 </table>
             </div>
+            <!-- Paginación -->
+            <?php if ($total_paginas > 1): ?>
+                <nav class="mt-3">
+                    <ul class="pagination justify-content-center">
+                        <?php for($i = 1; $i <= $total_paginas; $i++): ?>
+                            <li class="page-item <?= ($i == $pagina_actual) ? 'active' : '' ?>">
+                                <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['pagina' => $i])) ?>"><?= $i ?></a>
+                            </li>
+                        <?php endfor; ?>
+                    </ul>
+                </nav>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -155,7 +184,7 @@ include '../includes/header.php';
     document.getElementById('filtro_sala').addEventListener('change', function() {
         document.getElementById('filtroForm').submit();
     });
-    // Buscador (filtro en tabla)
+    // Buscador
     document.getElementById('buscadorTabla').addEventListener('input', function() {
         let filter = this.value.toUpperCase();
         let rows = document.querySelectorAll('#tablaBody tr');

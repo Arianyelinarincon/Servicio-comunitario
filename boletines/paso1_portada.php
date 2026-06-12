@@ -17,10 +17,10 @@ if (isset($_GET['tipo'])) {
     $_SESSION['tipo_boletin'] = 'inicial'; // valor por defecto
 }
 
-// Búsqueda AJAX para autocompletado
+// Búsqueda AJAX para autocompletado (INCLUYE ID)
 if (isset($_GET['buscar_estudiante'])) {
     $termino = $_GET['buscar_estudiante'] . '%';
-    $sql = "SELECT e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
+    $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
                    s.nombre AS grupo, p.nombre AS doc_nombre, p.apellido AS doc_apellido
             FROM estudiantes e
             LEFT JOIN representantes r ON e.representante_id = r.id
@@ -36,6 +36,7 @@ if (isset($_GET['buscar_estudiante'])) {
     $sugerencias = [];
     while ($row = $result->fetch_assoc()) {
         $sugerencias[] = [
+            'id' => $row['id'],
             'nombre_completo' => $row['nombre'] . ' ' . $row['apellido'],
             'ce' => $row['cedula_escolar'],
             'grupo' => $row['grupo'] ?? 'N/A',
@@ -48,7 +49,7 @@ if (isset($_GET['buscar_estudiante'])) {
     exit;
 }
 
-// Procesar el formulario y guardar en sesión
+// Procesar el formulario y guardar en sesión (ahora con estudiante_id)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $_SESSION['estudiante'] = htmlspecialchars($_POST['estudiante']);
     $_SESSION['ce'] = htmlspecialchars($_POST['ce']);
@@ -56,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $_SESSION['ano_escolar'] = htmlspecialchars($_POST['ano_escolar']);
     $_SESSION['docente'] = htmlspecialchars($_POST['docente']);
     $_SESSION['representante'] = htmlspecialchars($_POST['representante']);
+    $_SESSION['estudiante_id'] = intval($_POST['estudiante_id']); // NUEVO
     header('Location: paso2_observaciones.php');
     exit;
 }
@@ -108,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div><p>Año Escolar:</p><input type="text" name="ano_escolar" id="ano_escolar" value="2025-2026" readonly></div>
             <div><p>Docente:</p><input type="text" name="docente" id="docente" readonly></div>
             <div><p>Representante:</p><input type="text" name="representante" id="representante" readonly></div>
+            <input type="hidden" name="estudiante_id" id="estudiante_id">
         </div>
         <div id="mensaje_error" class="alerta-error">Estudiante no encontrado.</div>
         <div style="overflow:hidden;"><button type="submit" id="btn_siguiente" class="btn-siguiente" disabled>Siguiente Paso</button></div>
@@ -122,9 +125,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     const representanteInput = document.getElementById('representante');
     const btnSiguiente = document.getElementById('btn_siguiente');
     const mensajeError = document.getElementById('mensaje_error');
+    const estudianteIdInput = document.getElementById('estudiante_id');
 
     function limpiarCampos() {
         ceInput.value = ''; grupoInput.value = ''; docenteInput.value = ''; representanteInput.value = '';
+        estudianteIdInput.value = '';
         btnSiguiente.disabled = true; mensajeError.style.display = 'none';
     }
     function seleccionarEstudiante(data) {
@@ -133,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         grupoInput.value = data.grupo;
         docenteInput.value = data.docente;
         representanteInput.value = data.representante;
+        estudianteIdInput.value = data.id;
         btnSiguiente.disabled = false;
         sugerenciasDiv.style.display = 'none';
         mensajeError.style.display = 'none';

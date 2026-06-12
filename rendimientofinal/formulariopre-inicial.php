@@ -11,7 +11,6 @@ if(empty($sala_seleccionada) || empty($seccion_id)) {
     die("<div class='alert alert-danger'>Error: Faltan parámetros. Genere el formulario desde el panel principal.</div>");
 }
 
-// 1. Datos de cabecera
 $nombre_profesor = 'No definido';
 $nombre_seccion = '';
 $stmt_prof = $conexion->prepare("SELECT nombre FROM profesores WHERE id = ?");
@@ -24,180 +23,435 @@ $stmt_sec->bind_param("i", $seccion_id);
 $stmt_sec->execute();
 if ($row = $stmt_sec->get_result()->fetch_assoc()) $nombre_seccion = $row['nombre'];
 
-// 2. Consulta de estudiantes
 $query_est = "SELECT id, cedula, cedula_escolar, nombre, apellido, genero, 
                      fecha_nacimiento, lugar_nacimiento 
               FROM estudiantes 
               WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo' 
               ORDER BY apellido ASC, nombre ASC";
-
 $stmt_est = $conexion->prepare($query_est);
 $stmt_est->bind_param("si", $sala_seleccionada, $seccion_id); 
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
 
+$rendimientos = [];
+if (!empty($periodo)) {
+    $stmt_rend = $conexion->prepare("SELECT estudiante_id, aprobado, observacion FROM rendimiento_estudiantil WHERE periodo = ?");
+    $stmt_rend->bind_param("s", $periodo);
+    $stmt_rend->execute();
+    $res_rend = $stmt_rend->get_result();
+    while($row = $res_rend->fetch_assoc()) {
+        $rendimientos[$row['estudiante_id']] = $row;
+    }
+    $stmt_rend->close();
+}
+
+// Calcular varones, hembras y total
+$varones = 0;
+$hembras = 0;
+foreach ($estudiantes as $est) {
+    if (strtoupper($est['genero'] ?? '') == 'V') $varones++;
+    elseif (strtoupper($est['genero'] ?? '') == 'H') $hembras++;
+}
+$total_alumnos = $varones + $hembras;
+
 include "../includes/header.php";
 ?>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
 <style>
-    body { background-color: #f8f9fa; }
-    .hoja-rendimiento { 
-        background: #fff; 
-        padding: 30px; 
-        margin: 20px auto; 
-        max-width: 1300px; 
-        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    body { background: #fff; }
+    .hoja-rendimiento {
+        background: white;
+        padding: 20px;
+        margin: 0 auto;
+        font-family: 'Times New Roman', Times, serif;
+        font-size: 11pt;
     }
-    .encabezado-ministerio { text-align: center; font-weight: bold; margin-bottom: 20px; font-size: 0.9rem; }
-    
-    .tabla-rendimiento { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
-    .tabla-rendimiento th, .tabla-rendimiento td { 
-        border: 1px solid #000; 
-        padding: 6px; 
-        text-align: center; 
-        vertical-align: middle;
-    }
-    .tabla-rendimiento th { 
-        background-color: #f2f2f2; 
-        text-transform: uppercase; 
+    .encabezado-ministerio {
+        text-align: center;
         font-weight: bold;
+        margin-bottom: 20px;
+    }
+    .tabla-rendimiento {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 9pt;
+    }
+    
+    .tabla-rendimiento th, .tabla-rendimiento td {
+        border: 1px solid #000;
+        padding: 2px 1px;
+        text-align: center;
+        vertical-align: middle;
+        word-wrap: break-word;
+        background-color: #fff;
+    }
+    .tabla-rendimiento th {
+        font-weight: bold;
+        text-transform: uppercase;
+        background-color: #fff;
+        white-space: nowrap;
+        font-size: 7.5pt;
+        padding: 2px 1px;
+    }
+    .tabla-rendimiento th.lugar, .tabla-rendimiento th.fecha {
+        white-space: normal;
+        line-height: 1.1;
     }
     .text-left { text-align: left !important; }
-    .input-print { border: none; background: transparent; width: 100%; outline: none; text-align: center; }
-    .select-print { border: none; background: transparent; outline: none; text-align: center; cursor: pointer; }
-    
-    /* Clases para el modo de exportación PDF */
-    .modo-exportacion .input-print { border-bottom: 1px solid #fff; }
-    .modo-exportacion .select-print { 
-        appearance: none; 
-        -webkit-appearance: none; 
-        -moz-appearance: none; 
+
+    /* Anchos de columna originales */
+    .tabla-rendimiento th:nth-child(1), .tabla-rendimiento td:nth-child(1) { width: 4.46%; }
+    .tabla-rendimiento th:nth-child(2), .tabla-rendimiento td:nth-child(2) { width: 11.69%; }
+    .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 33.29%; }
+    .tabla-rendimiento th:nth-child(4), .tabla-rendimiento td:nth-child(4) { width: 7.58%; }
+    .tabla-rendimiento th:nth-child(5), .tabla-rendimiento td:nth-child(5) { width: 9.42%; }
+    .tabla-rendimiento th:nth-child(6), .tabla-rendimiento td:nth-child(6) { width: 9.42%; }
+    .tabla-rendimiento th:nth-child(7), .tabla-rendimiento td:nth-child(7) { width: 6.69%; }
+    .tabla-rendimiento th:nth-child(8), .tabla-rendimiento td:nth-child(8) { width: 17.45%; }
+
+    .input-print, .select-print {
+        border: none;
+        background: transparent;
+        width: 100%;
+        text-align: center;
+        font-size: 8.5pt;
+        font-family: inherit;
+        padding: 0;
+        margin: 0;
+        box-sizing: border-box;
+    }
+    .input-print:focus, .select-print:focus {
+        background-color: #fff9c4;
+    }
+    .modo-exportacion .input-print, .modo-exportacion .select-print {
+        background: transparent;
+    }
+    #botones-accion {
+        text-align: center;
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    .mensaje-flotante {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+    }
+
+    /* Estilo para el botón de edición de observación */
+    .btn-edit-obs {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 10pt;
+        margin-left: 5px;
+        padding: 0 2px;
+        color: #0056b3;
+    }
+    .btn-edit-obs:hover {
+        color: #003366;
+    }
+    .obs-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        flex-wrap: nowrap;
+    }
+    .obs-cell input {
+        flex: 1;
+        min-width: 0;
+    }
+
+    @media print {
+        body, .hoja-rendimiento { margin: 0; padding: 10px; }
+        .btn, #botones-accion { display: none; }
+        .btn-edit-obs { display: none; }
+        .tabla-rendimiento { font-size: 7pt; }
+        .tabla-rendimiento th, .tabla-rendimiento td { padding: 1px; }
+        .obs-cell input {
+            border: none;
+            background: transparent;
+        }
     }
 </style>
 
 <div class="container-fluid">
     <div class="hoja-rendimiento" id="documento-pdf">
-        
         <div class="encabezado-ministerio">
-            REPÚBLICA BOLIVARIANA DE VENEZUELA<br>
-            MINISTERIO DEL PODER POPULAR PARA LA EDUCACIÓN<br>
-            <h5 class="fw-bold mt-2">EVALUACIÓN DEL RENDIMIENTO ESTUDIANTIL DE EDUCACIÓN PRE INICIAL</h5>
+            <h5>NOMINA DE ALUMNOS RENDIMIENTO FINAL PERÍODO ESCOLAR: <?= htmlspecialchars($periodo) ?></h5>
         </div>
 
-        <div class="row mb-2" style="font-size: 0.9rem;">
+        <div class="row mb-2">
             <div class="col-8">
-                <strong>DOCENTE:</strong> <?= mb_strtoupper($nombre_profesor) ?> &nbsp;&nbsp;|&nbsp;&nbsp; 
-                <strong>AÑO/SECCIÓN:</strong> <?= htmlspecialchars($sala_seleccionada) ?> "<?= htmlspecialchars($nombre_seccion) ?>"
+                <strong>DOCENTE:</strong> <?= mb_strtoupper($nombre_profesor) ?> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <strong>GRADO:</strong> <?= htmlspecialchars($sala_seleccionada) ?> "<?= htmlspecialchars($nombre_seccion) ?>"
             </div>
-            <div class="col-4 text-end">
-                <strong>PERÍODO/AÑO ESCOLAR:</strong> <?= htmlspecialchars($periodo) ?>
+            <div class="col-4">
+                <strong>VARONES:</strong> <?= $varones ?>&nbsp; &nbsp;
+                <strong>HEMBRAS:</strong> <?= $hembras ?> &nbsp;&nbsp;  
+                <strong>TOTAL:</strong> <?= $total_alumnos ?> 
+                <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
             </div>
         </div>
 
-        <form action="procesar_rendimiento.php" method="POST" id="form-rendimiento">
+        <form id="form-rendimiento">
+            <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
+            <input type="hidden" name="sala" value="<?= htmlspecialchars($sala_seleccionada) ?>">
+            <input type="hidden" name="seccion" value="<?= htmlspecialchars($seccion_id) ?>">
+            <input type="hidden" name="profesor" value="<?= htmlspecialchars($profesor_id) ?>">
+
             <table class="tabla-rendimiento">
                 <thead>
                     <tr>
-                        <th rowspan="2">N°</th>
-                        <th rowspan="2">C.I O CÉDULA ESCOLAR</th>
-                        <th rowspan="2" class="text-left">APELLIDOS Y NOMBRES DEL ALUMNO</th>
-                        <th rowspan="2">SEXO<br>(V / H)</th>
-                        <th colspan="3">FECHA DE NACIMIENTO</th>
-                        <th rowspan="2">EDAD</th>
-                        <th rowspan="2">LUGAR DE NACIMIENTO</th>
-                        <th rowspan="2">APROBADO</th>
-                        <th rowspan="2">OBSERVACIÓN</th>
-                    </tr>
-                    <tr>
-                        <th>DÍA</th>
-                        <th>MES</th>
-                        <th>AÑO</th>
+                        <th>N°</th>
+                        <th>CÉDULA ESCOLAR</th>
+                        <th class="text-left">NOMBRE DEL ALUMNO</th>
+                        <th>SEXO</th>
+                        <th class="lugar">LUGAR DE<br>NACIMIENTO</th>
+                        <th class="fecha">FECHA DE<br>NACIMIENTO</th>
+                        <th>APROBADO</th>
+                        <th>OBSERVACIÓN</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(empty($estudiantes)): ?>
-                        <tr><td colspan="11" class="text-center text-danger fw-bold py-3">No se encontraron estudiantes registrados para esta sección.</td></tr>
-                    <?php else: ?>
-                        <?php foreach($estudiantes as $index => $est): 
-                            
-                            $fecha_nac_val = $est['fecha_nacimiento'] ?? null;
-                            $dia = $mes = $anio = '';
-                            $edad = 'N/A';
-
-                            if ($fecha_nac_val) {
-                                $fecha_nac = new DateTime($fecha_nac_val);
-                                $hoy = new DateTime();
-                                $edad = $hoy->diff($fecha_nac)->y;
-                                $dia = $fecha_nac->format('d');
-                                $mes = $fecha_nac->format('m');
-                                $anio = $fecha_nac->format('Y');
-                            }
-                        ?>
-                        <tr>
-                            <td><?= $index + 1 ?></td>
-                            <?php 
-                            $valor_a_mostrar = (!empty($est['cedula'])) ? $est['cedula'] : ($est['cedula_escolar'] ?? 'S/C');
-                            ?>
-                            <td><?= htmlspecialchars($valor_a_mostrar) ?></td>                            
-                            <td class="text-left fw-bold"><?= mb_strtoupper($est['apellido'] . ' ' . $est['nombre']) ?></td>
-                            <td><?= mb_strtoupper($est['genero'] ?? '') ?></td>
-                            <td><?= $dia ?></td>
-                            <td><?= $mes ?></td>
-                            <td><?= $anio ?></td>
-                            <td><?= $edad ?></td>
-                            <td><?= mb_strtoupper($est['lugar_nacimiento'] ?? 'N/A') ?></td>
-                            <td>
-                                <select name="aprobado[<?= $est['id'] ?>]" class="form-select form-select-sm select-print">
-                                    <option value="SI">SI</option>
-                                    <option value="NO">NO</option>
-                                </select>
-                            </td>
-                            <td>
-                                <input type="text" name="observacion[<?= $est['id'] ?>]" class="input-print" placeholder="...">
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
+                        <tr><td colspan="8" class="text-center">No hay estudiantes registrados.<?php endif; ?>
+                    <?php foreach($estudiantes as $index => $est):
+                        $fecha_nac = $est['fecha_nacimiento'] ? date('d/m/Y', strtotime($est['fecha_nacimiento'])) : '';
+                        $cedula = !empty($est['cedula_escolar']) ? $est['cedula_escolar'] : ($est['cedula'] ?? 'S/C');
+                        $aprobado_guardado = $rendimientos[$est['id']]['aprobado'] ?? 'SI';
+                        $observacion_guardada = htmlspecialchars($rendimientos[$est['id']]['observacion'] ?? '');
+                        $nombre_completo = mb_strtoupper($est['apellido'] . ' ' . $est['nombre']);
+                    ?>
+                    <tr>
+                        <td><?= $index+1 ?></td>
+                        <td><?= htmlspecialchars($cedula) ?></td>
+                        <td class="text-left"><?= $nombre_completo ?></td>
+                        <td><?= mb_strtoupper($est['genero'] ?? '') ?></td>
+                        <td><?= mb_strtoupper($est['lugar_nacimiento'] ?? 'N/A') ?></td>
+                        <td><?= $fecha_nac ?></td>
+                        <td>
+                            <select name="aprobado[<?= $est['id'] ?>]" class="select-print">
+                                <option value="SI" <?= $aprobado_guardado == 'SI' ? 'selected' : '' ?>>SI</option>
+                                <option value="NO" <?= $aprobado_guardado == 'NO' ? 'selected' : '' ?>>NO</option>
+                            </select>
+                        </td>
+                        <!-- Celda de Observación con botón de edición -->
+                        <td>
+                            <div class="obs-cell">
+                                <input type="text" name="observacion[<?= $est['id'] ?>]" class="input-print obs-input" data-id="<?= $est['id'] ?>" value="<?= $observacion_guardada ?>">
+                                <button type="button" class="btn-edit-obs" data-id="<?= $est['id'] ?>" data-nombre="<?= $nombre_completo ?>" data-obs="<?= $observacion_guardada ?>">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
+                        </a>
+                    </tr>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
-            
-            <div class="text-center mt-4" id="botones-accion">
-                <button type="submit" class="btn btn-dark px-5 me-2">GUARDAR DATOS</button>
-                <button type="button" class="btn btn-outline-dark px-5" onclick="generarPDF()">DESCARGAR PDF</button>
-            </div>
         </form>
+
+        <!-- Modal para editar observación -->
+        <div class="modal fade" id="modalObservacion" tabindex="-1" aria-labelledby="modalObservacionLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalObservacionLabel">Editar observación</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>Estudiante:</strong> <span id="modalEstudianteNombre"></span></p>
+                        <div class="mb-3">
+                            <label for="modalObservacionTexto" class="form-label">Observación</label>
+                            <textarea class="form-control" id="modalObservacionTexto" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary" id="guardarObservacionBtn">Guardar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="botones-accion">
+            <button type="button" class="btn btn-dark" id="btnGuardar">GUARDAR DATOS</button>
+            <button type="button" class="btn btn-outline-dark" id="btnDescargarPDF">VER PDF (nueva pestaña)</button>
+            <button type="button" class="btn btn-danger" id="btnLimpiarObservaciones">LIMPIAR OBSERVACIONES</button>
+            <button type="button" class="btn btn-secondary" id="btnVolver">← VOLVER</button>
+        </div>
     </div>
 </div>
 
+<div id="mensaje-container" class="mensaje-flotante"></div>
+
 <script>
-    function generarPDF() {
-        // 1. Identificar elementos
+document.addEventListener('DOMContentLoaded', function() {
+    const btnGuardar = document.getElementById('btnGuardar');
+    const btnDescargar = document.getElementById('btnDescargarPDF');
+    const btnLimpiar = document.getElementById('btnLimpiarObservaciones');
+    const btnVolver = document.getElementById('btnVolver');
+    const form = document.getElementById('form-rendimiento');
+    const periodo = '<?= $periodo ?>';
+
+    // ========== LOCALSTORAGE PARA PERSISTENCIA DE OBSERVACIONES ==========
+    function getStorageKey() {
+        return 'obs_temp_' + periodo;
+    }
+
+    function guardarObservacionesEnLocalStorage() {
+        const inputs = document.querySelectorAll('.obs-input');
+        const observaciones = {};
+        inputs.forEach(input => {
+            const id = input.getAttribute('data-id');
+            if (id) observaciones[id] = input.value;
+        });
+        localStorage.setItem(getStorageKey(), JSON.stringify(observaciones));
+    }
+
+    function cargarObservacionesDesdeLocalStorage() {
+        const data = localStorage.getItem(getStorageKey());
+        if (!data) return;
+        try {
+            const observaciones = JSON.parse(data);
+            const inputs = document.querySelectorAll('.obs-input');
+            inputs.forEach(input => {
+                const id = input.getAttribute('data-id');
+                if (id && observaciones.hasOwnProperty(id)) {
+                    input.value = observaciones[id];
+                    const cell = input.closest('.obs-cell');
+                    const editBtn = cell ? cell.querySelector('.btn-edit-obs') : null;
+                    if (editBtn) editBtn.setAttribute('data-obs', observaciones[id]);
+                }
+            });
+        } catch(e) { console.warn(e); }
+    }
+
+    function limpiarObservaciones() {
+        const inputs = document.querySelectorAll('.obs-input');
+        inputs.forEach(input => {
+            input.value = '';
+            const cell = input.closest('.obs-cell');
+            const editBtn = cell ? cell.querySelector('.btn-edit-obs') : null;
+            if (editBtn) editBtn.setAttribute('data-obs', '');
+        });
+        localStorage.removeItem(getStorageKey());
+        mostrarMensaje('Todas las observaciones han sido limpiadas', 'info');
+    }
+
+    function activarGuardadoAutomatico() {
+        const inputs = document.querySelectorAll('.obs-input');
+        inputs.forEach(input => {
+            input.removeEventListener('input', guardarObservacionesEnLocalStorage);
+            input.addEventListener('input', guardarObservacionesEnLocalStorage);
+        });
+    }
+
+    cargarObservacionesDesdeLocalStorage();
+    activarGuardadoAutomatico();
+
+    btnGuardar.addEventListener('click', function() {
+        const formData = new FormData(form);
+        fetch('guardar_rendimiento_preinicial.php', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                mostrarMensaje(data.message, data.success ? 'success' : 'danger');
+                if (data.success) localStorage.removeItem(getStorageKey());
+            })
+            .catch(err => mostrarMensaje('Error de conexión', 'danger'));
+    });
+
+    if (btnLimpiar) btnLimpiar.addEventListener('click', limpiarObservaciones);
+
+    // Botón Volver: redirige a pre-inicial.php
+    if (btnVolver) {
+        btnVolver.addEventListener('click', function() {
+            window.location.href = 'pre-inicial.php';
+        });
+    }
+
+    // ========== PDF CON NOMBRE DINÁMICO Y MÁRGENES REDUCIDOS ==========
+    btnDescargar.addEventListener('click', function() {
         const elemento = document.getElementById('documento-pdf');
         const botones = document.getElementById('botones-accion');
         
-        // 2. Preparar el documento (ocultar botones y modificar estilos de inputs)
+        const grado = '<?= htmlspecialchars($sala_seleccionada . '_' . $nombre_seccion) ?>';
+        const docente = '<?= preg_replace('/[^a-zA-Z0-9_]/', '_', strtoupper($nombre_profesor)) ?>';
+        const periodo_clean = '<?= preg_replace('/[^0-9-]/', '', $periodo) ?>';
+        const nombreArchivo = `Rendimiento_Final_${grado}_${docente}_${periodo_clean}.pdf`;
+        
         botones.style.display = 'none';
         elemento.classList.add('modo-exportacion');
-
-        // 3. Configuración del PDF (Formato Oficio/Legal horizontal)
+        
         const opciones = {
-            margin:       0.5,
-            filename:     'Rendimiento_Final_<?= htmlspecialchars($sala_seleccionada) ?>.pdf',
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true },
-            jsPDF:        { unit: 'in', format: 'legal', orientation: 'landscape' }
+            margin: 0.05,
+            filename: nombreArchivo,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, letterRendering: true, useCORS: true },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
         };
-
-        // 4. Generar y descargar el PDF
-        html2pdf().set(opciones).from(elemento).save().then(() => {
-            // 5. Restaurar la vista normal
+        
+        html2pdf().set(opciones).from(elemento).output('blob').then(blob => {
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
             botones.style.display = 'block';
             elemento.classList.remove('modo-exportacion');
+        }).catch(err => {
+            console.error(err);
+            botones.style.display = 'block';
+            elemento.classList.remove('modo-exportacion');
+            mostrarMensaje('Error al generar PDF', 'danger');
         });
+    });
+
+    function mostrarMensaje(msg, tipo) {
+        const container = document.getElementById('mensaje-container');
+        container.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show">${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        setTimeout(() => container.innerHTML = '', 4000);
     }
+
+    // ========== MODAL PARA EDITAR OBSERVACIÓN ==========
+    const modalElement = document.getElementById('modalObservacion');
+    let modal = null;
+    if (modalElement) modal = new bootstrap.Modal(modalElement);
+    let currentInput = null;
+
+    document.body.addEventListener('click', function(e) {
+        const btn = e.target.closest('.btn-edit-obs');
+        if (!btn) return;
+        const nombre = btn.getAttribute('data-nombre');
+        let obsActual = btn.getAttribute('data-obs');
+        const cell = btn.closest('.obs-cell');
+        const inputObs = cell ? cell.querySelector('input') : null;
+        if (inputObs) {
+            currentInput = inputObs;
+            obsActual = inputObs.value;
+        }
+        document.getElementById('modalEstudianteNombre').innerText = nombre;
+        document.getElementById('modalObservacionTexto').value = obsActual || '';
+        if (modal) modal.show();
+    });
+
+    document.getElementById('guardarObservacionBtn')?.addEventListener('click', function() {
+        if (currentInput) {
+            const nuevaObs = document.getElementById('modalObservacionTexto').value;
+            currentInput.value = nuevaObs;
+            const parentCell = currentInput.closest('.obs-cell');
+            const editBtn = parentCell ? parentCell.querySelector('.btn-edit-obs') : null;
+            if (editBtn) editBtn.setAttribute('data-obs', nuevaObs);
+            guardarObservacionesEnLocalStorage();
+        }
+        if (modal) modal.hide();
+    });
+});
 </script>
 
 <?php include "../includes/footer.php"; ?>

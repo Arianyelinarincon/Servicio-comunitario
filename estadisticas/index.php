@@ -178,12 +178,20 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
 </style>
 
 <div class="container-fluid py-4">
+
+
     <?php if ($mensaje): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
             <?= htmlspecialchars($mensaje) ?>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div></div>
+    <a href="historial_resumenes.php" class="btn btn-info">
+        <i class="fas fa-chart-line"></i> Ver Historial de Resúmenes
+    </a>
+</div>
 
     <div class="card mb-4">
         <div class="card-body p-4">

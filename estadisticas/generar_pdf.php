@@ -399,5 +399,61 @@ $dompdf = new Dompdf();
 $dompdf->loadHtml($html);
 $dompdf->setPaper('letter', 'landscape');
 $dompdf->render();
+// ========== GUARDAR RESUMEN ESTADÍSTICO EN LA BD ==========
+// Asegurar que las variables tengan valor por defecto si no existen
+$periodo_sql = date("Y-m-01", strtotime($periodo ?? date('Y-m')));
+$sala = $sala ?? '';
+$seccion_id = $seccion_id ?? 0;
+$docente_id = $profesor_id ?? 0; // En tu código puede llamarse $profesor_id
+$mat_v = $mat_v ?? 0;
+$mat_h = $mat_h ?? 0;
+$total_v = $total_v ?? 0;
+$total_h = $total_h ?? 0;
+$porcentaje_total = $porcentaje_total ?? 0;
+$observaciones = $observaciones ?? '';
+
+// Construir JSON de clasificación por edad
+$clasificacion = [];
+if (isset($edades) && is_array($edades)) {
+    foreach ($edades as $edad) {
+        $ven_v = $venezolano_v[$edad] ?? 0;
+        $ven_h = $venezolano_h[$edad] ?? 0;
+        $ext_v = $extranjero_v[$edad] ?? 0;
+        $ext_h = $extranjero_h[$edad] ?? 0;
+        $clasificacion[$edad] = [
+            'venezolanos' => ['V' => $ven_v, 'H' => $ven_h, 'total' => $ven_v + $ven_h],
+            'extranjeros' => ['V' => $ext_v, 'H' => $ext_h, 'total' => $ext_v + $ext_h]
+        ];
+    }
+}
+$datos_clasificacion_json = json_encode($clasificacion, JSON_UNESCAPED_UNICODE);
+
+// Ingresos y egresos a JSON
+$ingresos_json = json_encode($ingresos_display ?? [], JSON_UNESCAPED_UNICODE);
+$egresos_json = json_encode($egresos_display ?? [], JSON_UNESCAPED_UNICODE);
+
+// Preparar consulta (la tabla ya debe existir)
+$stmt_guardar = $conexion->prepare("INSERT INTO resumen_estadistico 
+    (periodo, sala, seccion_id, docente_id, matricula_v, matricula_h, 
+     total_asistencia_v, total_asistencia_h, porcentaje_asistencia, 
+     datos_clasificacion, ingresos, egresos, observaciones)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+    matricula_v = VALUES(matricula_v), 
+    matricula_h = VALUES(matricula_h),
+    total_asistencia_v = VALUES(total_asistencia_v),
+    total_asistencia_h = VALUES(total_asistencia_h),
+    porcentaje_asistencia = VALUES(porcentaje_asistencia),
+    datos_clasificacion = VALUES(datos_clasificacion),
+    ingresos = VALUES(ingresos),
+    egresos = VALUES(egresos),
+    observaciones = VALUES(observaciones)");
+
+$stmt_guardar->bind_param("ssiiiiiddssss", 
+    $periodo_sql, $sala, $seccion_id, $docente_id, $mat_v, $mat_h,
+    $total_v, $total_h, $porcentaje_total,
+    $datos_clasificacion_json, $ingresos_json, $egresos_json, $observaciones);
+$stmt_guardar->execute();
+$stmt_guardar->close();
 $dompdf->stream($nombre_archivo, array('Attachment' => 0));
 ?>

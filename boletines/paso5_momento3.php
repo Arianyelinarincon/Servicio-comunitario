@@ -9,7 +9,7 @@ include '../includes/header.php';
 ?>
 <div style="font-family: Arial, sans-serif; background: rgb(240, 242, 245); padding: 20px;">
     <h2 style="color: rgb(26, 35, 126); text-align: center;">Paso 5: Evaluación del Tercer Momento</h2>
-   <form action="generar_pdf_boletin.php" method="POST" style="background: white; padding: 30px; border-radius: 8px; max-width: 900px; margin: 0 auto;">
+   <form action="generar_pdf_boletin.php" method="POST" target="_blank"  style="background: white; padding: 30px; border-radius: 8px; max-width: 900px; margin: 0 auto;">
         
         <p style="font-weight: bold;">Proyecto de Aprendizaje:</p>
         <input type="text" name="m3_proyecto" required style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">

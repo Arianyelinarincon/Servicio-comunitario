@@ -1,7 +1,7 @@
 <?php
 require_once "../estadisticas/config_db.php";
 
-// ========== AJAX HANDLER (Se mantiene igual) ==========
+// ========== AJAX HANDLER ==========
 if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     if (session_status() === PHP_SESSION_NONE) session_start();
     if (!isset($_SESSION['usuario'])) {
@@ -30,13 +30,14 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     
     if ($action == 'cargar_docentes') {
         $seccion = (int)$_POST['seccion'];
-        $stmt = $conexion->prepare("SELECT id, nombre FROM profesores WHERE seccion = ? ORDER BY nombre ASC");
+        // Devuelve solo el primer docente activo de la sección (ordenado por id)
+        $stmt = $conexion->prepare("SELECT id, nombre FROM profesores WHERE seccion = ? AND estatus = 'Activo' ORDER BY id LIMIT 1");
         $stmt->bind_param("i", $seccion);
         $stmt->execute();
         $result = $stmt->get_result();
         $docentes = [];
         while($row = $result->fetch_assoc()) {
-            $docentes[] = ['id' => $row['id'], 'nombre' => $row['nombre']];
+            $docentes[] = $row;
         }
         echo json_encode(['docentes' => $docentes]);
         $stmt->close();
@@ -46,6 +47,19 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
 }
 
 include "../includes/header.php";
+
+// Generar opciones de años escolares (desde 2020 hasta 2030, por ejemplo)
+function generarOpcionesAnios() {
+    $anio_actual = date('Y');
+    $anio_inicio = $anio_actual - 5; // desde 5 años atrás
+    $anio_fin = $anio_actual + 5;     // hasta 5 años adelante
+    $opciones = '';
+    for ($i = $anio_inicio; $i <= $anio_fin; $i++) {
+        $periodo = $i . '-' . ($i + 1);
+        $opciones .= "<option value=\"$periodo\">$periodo</option>";
+    }
+    return $opciones;
+}
 ?>
 
 <style>
@@ -57,7 +71,7 @@ include "../includes/header.php";
 <div class="container-fluid py-4">
     <div class="card mb-4">
         <div class="card-header bg-navy">
-            <h5 class="mb-0">Generar Formulario de Rendimiento</h5>
+            <h5 class="mb-0">Generar Formulario de Rendimiento Final - Pre Inicial</h5>
         </div>
         <div class="card-body p-4">
             <form action="formulariopre-inicial.php" method="GET" target="_blank" class="row g-3 align-items-end" id="filtroForm">
@@ -66,7 +80,7 @@ include "../includes/header.php";
                     <label class="small fw-bold text-muted">SALA / GRADO</label>
                     <select name="sala" id="select-grado" class="form-select shadow-none" required onchange="pasoGrado()">
                         <option value="">Seleccione grado...</option>
-                        <optgrou label="Educación Inicial">
+                        <optgroup label="Educación Inicial">
                             <option value="sala4">Sala 4 Años</option>
                             <option value="sala5">Sala 5 Años</option>
                         </optgroup>
@@ -80,16 +94,17 @@ include "../includes/header.php";
                     </select>
                 </div>
 
-                <div class="col-md-3" id="seccion-docente">
-                    <label class="small fw-bold text-muted">PROFESOR / DOCENTE</label>
-                    <select name="profesor" id="select-docente" class="form-select shadow-none" disabled required onchange="pasoDocente()">
-                        <option value="">Primero seleccione sección...</option>
-                    </select>
+                <!-- Campo oculto para el docente y texto informativo -->
+                <div class="col-md-3" id="seccion-docente" style="display:none;">
+                    <div class="alert alert-info py-1 small mb-0" id="info-docente"></div>
+                    <input type="hidden" name="profesor" id="select-docente" value="">
                 </div>
 
-                <div class="col-md-2" id="seccion-mes" style="display:none;">
-                    <label class="small fw-bold text-muted">PERÍODO</label>
-                    <input type="month" name="periodo" id="select-mes" class="form-control shadow-none" required>
+                <div class="col-md-2" id="seccion-periodo" style="display:none;">
+                    <label class="small fw-bold text-muted">AÑO ESCOLAR</label>
+                    <select name="periodo" id="select-periodo" class="form-select shadow-none" required>
+                        <?php echo generarOpcionesAnios(); ?>
+                    </select>
                 </div>
 
                 <div class="col-md-2" id="seccion-boton" style="display:none;">
@@ -103,17 +118,22 @@ include "../includes/header.php";
 </div>
 
 <script>
-// El JavaScript se mantiene casi intacto para manejar la cascada de los selects
 function pasoGrado() {
     const sala = document.getElementById('select-grado').value;
     const seccionSelect = document.getElementById('select-seccion');
-    const docenteSelect = document.getElementById('select-docente');
+    const docenteHidden = document.getElementById('select-docente');
+    const infoDocente = document.getElementById('info-docente');
+    const docenteDiv = document.getElementById('seccion-docente');
     
     seccionSelect.innerHTML = '<option value="">Primero seleccione grado...</option>';
     seccionSelect.disabled = true;
-    docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
-    docenteSelect.disabled = true;
-    document.getElementById('seccion-mes').style.display = 'none';
+    
+    // Limpiar docente
+    if (docenteHidden) docenteHidden.value = '';
+    if (infoDocente) infoDocente.innerHTML = '';
+    if (docenteDiv) docenteDiv.style.display = 'none';
+    
+    document.getElementById('seccion-periodo').style.display = 'none';
     document.getElementById('seccion-boton').style.display = 'none';
 
     if (sala !== "") {
@@ -139,46 +159,48 @@ function pasoGrado() {
 
 function pasoSeccion() {
     const seccion = document.getElementById('select-seccion').value;
-    const docenteSelect = document.getElementById('select-docente');
+    const docenteHidden = document.getElementById('select-docente');
+    const infoDocente = document.getElementById('info-docente');
+    const docenteDiv = document.getElementById('seccion-docente');
     
-    docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
-    docenteSelect.disabled = true;
-    document.getElementById('seccion-mes').style.display = 'none';
+    // Limpiar
+    if (docenteHidden) docenteHidden.value = '';
+    if (infoDocente) infoDocente.innerHTML = '';
+    if (docenteDiv) docenteDiv.style.display = 'none';
+    document.getElementById('seccion-periodo').style.display = 'none';
     document.getElementById('seccion-boton').style.display = 'none';
 
     if (seccion !== "") {
-        docenteSelect.innerHTML = '<option value="">Cargando docentes...</option>';
+        if (infoDocente) infoDocente.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando docente...';
+        if (docenteDiv) docenteDiv.style.display = 'block';
+        
         const formData = new FormData();
         formData.append('action', 'cargar_docentes');
         formData.append('seccion', seccion);
         fetch('?ajax=1', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
-                docenteSelect.innerHTML = '<option value="">Seleccione docente...</option>';
-                if(data.docentes && data.docentes.length > 0) {
-                    data.docentes.forEach(d => {
-                        docenteSelect.innerHTML += `<option value="${d.id}">${d.nombre}</option>`;
-                    });
-                    docenteSelect.disabled = false;
+                if (data.docentes && data.docentes.length > 0) {
+                    const docente = data.docentes[0];
+                    if (docenteHidden) docenteHidden.value = docente.id;
+                    if (infoDocente) infoDocente.innerHTML = `<i class="fas fa-chalkboard-user"></i> Docente asignado: <strong>${docente.nombre}</strong>`;
+                    document.getElementById('seccion-periodo').style.display = 'block';
+                    document.getElementById('seccion-boton').style.display = 'block';
                 } else {
-                    docenteSelect.innerHTML = '<option value="">No hay docentes</option>';
+                    if (docenteHidden) docenteHidden.value = '';
+                    if (infoDocente) infoDocente.innerHTML = '<span class="text-danger">⚠️ No hay docente asignado a esta sección.</span>';
+                    document.getElementById('seccion-periodo').style.display = 'none';
+                    document.getElementById('seccion-boton').style.display = 'none';
                 }
+            })
+            .catch(() => {
+                if (infoDocente) infoDocente.innerHTML = '<span class="text-danger">Error al cargar docente.</span>';
+                if (docenteHidden) docenteHidden.value = '';
             });
     }
 }
 
-window.pasoDocente = function() {
-    const profesor = document.getElementById('select-docente').value;
-    const mesDiv = document.getElementById('seccion-mes');
-    const botonDiv = document.getElementById('seccion-boton');
-    if (profesor !== "") {
-        mesDiv.style.display = 'block';
-        botonDiv.style.display = 'block';
-    } else {
-        mesDiv.style.display = 'none';
-        botonDiv.style.display = 'none';
-    }
-};
+// (Ya no se necesita el evento de cambio del select de docente)
 </script>
 
 <?php include "../includes/footer.php"; ?>
