@@ -25,29 +25,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
-// Filtros
-$sala_filtro = $_GET['sala'] ?? '';
-$ano_filtro = $_GET['ano'] ?? '';
+$sala_filtro = isset($_GET['sala']) ? trim($_GET['sala']) : '';
 
-// ========== PAGINACIÓN ==========
+// Paginación
 $registros_por_pagina = 10;
 $pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
 $offset = ($pagina_actual - 1) * $registros_por_pagina;
 
-// Consulta para contar total (con los mismos filtros)
 $sql_count = "SELECT COUNT(*) as total 
               FROM estudiantes e
               WHERE e.estatus = 'Activo'";
-if ($sala_filtro) {
-    $sql_count .= " AND e.sala = '" . mysqli_real_escape_string($conexion, $sala_filtro) . "'";
-}
-if ($ano_filtro) {
-    $sql_count .= " AND EXISTS (SELECT 1 FROM inscripciones WHERE estudiante_id = e.id AND ano_escolar LIKE '$ano_filtro%')";
-}
-$total_registros = $conexion->query($sql_count)->fetch_assoc()['total'];
-$total_paginas = ceil($total_registros / $registros_por_pagina);
 
-// Consulta principal con LIMIT
 $sql = "SELECT e.*, r.nombre_completo AS rep_nombre,
                (SELECT ano_escolar FROM inscripciones WHERE estudiante_id = e.id ORDER BY fecha_inscripcion DESC LIMIT 1) AS ano_escolar_actual
         FROM estudiantes e
@@ -55,12 +43,15 @@ $sql = "SELECT e.*, r.nombre_completo AS rep_nombre,
         WHERE e.estatus = 'Activo'";
 
 if ($sala_filtro) {
-    $sql .= " AND e.sala = '" . mysqli_real_escape_string($conexion, $sala_filtro) . "'";
+    $sala_filtro = mysqli_real_escape_string($conexion, $sala_filtro);
+    $sql_count .= " AND e.sala = '$sala_filtro'";
+    $sql .= " AND e.sala = '$sala_filtro'";
 }
-if ($ano_filtro) {
-    $sql .= " AND EXISTS (SELECT 1 FROM inscripciones WHERE estudiante_id = e.id AND ano_escolar LIKE '$ano_filtro%')";
-}
-$sql .= " ORDER BY e.sala, e.apellido, e.nombre LIMIT $offset, $registros_por_pagina";
+
+$total_registros = $conexion->query($sql_count)->fetch_assoc()['total'];
+$total_paginas = ceil($total_registros / $registros_por_pagina);
+
+$sql .= " ORDER BY e.sala, e.nombre, e.apellido LIMIT $offset, $registros_por_pagina";
 
 $result = $conexion->query($sql);
 $salas = $conexion->query("SELECT DISTINCT sala FROM secciones ORDER BY sala");
@@ -69,7 +60,17 @@ include '../includes/header.php';
 ?>
 
 <div class="container-fluid px-4">
-    <h2 class="mt-4 mb-4">Listado de Estudiantes</h2>
+    <!-- ========== BOTÓN VOLVER A GESTIÓN DE ESTUDIANTES ========== -->
+    <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
+        <div>
+            <h2 class="fw-bold mb-0">Listado de Estudiantes</h2>
+            <p class="text-muted">Panel de control para inscripciones y listado de alumnos</p>
+        </div>
+        <!-- ========== CORRECCIÓN: Botón Volver a Gestión de Estudiantes ========== -->
+        <a href="index.php" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Gestión de Estudiantes
+        </a>
+    </div>
 
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
         <div class="alert alert-success alert-dismissible fade show">Estudiante eliminado correctamente.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
@@ -78,10 +79,11 @@ include '../includes/header.php';
         <div class="alert alert-success alert-dismissible fade show">¡Inscripción registrada con éxito!<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
     <?php endif; ?>
 
-    <!-- Filtros -->
+    <!-- Filtros con buscador en tiempo real al lado -->
     <div class="card mb-4">
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end" id="filtroForm">
+            <div class="row g-3 align-items-end">
+                <!-- Sala / Grado -->
                 <div class="col-md-3">
                     <label class="form-label">Sala / Grado</label>
                     <select name="sala" id="filtro_sala" class="form-select">
@@ -91,32 +93,21 @@ include '../includes/header.php';
                         <?php endwhile; ?>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">Año Escolar</label>
-                    <select name="ano" class="form-select">
-                        <option value="">Todos</option>
-                        <?php for($y = 2020; $y <= date('Y')+1; $y++): ?>
-                            <option value="<?= $y ?>" <?= ($ano_filtro == $y) ? 'selected' : '' ?>><?= $y ?> - <?= $y+1 ?></option>
-                        <?php endfor; ?>
-                    </select>
+
+                <!-- Buscador en tiempo real -->
+                <div class="col-md-4">
+                    <label class="form-label">Buscar</label>
+                    <input type="text" id="buscadorTabla" class="form-control" placeholder="Nombre, apellido o cédula...">
                 </div>
+
+                <!-- Botones -->
                 <div class="col-md-2">
+                    <label class="form-label">&nbsp;</label>
                     <a href="listado.php" class="btn btn-secondary w-100">Limpiar</a>
                 </div>
-                <div class="col-md-4 text-end">
-                    <a href="inscripcion.php" class="btn btn-primary w-100">+ Nueva Inscripción</a>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Buscador rápido -->
-    <div class="card mb-3">
-        <div class="card-body py-2">
-            <div class="row">
-                <div class="col-md-4">
-                    <label class="form-label">Buscar:</label>
-                    <input type="text" id="buscadorTabla" class="form-control" placeholder="Nombre, cédula o representante...">
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <a href="inscripcion.php" class="btn btn-success w-100">+ Nueva Inscripción</a>
                 </div>
             </div>
         </div>
@@ -149,18 +140,18 @@ include '../includes/header.php';
                                 <td class="text-nowrap">
                                     <a href="ver_ficha.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-info" target="_blank">Ver Ficha</a>
                                     <a href="editar_estudiantes.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-primary">Editar</a>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('¿Eliminar?')">
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('¿Eliminar este estudiante?')">
                                         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="id" value="<?= $e['id'] ?>">
                                         <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
                                     </form>
-                                 </a>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="6" class="text-center">No hay estudiantes registrados.<?php endif; ?>
+                            <tr><td colspan="6" class="text-center">No hay estudiantes registrados.</td></tr>
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -181,16 +172,28 @@ include '../includes/header.php';
 </div>
 
 <script>
-    document.getElementById('filtro_sala').addEventListener('change', function() {
-        document.getElementById('filtroForm').submit();
+    // Filtro de sala en tiempo real
+    document.getElementById('filtro_sala')?.addEventListener('change', function() {
+        const sala = this.value;
+        let url = 'listado.php';
+        if (sala) {
+            url += '?sala=' + encodeURIComponent(sala);
+        }
+        window.location.href = url;
     });
-    // Buscador
-    document.getElementById('buscadorTabla').addEventListener('input', function() {
-        let filter = this.value.toUpperCase();
+
+    // Buscador en tiempo real
+    document.getElementById('buscadorTabla')?.addEventListener('input', function() {
+        let filter = this.value.toUpperCase().trim();
         let rows = document.querySelectorAll('#tablaBody tr');
+        
         rows.forEach(row => {
             let text = row.innerText.toUpperCase();
-            row.style.display = text.includes(filter) ? '' : 'none';
+            if (filter === '') {
+                row.style.display = '';
+            } else {
+                row.style.display = text.includes(filter) ? '' : 'none';
+            }
         });
     });
 </script>

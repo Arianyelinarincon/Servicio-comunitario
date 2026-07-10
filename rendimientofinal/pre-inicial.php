@@ -30,7 +30,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     
     if ($action == 'cargar_docentes') {
         $seccion = (int)$_POST['seccion'];
-        // Devuelve solo el primer docente activo de la sección (ordenado por id)
         $stmt = $conexion->prepare("SELECT id, nombre FROM profesores WHERE seccion = ? AND estatus = 'Activo' ORDER BY id LIMIT 1");
         $stmt->bind_param("i", $seccion);
         $stmt->execute();
@@ -48,15 +47,17 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
 
 include "../includes/header.php";
 
-// Generar opciones de años escolares (desde 2020 hasta 2030, por ejemplo)
+// ========== CORRECCIÓN: Año actual fijo 2025-2026 ==========
 function generarOpcionesAnios() {
     $anio_actual = date('Y');
-    $anio_inicio = $anio_actual - 5; // desde 5 años atrás
-    $anio_fin = $anio_actual + 5;     // hasta 5 años adelante
+    $anio_inicio = $anio_actual - 5;
+    $anio_fin = $anio_actual + 5;
     $opciones = '';
     for ($i = $anio_inicio; $i <= $anio_fin; $i++) {
         $periodo = $i . '-' . ($i + 1);
-        $opciones .= "<option value=\"$periodo\">$periodo</option>";
+        // ========== CORRECCIÓN: Marcar 2025-2026 como seleccionado ==========
+        $selected = ($periodo == '2025-2026') ? 'selected' : '';
+        $opciones .= "<option value=\"$periodo\" $selected>$periodo</option>";
     }
     return $opciones;
 }
@@ -66,12 +67,30 @@ function generarOpcionesAnios() {
     :root { --navy: #002d54; }
     .card { border-radius: 12px; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
     .bg-navy { background-color: var(--navy) !important; color: white;}
+    .btn-volver {
+        background-color: #6c757d;
+        color: white;
+        border: none;
+        padding: 7px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        transition: background 0.3s;
+        text-decoration: none;
+    }
+    .btn-volver:hover {
+        background-color: #5a6268;
+        color: white;
+    }
 </style>
 
 <div class="container-fluid py-4">
     <div class="card mb-4">
-        <div class="card-header bg-navy">
+        <div class="card-header bg-navy d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Generar Formulario de Rendimiento Final - Pre Inicial</h5>
+            <!-- ========== CORRECCIÓN: Botón VOLVER agregado ========== -->
+            <a href="rendimientofinalindex.php" class="btn-volver">
+                <i class="fas fa-arrow-left"></i> VOLVER
+            </a>
         </div>
         <div class="card-body p-4">
             <form action="formulariopre-inicial.php" method="GET" target="_blank" class="row g-3 align-items-end" id="filtroForm">
@@ -94,7 +113,6 @@ function generarOpcionesAnios() {
                     </select>
                 </div>
 
-                <!-- Campo oculto para el docente y texto informativo -->
                 <div class="col-md-3" id="seccion-docente" style="display:none;">
                     <div class="alert alert-info py-1 small mb-0" id="info-docente"></div>
                     <input type="hidden" name="profesor" id="select-docente" value="">
@@ -128,7 +146,6 @@ function pasoGrado() {
     seccionSelect.innerHTML = '<option value="">Primero seleccione grado...</option>';
     seccionSelect.disabled = true;
     
-    // Limpiar docente
     if (docenteHidden) docenteHidden.value = '';
     if (infoDocente) infoDocente.innerHTML = '';
     if (docenteDiv) docenteDiv.style.display = 'none';
@@ -163,10 +180,10 @@ function pasoSeccion() {
     const infoDocente = document.getElementById('info-docente');
     const docenteDiv = document.getElementById('seccion-docente');
     
-    // Limpiar
     if (docenteHidden) docenteHidden.value = '';
     if (infoDocente) infoDocente.innerHTML = '';
     if (docenteDiv) docenteDiv.style.display = 'none';
+    
     document.getElementById('seccion-periodo').style.display = 'none';
     document.getElementById('seccion-boton').style.display = 'none';
 
@@ -199,8 +216,6 @@ function pasoSeccion() {
             });
     }
 }
-
-// (Ya no se necesita el evento de cambio del select de docente)
 </script>
 
 <?php include "../includes/footer.php"; ?>
