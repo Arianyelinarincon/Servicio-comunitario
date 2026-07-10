@@ -6,6 +6,29 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 require_once '../config/conexion.php';
 
+// ========== ELIMINAR RESUMEN ==========
+if (isset($_GET['eliminar']) && is_numeric($_GET['eliminar'])) {
+    $id_eliminar = (int)$_GET['eliminar'];
+    
+    if (!isset($_GET['token']) || $_GET['token'] !== $_SESSION['csrf_token']) {
+        die("Error de seguridad");
+    }
+    
+    $stmt = $conexion->prepare("DELETE FROM resumen_estadistico WHERE id = ?");
+    $stmt->bind_param("i", $id_eliminar);
+    if ($stmt->execute()) {
+        $mensaje = '<div class="alert alert-success alert-dismissible fade show">Resumen eliminado correctamente.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    } else {
+        $mensaje = '<div class="alert alert-danger alert-dismissible fade show">Error al eliminar.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    }
+    $stmt->close();
+}
+
+// CSRF token
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 // Filtros
 $periodo_filtro = $_GET['periodo'] ?? '';
 $sala_filtro = $_GET['sala'] ?? '';
@@ -48,7 +71,7 @@ if ($docente_filtro) {
 $sql .= " ORDER BY r.periodo DESC, r.sala, r.seccion_id LIMIT $offset, $registros_por_pagina";
 $result = $conexion->query($sql);
 
-// Obtener listas para filtros (usando valores existentes en la tabla)
+// Obtener listas para filtros
 $salas = $conexion->query("SELECT DISTINCT sala FROM resumen_estadistico ORDER BY sala");
 $docentes = $conexion->query("SELECT DISTINCT p.id, p.nombre 
                               FROM resumen_estadistico r 
@@ -59,19 +82,31 @@ include '../includes/header.php';
 ?>
 
 <div class="container-fluid mt-4">
-    <h2 class="fw-bold mb-4"><i class="fas fa-chart-line"></i> Historial de Resúmenes Estadísticos</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold"><i class="fas fa-chart-line"></i> Historial de Resúmenes Estadísticos</h2>
+        <div>
+            <a href="index.php" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Volver a Asistencia
+            </a>
+            <a href="editar_resumen.php" class="btn btn-info">
+                <i class="fas fa-plus"></i> Crear Nuevo Resumen
+            </a>
+        </div>
+    </div>
+
+    <?php if (isset($mensaje)) echo $mensaje; ?>
 
     <!-- Filtros -->
     <div class="card mb-4">
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
+            <form method="GET" class="row g-3 align-items-end" id="filtroForm">
                 <div class="col-md-3">
                     <label class="form-label">Mes / Año</label>
-                    <input type="month" name="periodo" class="form-control" value="<?= htmlspecialchars($periodo_filtro) ?>">
+                    <input type="month" name="periodo" class="form-control" value="<?= htmlspecialchars($periodo_filtro) ?>" onchange="this.form.submit()">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Sala / Grado</label>
-                    <select name="sala" class="form-select">
+                    <select name="sala" class="form-select" onchange="this.form.submit()">
                         <option value="">Todas</option>
                         <?php while($row = $salas->fetch_assoc()): ?>
                             <option value="<?= $row['sala'] ?>" <?= ($sala_filtro == $row['sala']) ? 'selected' : '' ?>><?= ucfirst($row['sala']) ?></option>
@@ -80,7 +115,7 @@ include '../includes/header.php';
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Docente</label>
-                    <select name="docente" class="form-select">
+                    <select name="docente" class="form-select" onchange="this.form.submit()">
                         <option value="">Todos</option>
                         <?php while($row = $docentes->fetch_assoc()): ?>
                             <option value="<?= $row['id'] ?>" <?= ($docente_filtro == $row['id']) ? 'selected' : '' ?>><?= htmlspecialchars($row['nombre']) ?></option>
@@ -88,10 +123,7 @@ include '../includes/header.php';
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Filtrar</button>
-                </div>
-                <div class="col-md-12 text-end">
-                    <a href="historial_resumenes.php" class="btn btn-secondary btn-sm">Limpiar filtros</a>
+                    <a href="historial_resumenes.php" class="btn btn-secondary w-100">Limpiar filtros</a>
                 </div>
             </form>
         </div>
@@ -118,7 +150,7 @@ include '../includes/header.php';
                         <?php if ($result && $result->num_rows > 0): ?>
                             <?php while($row = $result->fetch_assoc()): ?>
                             <tr>
-                                <td><?= date('F Y', strtotime($row['periodo'])) ?> (<?= $row['periodo'] ?>)</td>
+                                <td><?= date('F Y', strtotime($row['periodo'])) ?></td>
                                 <td><?= ucfirst($row['sala']) ?></td>
                                 <td><?= htmlspecialchars($row['seccion_nombre'] ?? 'N/A') ?></td>
                                 <td><?= htmlspecialchars($row['docente_nombre'] ?? 'N/A') ?></td>
@@ -126,13 +158,26 @@ include '../includes/header.php';
                                 <td>V: <?= $row['total_asistencia_v'] ?> / H: <?= $row['total_asistencia_h'] ?> / Total: <?= $row['total_asistencia_v'] + $row['total_asistencia_h'] ?></td>
                                 <td><strong><?= $row['porcentaje_asistencia'] ?>%</strong></td>
                                 <td class="text-nowrap">
-                                    <a href="ver_resumen.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info" target="_blank">Ver Detalle</a>
-                                    <a href="generar_pdf.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-secondary" target="_blank">Regenerar PDF</a>
+                                    <!-- ========== CORRECCIÓN: Botón EDITAR apunta a editar_resumen.php ========== -->
+                                    <a href="editar_resumen.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-edit"></i> Editar
+                                    </a>
+                                    <!-- ========== Botón REGENERAR PDF ========== -->
+                                    <a href="generar_pdf.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-success" target="_blank">
+                                        <i class="fas fa-file-pdf"></i> PDF
+                                    </a>
+                                    <!-- ========== Botón ELIMINAR ========== -->
+                                    <a href="historial_resumenes.php?eliminar=<?= $row['id'] ?>&token=<?= $_SESSION['csrf_token'] ?>" 
+                                       class="btn btn-sm btn-danger" 
+                                       onclick="return confirm('¿Estás seguro de eliminar este resumen?')">
+                                        <i class="fas fa-trash"></i> Eliminar
+                                    </a>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="8" class="text-center">No hay resúmenes guardados.<?php endif; ?>
+                            <tr><td colspan="8" class="text-center">No hay resúmenes guardados.</td></tr>
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>

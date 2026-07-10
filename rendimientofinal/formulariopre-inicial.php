@@ -2,10 +2,21 @@
 require_once "../estadisticas/config_db.php";
 if (session_status() === PHP_SESSION_NONE) session_start();
 
+// ========== CORRECCIÓN: Validar y sanitizar parámetros GET ==========
+$salas_permitidas = ['sala4', 'sala5'];
 $sala_seleccionada = $_GET['sala'] ?? '';
-$seccion_id = $_GET['seccion'] ?? '';
-$profesor_id = $_GET['profesor'] ?? '';
-$periodo = $_GET['periodo'] ?? '';
+if (!in_array($sala_seleccionada, $salas_permitidas)) {
+    $sala_seleccionada = '';
+}
+
+$seccion_id = isset($_GET['seccion']) ? intval($_GET['seccion']) : '';
+$profesor_id = isset($_GET['profesor']) ? intval($_GET['profesor']) : '';
+
+// ========== CORRECCIÓN: Período por defecto 2025-2026 si no viene en GET ==========
+$periodo = isset($_GET['periodo']) ? trim($_GET['periodo']) : '2025-2026';
+if (!empty($periodo) && !preg_match('/^\d{4}-\d{4}$/', $periodo)) {
+    $periodo = '2025-2026';
+}
 
 if(empty($sala_seleccionada) || empty($seccion_id)) {
     die("<div class='alert alert-danger'>Error: Faltan parámetros. Genere el formulario desde el panel principal.</div>");
@@ -16,18 +27,26 @@ $nombre_seccion = '';
 $stmt_prof = $conexion->prepare("SELECT nombre FROM profesores WHERE id = ?");
 $stmt_prof->bind_param("i", $profesor_id);
 $stmt_prof->execute();
-if ($row = $stmt_prof->get_result()->fetch_assoc()) $nombre_profesor = $row['nombre'];
+if ($row = $stmt_prof->get_result()->fetch_assoc()) {
+    $nombre_profesor = htmlspecialchars($row['nombre'], ENT_QUOTES, 'UTF-8');
+}
+$stmt_prof->close();
 
 $stmt_sec = $conexion->prepare("SELECT nombre FROM secciones WHERE id = ?");
 $stmt_sec->bind_param("i", $seccion_id);
 $stmt_sec->execute();
-if ($row = $stmt_sec->get_result()->fetch_assoc()) $nombre_seccion = $row['nombre'];
+if ($row = $stmt_sec->get_result()->fetch_assoc()) {
+    $nombre_seccion = htmlspecialchars($row['nombre'], ENT_QUOTES, 'UTF-8');
+}
+$stmt_sec->close();
 
+// ========== CORRECCIÓN: Cambiar ORDER BY para que ordene por NOMBRE primero ==========
 $query_est = "SELECT id, cedula, cedula_escolar, nombre, apellido, genero, 
                      fecha_nacimiento, lugar_nacimiento 
               FROM estudiantes 
               WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo' 
-              ORDER BY apellido ASC, nombre ASC";
+              ORDER BY nombre ASC, apellido ASC";  // <-- CAMBIADO: primero nombre, luego apellido
+
 $stmt_est = $conexion->prepare($query_est);
 $stmt_est->bind_param("si", $sala_seleccionada, $seccion_id); 
 $stmt_est->execute();
@@ -46,12 +65,12 @@ if (!empty($periodo)) {
     $stmt_rend->close();
 }
 
-// Calcular varones, hembras y total
 $varones = 0;
 $hembras = 0;
 foreach ($estudiantes as $est) {
-    if (strtoupper($est['genero'] ?? '') == 'V') $varones++;
-    elseif (strtoupper($est['genero'] ?? '') == 'H') $hembras++;
+    $genero = strtoupper($est['genero'] ?? '');
+    if ($genero == 'V' || $genero == 'M' || $genero == 'MASCULINO') $varones++;
+    elseif ($genero == 'H' || $genero == 'F' || $genero == 'FEMENINO') $hembras++;
 }
 $total_alumnos = $varones + $hembras;
 
@@ -102,7 +121,6 @@ include "../includes/header.php";
     }
     .text-left { text-align: left !important; }
 
-    /* Anchos de columna originales */
     .tabla-rendimiento th:nth-child(1), .tabla-rendimiento td:nth-child(1) { width: 4.46%; }
     .tabla-rendimiento th:nth-child(2), .tabla-rendimiento td:nth-child(2) { width: 11.69%; }
     .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 33.29%; }
@@ -144,7 +162,6 @@ include "../includes/header.php";
         z-index: 9999;
     }
 
-    /* Estilo para el botón de edición de observación */
     .btn-edit-obs {
         background: none;
         border: none;
@@ -171,14 +188,29 @@ include "../includes/header.php";
 
     @media print {
         body, .hoja-rendimiento { margin: 0; padding: 10px; }
-        .btn, #botones-accion { display: none; }
-        .btn-edit-obs { display: none; }
+        .btn, #botones-accion { display: none !important; }
+        .btn-edit-obs { display: none !important; }
         .tabla-rendimiento { font-size: 7pt; }
         .tabla-rendimiento th, .tabla-rendimiento td { padding: 1px; }
         .obs-cell input {
             border: none;
             background: transparent;
         }
+        .obs-cell .btn-edit-obs {
+            display: none !important;
+            width: 0 !important;
+            height: 0 !important;
+            overflow: hidden !important;
+            visibility: hidden !important;
+        }
+    }
+
+    .modo-exportacion .btn-edit-obs {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
     }
 </style>
 
@@ -222,20 +254,26 @@ include "../includes/header.php";
                 </thead>
                 <tbody>
                     <?php if(empty($estudiantes)): ?>
-                        <tr><td colspan="8" class="text-center">No hay estudiantes registrados.<?php endif; ?>
+                        <tr><td colspan="8" class="text-center">No hay estudiantes registrados.</td></tr>
+                    <?php else: ?>
                     <?php foreach($estudiantes as $index => $est):
                         $fecha_nac = $est['fecha_nacimiento'] ? date('d/m/Y', strtotime($est['fecha_nacimiento'])) : '';
-                        $cedula = !empty($est['cedula_escolar']) ? $est['cedula_escolar'] : ($est['cedula'] ?? 'S/C');
+                        $cedula = !empty($est['cedula_escolar']) ? htmlspecialchars($est['cedula_escolar']) : (htmlspecialchars($est['cedula'] ?? 'S/C'));
                         $aprobado_guardado = $rendimientos[$est['id']]['aprobado'] ?? 'SI';
-                        $observacion_guardada = htmlspecialchars($rendimientos[$est['id']]['observacion'] ?? '');
-                        $nombre_completo = mb_strtoupper($est['apellido'] . ' ' . $est['nombre']);
+                        $observacion_guardada = htmlspecialchars($rendimientos[$est['id']]['observacion'] ?? '', ENT_QUOTES, 'UTF-8');
+                        
+                        // ========== CORRECCIÓN: Mostrar "NOMBRE APELLIDO" en lugar de "APELLIDO NOMBRE" ==========
+                        $nombre_completo = mb_strtoupper(htmlspecialchars($est['nombre'] . ' ' . $est['apellido']));
+                        
+                        $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
+                        $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
                     ?>
                     <tr>
                         <td><?= $index+1 ?></td>
-                        <td><?= htmlspecialchars($cedula) ?></td>
+                        <td><?= $cedula ?></td>
                         <td class="text-left"><?= $nombre_completo ?></td>
-                        <td><?= mb_strtoupper($est['genero'] ?? '') ?></td>
-                        <td><?= mb_strtoupper($est['lugar_nacimiento'] ?? 'N/A') ?></td>
+                        <td><?= $genero ?></td>
+                        <td><?= $lugar_nac ?></td>
                         <td><?= $fecha_nac ?></td>
                         <td>
                             <select name="aprobado[<?= $est['id'] ?>]" class="select-print">
@@ -243,22 +281,21 @@ include "../includes/header.php";
                                 <option value="NO" <?= $aprobado_guardado == 'NO' ? 'selected' : '' ?>>NO</option>
                             </select>
                         </td>
-                        <!-- Celda de Observación con botón de edición -->
                         <td>
                             <div class="obs-cell">
                                 <input type="text" name="observacion[<?= $est['id'] ?>]" class="input-print obs-input" data-id="<?= $est['id'] ?>" value="<?= $observacion_guardada ?>">
-                                <button type="button" class="btn-edit-obs" data-id="<?= $est['id'] ?>" data-nombre="<?= $nombre_completo ?>" data-obs="<?= $observacion_guardada ?>">
+                                <button type="button" class="btn-edit-obs no-pdf" data-id="<?= $est['id'] ?>" data-nombre="<?= $nombre_completo ?>" data-obs="<?= $observacion_guardada ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </div>
-                        </a>
+                        </td>
                     </tr>
                     <?php endforeach; ?>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </form>
 
-        <!-- Modal para editar observación -->
         <div class="modal fade" id="modalObservacion" tabindex="-1" aria-labelledby="modalObservacionLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -299,9 +336,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnLimpiar = document.getElementById('btnLimpiarObservaciones');
     const btnVolver = document.getElementById('btnVolver');
     const form = document.getElementById('form-rendimiento');
-    const periodo = '<?= $periodo ?>';
+    const periodo = '<?= htmlspecialchars($periodo) ?>';
 
-    // ========== LOCALSTORAGE PARA PERSISTENCIA DE OBSERVACIONES ==========
     function getStorageKey() {
         return 'obs_temp_' + periodo;
     }
@@ -370,17 +406,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (btnLimpiar) btnLimpiar.addEventListener('click', limpiarObservaciones);
 
-    // Botón Volver: redirige a pre-inicial.php
     if (btnVolver) {
         btnVolver.addEventListener('click', function() {
             window.location.href = 'pre-inicial.php';
         });
     }
 
-    // ========== PDF CON NOMBRE DINÁMICO Y MÁRGENES REDUCIDOS ==========
     btnDescargar.addEventListener('click', function() {
         const elemento = document.getElementById('documento-pdf');
         const botones = document.getElementById('botones-accion');
+        
+        const botonesEdicion = elemento.querySelectorAll('.btn-edit-obs');
+        botonesEdicion.forEach(btn => {
+            btn.style.display = 'none';
+        });
         
         const grado = '<?= htmlspecialchars($sala_seleccionada . '_' . $nombre_seccion) ?>';
         const docente = '<?= preg_replace('/[^a-zA-Z0-9_]/', '_', strtoupper($nombre_profesor)) ?>';
@@ -402,11 +441,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const url = URL.createObjectURL(blob);
             window.open(url, '_blank');
             setTimeout(() => URL.revokeObjectURL(url), 1000);
-            botones.style.display = 'block';
+            
+            botonesEdicion.forEach(btn => {
+                btn.style.display = '';
+            });
+            
+            botones.style.display = 'flex';
             elemento.classList.remove('modo-exportacion');
         }).catch(err => {
             console.error(err);
-            botones.style.display = 'block';
+            botonesEdicion.forEach(btn => {
+                btn.style.display = '';
+            });
+            botones.style.display = 'flex';
             elemento.classList.remove('modo-exportacion');
             mostrarMensaje('Error al generar PDF', 'danger');
         });
@@ -418,7 +465,6 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => container.innerHTML = '', 4000);
     }
 
-    // ========== MODAL PARA EDITAR OBSERVACIÓN ==========
     const modalElement = document.getElementById('modalObservacion');
     let modal = null;
     if (modalElement) modal = new bootstrap.Modal(modalElement);

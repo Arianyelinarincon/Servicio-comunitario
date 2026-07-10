@@ -7,8 +7,72 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // ========== Validar campos obligatorios ==========
+    $nombre = strtoupper(trim($_POST['nombre'] ?? ''));
+    $apellido = strtoupper(trim($_POST['apellido'] ?? ''));
+    $fecha_nac = $_POST['fecha_nacimiento'] ?? '';
+    $genero = $_POST['genero'] ?? '';
+    $rep_cedula = trim($_POST['rep_cedula'] ?? '');
+    $rep_nombre = trim($_POST['rep_nombre'] ?? '');
+    $rep_telefono = trim($_POST['rep_telefono'] ?? '');
+    $madre_cedula = trim($_POST['madre_cedula_temp'] ?? '');
+
+    if (empty($nombre) || empty($apellido) || empty($fecha_nac) || empty($genero) || 
+        empty($rep_cedula) || empty($rep_nombre) || empty($rep_telefono) || empty($madre_cedula)) {
+        header("Location: inscripcion.php?error=campos_requeridos");
+        exit();
+    }
+
     $conexion->begin_transaction();
     try {
+        // ========== Verificar estudiante duplicado ==========
+        $año = date('Y', strtotime($fecha_nac));
+        $año2Dig = substr($año, -2);
+        $cedulaLimpia = preg_replace('/\D/', '', $madre_cedula);
+        $cedulaLimpia = str_pad($cedulaLimpia, 8, '0', STR_PAD_LEFT);
+        $cedulaLimpia = substr($cedulaLimpia, -8);
+        $orden_nacimiento = intval($_POST['orden_nacimiento'] ?? 1);
+        $cedula_escolar = $orden_nacimiento . $año2Dig . $cedulaLimpia;
+        if (strlen($cedula_escolar) != 11) {
+            $cedula_escolar = str_pad($cedula_escolar, 11, '0', STR_PAD_RIGHT);
+        }
+
+        // Verificar por Cédula Escolar
+        $stmt_check = $conexion->prepare("SELECT id, nombre, apellido, estatus FROM estudiantes WHERE cedula_escolar = ?");
+        $stmt_check->bind_param("s", $cedula_escolar);
+        $stmt_check->execute();
+        $result_check = $stmt_check->get_result();
+        
+        if ($result_check->num_rows > 0) {
+            $duplicado = $result_check->fetch_assoc();
+            $estado = ($duplicado['estatus'] == 'Activo') ? 'activo' : 'inactivo';
+            $nombre_duplicado = $duplicado['nombre'] . ' ' . $duplicado['apellido'];
+            $stmt_check->close();
+            
+            $mensaje = urlencode("El estudiante con Cédula Escolar $cedula_escolar ya existe en el sistema. Nombre: $nombre_duplicado (Estado: $estado)");
+            header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
+            exit();
+        }
+        $stmt_check->close();
+
+        // Verificar por Nombre + Apellido + Fecha Nacimiento
+        $stmt_check2 = $conexion->prepare("SELECT id, nombre, apellido, cedula_escolar, estatus FROM estudiantes WHERE nombre = ? AND apellido = ? AND fecha_nacimiento = ?");
+        $stmt_check2->bind_param("sss", $nombre, $apellido, $fecha_nac);
+        $stmt_check2->execute();
+        $result_check2 = $stmt_check2->get_result();
+        
+        if ($result_check2->num_rows > 0) {
+            $duplicado2 = $result_check2->fetch_assoc();
+            $estado2 = ($duplicado2['estatus'] == 'Activo') ? 'activo' : 'inactivo';
+            $stmt_check2->close();
+            
+            $mensaje = urlencode("Ya existe un estudiante con el mismo nombre ($nombre $apellido) y fecha de nacimiento. Cédula Escolar: " . $duplicado2['cedula_escolar'] . " (Estado: $estado2)");
+            header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
+            exit();
+        }
+        $stmt_check2->close();
+
         // ==================== 1. REPRESENTANTE ====================
         $rep_nombre = trim($_POST['rep_nombre']);
         $rep_cedula = trim($_POST['rep_cedula']);
@@ -40,11 +104,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->close();
 
         // ==================== 2. ESTUDIANTE ====================
-        $nombre = strtoupper(trim($_POST['nombre']));
-        $apellido = strtoupper(trim($_POST['apellido']));
-        $fecha_nac = $_POST['fecha_nacimiento'];
-        $genero = $_POST['genero'];
-        $orden_nacimiento = intval($_POST['orden_nacimiento'] ?? 1);
         $nacionalidad = $_POST['nacionalidad'] ?? 'Venezolana';
         $pais_nac = $_POST['pais_nacimiento'] ?? 'Venezuela';
         $estado_nac = $_POST['estado_nacimiento'] ?? '';
@@ -60,24 +119,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $alergia = $_POST['alergia'] ?? 'No';
         $alergia_cual = $_POST['alergia_cual'] ?? '';
         $madre_nombre = $_POST['madre_nombre'] ?? '';
-        $madre_cedula = trim($_POST['madre_cedula_temp']); // usamos el campo temporal del paso 1
         $madre_telefono = $_POST['madre_telefono'] ?? '';
         $padre_nombre = $_POST['padre_nombre'] ?? '';
         $padre_cedula = $_POST['padre_cedula'] ?? '';
         $padre_telefono = $_POST['padre_telefono'] ?? '';
-        $sala = ''; // se actualizará después
-
-        // Generar Cédula Escolar (formato institucional)
-        $año = date('Y', strtotime($fecha_nac));
-        $año2Dig = substr($año, -2);
-        $cedulaLimpia = preg_replace('/\D/', '', $madre_cedula);
-        $cedulaLimpia = str_pad($cedulaLimpia, 8, '0', STR_PAD_LEFT);
-        $cedulaLimpia = substr($cedulaLimpia, -8);
-        $cedula_escolar = $orden_nacimiento . $año2Dig . $cedulaLimpia;
-        if (strlen($cedula_escolar) != 11) {
-            // Si por algún motivo no tiene 11 dígitos, se puede ajustar, pero debería tenerlos.
-            $cedula_escolar = str_pad($cedula_escolar, 11, '0', STR_PAD_RIGHT);
-        }
+        $sala = '';
 
         $stmt = $conexion->prepare("INSERT INTO estudiantes 
             (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, alergias_condiciones, 
@@ -86,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              educacion_fisica, educacion_fisica_porque, alergia, alergia_cual, 
              madre_nombre, madre_cedula, madre_telefono, padre_nombre, padre_cedula, padre_telefono, 
              orden_nacimiento, estatus, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
+            VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
 
         $stmt->bind_param("ssssssissssssssssssssssssssi", 
             $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
@@ -146,8 +192,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $conexion->commit();
-        header("Location: ver_ficha.php?id=$estudiante_id&inscripcion=exito");
+        
+        header("Location: inscripcion_exito.php?id=$estudiante_id");
         exit();
+        
     } catch (Exception $e) {
         $conexion->rollback();
         error_log("Error en inscripción: " . $e->getMessage());

@@ -53,8 +53,12 @@ $stmt_ins->close();
 </head>
 <body class="bg-light">
 <div class="container my-4">
+    <!-- ========== CORRECCIÓN: Botón Descargar PDF agregado ========== -->
     <div class="text-end no-print mb-3">
         <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print"></i> Imprimir / PDF</button>
+        <a href="generar_ficha_pdf.php?id=<?= $id ?>" class="btn btn-success" target="_blank">
+            <i class="fas fa-file-pdf"></i> Descargar Ficha PDF
+        </a>
         <a href="listado.php" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Volver al listado</a>
     </div>
     <div class="ficha-card">
@@ -66,8 +70,8 @@ $stmt_ins->close();
             <!-- DATOS DEL ALUMNO -->
             <h5>DATOS DEL ALUMNO</h5>
             <table class="table-ficha">
-                <tr><td style="width:25%"><strong>Nombres y Apellidos:</strong></td><td colspan="3"><?= htmlspecialchars($estudiante['nombre']) ?></td><td style="width:15%"><strong>Fecha Nacimiento:</strong></td><td><?= $estudiante['fecha_nacimiento'] ?></td><td style="width:10%"><strong>Sexo:</strong></td><td><?= ($estudiante['genero']=='V')?'Varón':'Hembra' ?></td></tr>
-                <tr><td><strong>Cédula Escolar:</strong></td><td><?= htmlspecialchars($estudiante['cedula_escolar']) ?><td><td><strong>Nacionalidad:</strong></td><td><?= htmlspecialchars($estudiante['nacionalidad']) ?></td><td><strong>País Nacimiento:</strong></td><td colspan="3"><?= htmlspecialchars($estudiante['pais_nacimiento']) ?></td></tr>
+                <tr><td style="width:25%"><strong>Nombres y Apellidos:</strong></td><td colspan="3"><?= htmlspecialchars($estudiante['nombre'] . ' ' . $estudiante['apellido']) ?></td><td style="width:15%"><strong>Fecha Nacimiento:</strong></td><td><?= $estudiante['fecha_nacimiento'] ?></td><td style="width:10%"><strong>Sexo:</strong></td><td><?= ($estudiante['genero']=='V')?'Varón':'Hembra' ?></td></tr>
+                <tr><td><strong>Cédula Escolar:</strong></td><td><?= htmlspecialchars($estudiante['cedula_escolar']) ?></td><td><strong>Nacionalidad:</strong></td><td><?= htmlspecialchars($estudiante['nacionalidad']) ?></td><td><strong>País Nacimiento:</strong></td><td><?= htmlspecialchars($estudiante['pais_nacimiento']) ?></td><td colspan="2"></td></tr>
                 <tr><td><strong>Estado Nacimiento:</strong></td><td colspan="7"><?= htmlspecialchars($estudiante['estado_nacimiento']) ?></td></tr>
                 <tr><td><strong>Dirección:</strong></td><td colspan="7"><?= nl2br(htmlspecialchars($estudiante['direccion'])) ?></td></tr>
                 <tr><td><strong>Estado Residencia:</strong></td><td><?= htmlspecialchars($estudiante['estado_residencia']) ?></td><td><strong>Municipio:</strong></td><td><?= htmlspecialchars($estudiante['municipio']) ?></td><td><strong>Parroquia:</strong></td><td><?= htmlspecialchars($estudiante['parroquia']) ?></td><td><strong>Ciudad:</strong></td><td><?= htmlspecialchars($estudiante['ciudad']) ?></td></tr>
@@ -80,7 +84,7 @@ $stmt_ins->close();
             <h5 class="mt-4">DATOS DEL REPRESENTANTE</h5>
             <table class="table-ficha">
                 <tr><td><strong>Cédula:</strong></td><td><?= htmlspecialchars($estudiante['rep_cedula']) ?></td><td><strong>Nombres y Apellidos:</strong></td><td colspan="5"><?= htmlspecialchars($estudiante['rep_nombre']) ?></td></tr>
-                <tr><td><strong>Fecha Nac.:</strong></td><td><?= $estudiante['rep_fecha_nac'] ?></td><td><strong>Estado Civil:</strong></td><td><?= htmlspecialchars($estudiante['rep_estado_civil']) ?></td><td><strong>Afinidad:</strong></td><td><?= htmlspecialchars($estudiante['afinidad']) ?><td><td><strong>Teléfono:</strong></td><td><?= htmlspecialchars($estudiante['rep_telefono']) ?></td></tr>
+                <tr><td><strong>Fecha Nac.:</strong></td><td><?= $estudiante['rep_fecha_nac'] ?></td><td><strong>Estado Civil:</strong></td><td><?= htmlspecialchars($estudiante['rep_estado_civil']) ?></td><td><strong>Afinidad:</strong></td><td><?= htmlspecialchars($estudiante['afinidad']) ?></td><td><strong>Teléfono:</strong></td><td><?= htmlspecialchars($estudiante['rep_telefono']) ?></td></tr>
                 <tr><td><strong>Sexo:</strong></td><td><?= ($estudiante['rep_sexo']=='V')?'Varón':'Hembra' ?></td><td><strong>País Nac.:</strong></td><td><?= htmlspecialchars($estudiante['rep_pais_nac']) ?></td><td><strong>Estado Nac.:</strong></td><td><?= htmlspecialchars($estudiante['rep_estado_nac']) ?></td><td><strong>Nacionalidad:</strong></td><td><?= htmlspecialchars($estudiante['rep_nacionalidad']) ?></td></tr>
                 <tr><td><strong>Dirección:</strong></td><td colspan="7"><?= nl2br(htmlspecialchars($estudiante['rep_direccion'])) ?></td></tr>
                 <tr><td><strong>Estado Res.:</strong></td><td><?= htmlspecialchars($estudiante['rep_estado_res']) ?></td><td><strong>Municipio:</strong></td><td><?= htmlspecialchars($estudiante['rep_municipio']) ?></td><td><strong>Parroquia:</strong></td><td><?= htmlspecialchars($estudiante['rep_parroquia']) ?></td><td><strong>Ciudad:</strong></td><td><?= htmlspecialchars($estudiante['rep_ciudad']) ?></td></tr>
@@ -117,7 +121,8 @@ $stmt_ins->close();
                         </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <tr><td colspan="12" class="text-center">No hay registros escolares.<?php endif; ?>
+                        <tr><td colspan="12" class="text-center">No hay registros escolares.</td></tr>
+                    <?php endif; ?>
                 </tbody>
             </table>
             <div class="text-muted text-center mt-3 no-print">

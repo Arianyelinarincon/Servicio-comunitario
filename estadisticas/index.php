@@ -59,16 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_y_pdf'])) {
     $mes = date('m', strtotime($periodo));
     $dias_en_mes = cal_days_in_month(CAL_GREGORIAN, $mes, $anio);
     
-    //$conexion->query("CREATE TABLE IF NOT EXISTS asistencia_diaria (
-   //     id INT AUTO_INCREMENT PRIMARY KEY,
-   //     fecha DATE NOT NULL,
-   //     sala VARCHAR(10) NOT NULL,
-   //     seccion_id INT NOT NULL,
-   //     genero ENUM('V','H') NOT NULL,
-   //     cantidad INT DEFAULT 0,
-  //      UNIQUE KEY unique_asistencia (fecha, sala, seccion_id, genero)
- //   )");
-    
     for ($d = 1; $d <= $dias_en_mes; $d++) {
         $fecha = "$anio-$mes-" . str_pad($d, 2, '0', STR_PAD_LEFT);
         $v = (int)($asist_v[$d] ?? 0);
@@ -84,13 +74,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_y_pdf'])) {
         $stmt->close();
     }
     
-    // Guardar ingresos/egresos, etc. (sin cambios)...
-    // Al final:
     include "generar_pdf.php";
     exit;
 }
 
 include "../includes/header.php";
+
+// ========== CORRECCIÓN: Filtros en tiempo real ==========
+// Si hay POST desde el filtro en tiempo real, actualizar GET
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['filtro_ajax'])) {
+    // Esto se maneja con JavaScript
+}
 
 // Filtros
 $sala_seleccionada = isset($_GET['sala']) ? mysqli_real_escape_string($conexion, $_GET['sala']) : '';
@@ -175,10 +169,36 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
         background-color: #b02a37;
         transform: scale(1.02);
     }
+    
+    /* ========== CORRECCIÓN: Estilos para filtros en tiempo real ========== */
+    .filtro-tiempo-real select,
+    .filtro-tiempo-real input {
+        transition: all 0.3s ease;
+    }
+    .filtro-tiempo-real select:focus,
+    .filtro-tiempo-real input:focus {
+        border-color: #002d54;
+        box-shadow: 0 0 0 0.2rem rgba(0,45,84,0.25);
+    }
+    
+    /* ========== CORRECCIÓN: Botón Guardar ========== */
+    .btn-guardar {
+        background-color: #28a745;
+        color: white;
+        font-weight: bold;
+        padding: 10px 30px;
+        font-size: 1.1rem;
+        border-radius: 30px;
+        transition: all 0.3s;
+        border: none;
+    }
+    .btn-guardar:hover {
+        background-color: #218838;
+        transform: scale(1.02);
+    }
 </style>
 
 <div class="container-fluid py-4">
-
 
     <?php if ($mensaje): ?>
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -186,19 +206,21 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
     <?php endif; ?>
+    
     <div class="d-flex justify-content-between align-items-center mb-3">
-    <div></div>
-    <a href="historial_resumenes.php" class="btn btn-info">
-        <i class="fas fa-chart-line"></i> Ver Historial de Resúmenes
-    </a>
-</div>
+        <h4 class="mb-0 text-navy"><i class="fas fa-calendar-check"></i> Control de Asistencia</h4>
+        <a href="historial_resumenes.php" class="btn btn-info">
+            <i class="fas fa-chart-line"></i> Ver Historial de Resúmenes
+        </a>
+    </div>
 
+    <!-- ========== CORRECCIÓN: Filtros en tiempo real ========== -->
     <div class="card mb-4">
         <div class="card-body p-4">
-            <form method="GET" class="row g-3 align-items-end" id="filtroForm">
+            <form method="GET" class="row g-3 align-items-end filtro-tiempo-real" id="filtroForm">
                 <div class="col-md-3">
                     <label class="small fw-bold text-muted">SALA / GRADO</label>
-                    <select name="sala" id="select-grado" class="form-select shadow-none" required onchange="pasoGrado()">
+                    <select name="sala" id="select-grado" class="form-select shadow-none" onchange="this.form.submit()">
                         <option value="">Seleccione grado...</option>
                         <optgroup label="Educación Inicial">
                             <option value="sala4" <?= ($sala_seleccionada == 'sala4') ? 'selected' : '' ?>>Sala 4 Años</option>
@@ -213,9 +235,9 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
                     </select>
                 </div>
 
-                <div class="col-md-2" id="seccion-seccion">
+                <div class="col-md-3" id="seccion-seccion">
                     <label class="small fw-bold text-muted">SECCIÓN</label>
-                    <select name="seccion" id="select-seccion" class="form-select shadow-none" <?= empty($sala_seleccionada) ? 'disabled' : '' ?> onchange="pasoSeccion()">
+                    <select name="seccion" id="select-seccion" class="form-select shadow-none" <?= empty($sala_seleccionada) ? 'disabled' : '' ?> onchange="this.form.submit()">
                         <option value="">Primero seleccione grado...</option>
                         <?php 
                         if($sala_seleccionada) {
@@ -234,7 +256,7 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
 
                 <div class="col-md-3" id="seccion-docente">
                     <label class="small fw-bold text-muted">PROFESOR / DOCENTE</label>
-                    <select name="profesor" id="select-docente" class="form-select shadow-none" <?= empty($seccion_seleccionada) ? 'disabled' : '' ?> required onchange="pasoDocente()">
+                    <select name="profesor" id="select-docente" class="form-select shadow-none" <?= empty($seccion_seleccionada) ? 'disabled' : '' ?> onchange="this.form.submit()">
                         <option value="">Primero seleccione sección...</option>
                         <?php 
                         if($seccion_seleccionada) {
@@ -251,13 +273,9 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
                     </select>
                 </div>
 
-                <div class="col-md-3" id="seccion-mes" style="display:<?= $profesor_id ? 'block' : 'none' ?>;">
+                <div class="col-md-3" id="seccion-mes">
                     <label class="small fw-bold text-muted">MES</label>
-                    <input type="month" name="periodo" id="select-mes" class="form-control shadow-none" value="<?= htmlspecialchars($periodo) ?>">
-                </div>
-
-                <div class="col-md-1" id="seccion-boton" style="display:<?= ($sala_seleccionada && $profesor_id) ? 'block' : 'none' ?>;">
-                    <button type="submit" class="btn btn-primary w-100 fw-bold bg-navy border-0" style="padding: 7px 0;">CARGAR</button>
+                    <input type="month" name="periodo" id="select-mes" class="form-control shadow-none" value="<?= htmlspecialchars($periodo) ?>" onchange="this.form.submit()">
                 </div>
             </form>
         </div>
@@ -270,6 +288,7 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
         if($n_dia != 0 && $n_dia != 6) $d_hab++;
     }
 ?>
+<!-- ========== CORRECCIÓN: Agregado formulario con botón GUARDAR Y GENERAR PDF ========== -->
 <form method="POST" id="form-tabla" target="_blank">
     <input type="hidden" name="guardar_y_pdf" value="1">
     <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
@@ -408,7 +427,7 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
         </div>
     </div>
 
-    <!-- Ingreso/Egreso -->
+    <!-- ========== CORRECCIÓN: Ingreso/Egreso con fechas en formato DD/MM/YYYY ========== -->
     <div class="card mb-4">
         <div class="card-header bg-navy text-white">
             <h6 class="mb-0">Ingreso / Egreso del Mes</h6>
@@ -444,8 +463,9 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
                                 </select>
                             </td>
                             <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-                            <td><input type="date" name="ingreso_fn[]" class="form-control form-control-sm"></td>
-                            <td><input type="date" name="ingreso_fi[]" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>"></td>
+                            <!-- ========== CORRECCIÓN: Fecha en formato DD/MM/YYYY con placeholder ========== -->
+                            <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+                            <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
                             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
                         </tr>
                     </tbody>
@@ -476,8 +496,8 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
                                 </select>
                             </td>
                             <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-                            <td><input type="date" name="egreso_fn[]" class="form-control form-control-sm"></td>
-                            <td><input type="date" name="egreso_fi[]" class="form-control form-control-sm"></td>
+                            <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+                            <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
                             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
                         </tr>
                     </tbody>
@@ -496,17 +516,22 @@ $edades = $es_inicial ? [4,5,6] : range(6,15);
         </div>
     </div>
 
-    <!-- Botón GENERAR PDF -->
+    <!-- ========== CORRECCIÓN: Botón GUARDAR Y GENERAR PDF ========== -->
     <div class="text-center mt-4 mb-4">
-        <button type="submit" class="btn btn-pdf-final px-5 py-2">
-            🖨️ GENERAR PDF
+        <button type="submit" name="accion" value="guardar_pdf" class="btn btn-guardar px-5 py-2">
+            💾 GUARDAR Y GENERAR PDF
         </button>
+        <br>
+        <small class="text-muted">Los datos se guardarán en el historial y se generará el PDF</small>
     </div>
 </form>
 <?php endif; ?>
 </div>
 
 <script>
+// ========== CORRECCIÓN: Filtros en tiempo real con onchange ==========
+// Los selects ya tienen onchange="this.form.submit()"
+
 function setTipoReporte() {
     const sala = document.getElementById('select-grado').value;
     const tipo = (sala === 'sala4' || sala === 'sala5') ? 'inicial' : 'regular';
@@ -514,6 +539,7 @@ function setTipoReporte() {
     if (tipoInput) tipoInput.value = tipo;
 }
 
+// ========== CORRECCIÓN: Carga de secciones y docentes en cascada (ya existente) ==========
 function pasoGrado() {
     const sala = document.getElementById('select-grado').value;
     const seccionSelect = document.getElementById('select-seccion');
@@ -522,7 +548,7 @@ function pasoGrado() {
     seccionSelect.disabled = true;
     docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
     docenteSelect.disabled = true;
-    document.getElementById('seccion-mes').style.display = 'none';
+    document.getElementById('seccion-mes').style.display = 'block';
     document.getElementById('seccion-boton').style.display = 'none';
 
     if (sala !== "") {
@@ -552,7 +578,7 @@ function pasoSeccion() {
     const docenteSelect = document.getElementById('select-docente');
     docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
     docenteSelect.disabled = true;
-    document.getElementById('seccion-mes').style.display = 'none';
+    document.getElementById('seccion-mes').style.display = 'block';
     document.getElementById('seccion-boton').style.display = 'none';
 
     if (seccion !== "") {
@@ -644,16 +670,13 @@ window.recalcular = function() {
     document.getElementById('gran_total_asist').textContent = totalV + totalH;
     
     const totalGeneral = totalV + totalH;
-    // Porcentajes sobre el total de asistencias (V+H)
     const porcV = totalGeneral ? Math.round((totalV / totalGeneral) * 100) : 0;
     const porcH = totalGeneral ? Math.round((totalH / totalGeneral) * 100) : 0;
     
     document.getElementById('res_porc_v').textContent = porcV + '%';
     document.getElementById('res_porc_h').textContent = porcH + '%';
-    // La fila TOTAL siempre 100%
     document.getElementById('gran_total_porc').textContent = '100%';
     
-    // Actualizar campos ocultos para el PDF
     document.getElementById('porcentaje_v').value = porcV;
     document.getElementById('porcentaje_h').value = porcH;
     document.getElementById('porcentaje_total').value = 100;
@@ -711,8 +734,8 @@ function agregarFila(tipo) {
                 </select>
             </td>
             <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-            <td><input type="date" name="ingreso_fn[]" class="form-control form-control-sm"></td>
-            <td><input type="date" name="ingreso_fi[]" class="form-control form-control-sm" value="${hoy}"></td>
+            <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+            <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
         `;
     } else {
@@ -728,8 +751,8 @@ function agregarFila(tipo) {
                 </select>
             </td>
             <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-            <td><input type="date" name="egreso_fn[]" class="form-control form-control-sm"></td>
-            <td><input type="date" name="egreso_fi[]" class="form-control form-control-sm"></td>
+            <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+            <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
             <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
         `;
     }
