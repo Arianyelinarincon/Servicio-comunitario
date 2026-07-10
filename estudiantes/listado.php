@@ -25,34 +25,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
+// Captura de filtros
 $sala_filtro = isset($_GET['sala']) ? trim($_GET['sala']) : '';
+$busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
 
 // Paginación
 $registros_por_pagina = 10;
 $pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
 $offset = ($pagina_actual - 1) * $registros_por_pagina;
 
-$sql_count = "SELECT COUNT(*) as total 
-              FROM estudiantes e
-              WHERE e.estatus = 'Activo'";
-
+// Base de las consultas
+$sql_count = "SELECT COUNT(*) as total FROM estudiantes e WHERE e.estatus = 'Activo'";
 $sql = "SELECT e.*, r.nombre_completo AS rep_nombre,
                (SELECT ano_escolar FROM inscripciones WHERE estudiante_id = e.id ORDER BY fecha_inscripcion DESC LIMIT 1) AS ano_escolar_actual
         FROM estudiantes e
         LEFT JOIN representantes r ON e.representante_id = r.id
         WHERE e.estatus = 'Activo'";
 
+// Aplicar filtros SQL
 if ($sala_filtro) {
-    $sala_filtro = mysqli_real_escape_string($conexion, $sala_filtro);
-    $sql_count .= " AND e.sala = '$sala_filtro'";
-    $sql .= " AND e.sala = '$sala_filtro'";
+    $sala_esc = mysqli_real_escape_string($conexion, $sala_filtro);
+    $sql_count .= " AND e.sala = '$sala_esc'";
+    $sql .= " AND e.sala = '$sala_esc'";
 }
 
+if ($busqueda) {
+    $busqueda_esc = mysqli_real_escape_string($conexion, $busqueda);
+    $where_busqueda = " AND (e.nombre LIKE '%$busqueda_esc%' OR e.apellido LIKE '%$busqueda_esc%' OR e.cedula_escolar LIKE '%$busqueda_esc%')";
+    $sql_count .= $where_busqueda;
+    $sql .= $where_busqueda;
+}
+
+// Ejecutar conteo y consulta
 $total_registros = $conexion->query($sql_count)->fetch_assoc()['total'];
 $total_paginas = ceil($total_registros / $registros_por_pagina);
 
 $sql .= " ORDER BY e.sala, e.nombre, e.apellido LIMIT $offset, $registros_por_pagina";
-
 $result = $conexion->query($sql);
 $salas = $conexion->query("SELECT DISTINCT sala FROM secciones ORDER BY sala");
 
@@ -60,13 +68,11 @@ include '../includes/header.php';
 ?>
 
 <div class="container-fluid px-4">
-    <!-- ========== BOTÓN VOLVER A GESTIÓN DE ESTUDIANTES ========== -->
     <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
         <div>
             <h2 class="fw-bold mb-0">Listado de Estudiantes</h2>
             <p class="text-muted">Panel de control para inscripciones y listado de alumnos</p>
         </div>
-        <!-- ========== CORRECCIÓN: Botón Volver a Gestión de Estudiantes ========== -->
         <a href="index.php" class="btn btn-secondary">
             <i class="fas fa-arrow-left"></i> Volver a Gestión de Estudiantes
         </a>
@@ -75,49 +81,38 @@ include '../includes/header.php';
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
         <div class="alert alert-success alert-dismissible fade show">Estudiante eliminado correctamente.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
     <?php endif; ?>
-    <?php if (isset($_GET['inscripcion']) && $_GET['inscripcion'] === 'exito'): ?>
-        <div class="alert alert-success alert-dismissible fade show">¡Inscripción registrada con éxito!<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-    <?php endif; ?>
 
-    <!-- Filtros con buscador en tiempo real al lado -->
-    <div class="card mb-4">
+    <form method="GET" action="listado.php" class="card mb-4">
         <div class="card-body">
             <div class="row g-3 align-items-end">
-                <!-- Sala / Grado -->
                 <div class="col-md-3">
                     <label class="form-label">Sala / Grado</label>
-                    <select name="sala" id="filtro_sala" class="form-select">
+                    <select name="sala" class="form-select" onchange="this.form.submit()">
                         <option value="">Todas</option>
                         <?php while($row = $salas->fetch_assoc()): ?>
                             <option value="<?= htmlspecialchars($row['sala']) ?>" <?= ($sala_filtro == $row['sala']) ? 'selected' : '' ?>><?= ucfirst($row['sala']) ?></option>
                         <?php endwhile; ?>
                     </select>
                 </div>
-
-                <!-- Buscador en tiempo real -->
                 <div class="col-md-4">
                     <label class="form-label">Buscar</label>
-                    <input type="text" id="buscadorTabla" class="form-control" placeholder="Nombre, apellido o cédula...">
+                    <input type="text" name="busqueda" class="form-control" placeholder="Nombre, apellido o cédula..." value="<?= htmlspecialchars($busqueda) ?>">
                 </div>
-
-                <!-- Botones -->
                 <div class="col-md-2">
-                    <label class="form-label">&nbsp;</label>
-                    <a href="listado.php" class="btn btn-secondary w-100">Limpiar</a>
+                    <button type="submit" class="btn btn-primary w-100">Buscar</button>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label">&nbsp;</label>
-                    <a href="inscripcion.php" class="btn btn-success w-100">+ Nueva Inscripción</a>
+                    <a href="listado.php" class="btn btn-secondary w-100">Limpiar</a>
+                    <a href="inscripcion.php" class="btn btn-success w-100 mt-2">+ Nueva Inscripción</a>
                 </div>
             </div>
         </div>
-    </div>
+    </form>
 
-    <!-- Tabla -->
     <div class="card">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-bordered table-hover align-middle" id="tablaEstudiantes">
+                <table class="table table-bordered table-hover align-middle">
                     <thead class="table-light">
                         <tr>
                             <th>Nombre Completo</th>
@@ -128,7 +123,7 @@ include '../includes/header.php';
                             <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody id="tablaBody">
+                    <tbody>
                         <?php if ($result && $result->num_rows > 0): ?>
                             <?php while($e = $result->fetch_assoc()): ?>
                             <tr>
@@ -150,12 +145,11 @@ include '../includes/header.php';
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="6" class="text-center">No hay estudiantes registrados.</td></tr>
+                            <tr><td colspan="6" class="text-center">No se encontraron estudiantes.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
-            <!-- Paginación -->
             <?php if ($total_paginas > 1): ?>
                 <nav class="mt-3">
                     <ul class="pagination justify-content-center">
@@ -170,32 +164,5 @@ include '../includes/header.php';
         </div>
     </div>
 </div>
-
-<script>
-    // Filtro de sala en tiempo real
-    document.getElementById('filtro_sala')?.addEventListener('change', function() {
-        const sala = this.value;
-        let url = 'listado.php';
-        if (sala) {
-            url += '?sala=' + encodeURIComponent(sala);
-        }
-        window.location.href = url;
-    });
-
-    // Buscador en tiempo real
-    document.getElementById('buscadorTabla')?.addEventListener('input', function() {
-        let filter = this.value.toUpperCase().trim();
-        let rows = document.querySelectorAll('#tablaBody tr');
-        
-        rows.forEach(row => {
-            let text = row.innerText.toUpperCase();
-            if (filter === '') {
-                row.style.display = '';
-            } else {
-                row.style.display = text.includes(filter) ? '' : 'none';
-            }
-        });
-    });
-</script>
 
 <?php include '../includes/footer.php'; ?>

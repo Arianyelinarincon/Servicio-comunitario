@@ -82,7 +82,9 @@ while($sec = $secciones->fetch_assoc()) {
                             <select name="genero" class="form-select" required><option value="">--</option><option value="V">Varón</option><option value="H">Hembra</option></select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Orden nacimiento en el año</label>
+                            <label class="form-label fw-semibold">Orden nacimiento en el año <span class="text-danger">*</span>
+                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Indica el orden cronológico de nacimiento entre hermanos del mismo padre y madre (ej. 1 para el primero, 2 para el segundo). Este valor es el primer dígito utilizado para generar automáticamente la cédula estudiantil."></i>
+                            </label>
                             <input type="number" name="orden_nacimiento" id="orden_nacimiento" class="form-control" value="1" min="1" max="9">
                         </div>
                         <div class="col-md-6">
