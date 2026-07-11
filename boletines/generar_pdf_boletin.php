@@ -36,6 +36,16 @@ $m3_form = nl2br(htmlspecialchars($_SESSION['m3_formacion'] ?? ''));
 $m3_rel = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
 $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
 
+// ================================================================
+// LOGO - CONVERSIÓN A BASE64
+// ================================================================
+$logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
+$logo_base64 = '';
+if (file_exists($logo_path)) {
+    $logo_data = file_get_contents($logo_path);
+    $logo_base64 = 'data:image/png;base64,' . base64_encode($logo_data);
+}
+
 $options = new Options();
 $options->set('isHtml5ParserEnabled', true);
 $options->set('isRemoteEnabled', true);
@@ -75,7 +85,6 @@ ob_start();
             vertical-align: top;
         }
 
-        .linea-inferior { border-bottom: 1px solid #000; }
         .texto-negrita { font-weight: bold; }
 
         /* ======== HOJA 1: CARA EXTERIOR ======== */
@@ -105,13 +114,13 @@ ob_start();
             padding-top: 5px;
         }
         /* Nueva clase para líneas al lado del texto */
-.linea-firma-inline {
-    display: inline-block;
-    border-bottom: 1px solid #000; /* Línea negra inferior */
-    height: 0px;
-    vertical-align: bottom; /* Alinea la línea con la base del texto */
-    margin-left: 5px; /* Espacio entre la palabra y la línea */
-}
+        .linea-firma-inline {
+            display: inline-block;
+            border-bottom: 1px solid #000; /* Línea negra inferior */
+            height: 0px;
+            vertical-align: bottom; /* Alinea la línea con la base del texto */
+            margin-left: 5px; /* Espacio entre la palabra y la línea */
+        }
 
         /* COL 2: CITAS */
         .citas-container {
@@ -129,13 +138,23 @@ ob_start();
             font-size: 10pt;
             line-height: 1.3;
         }
+        /* ===== LOGO ===== */
         .logo-portada {
-            width: 90px;
-            height: 90px;
+            width: 75px;
+            height: auto;
             margin: 20px auto;
-            border: 2px solid #000;
             text-align: center;
-            line-height: 90px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-portada img {
+            width: 75px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .logo-portada .logo-texto {
             font-weight: bold;
             font-size: 12pt;
         }
@@ -143,15 +162,30 @@ ob_start();
             text-align: center;
             margin-bottom: 10px;
         }
-        .titulos-portada h1 { font-size: 13pt; margin-top: 50px; }
-        .titulos-portada h2 { font-size: 11pt; margin: 10px 0 0 0; font-weight: normal; }
-        .datos-estudiante {
-            margin-top: 140px; /* Lo ubica en la parte inferior */
-            width: 100%;
-            font-size: 11pt;
-            border-collapse: collapse;
+        .titulos-portada h1 { 
+            font-size: 13pt; 
+            margin-top: 30px; 
         }
-        .datos-estudiante td { padding: 8px 0; }
+        .titulos-portada h2 { 
+            font-size: 11pt; 
+            margin: 10px 0 0 0; 
+            font-weight: normal; 
+        }
+        /* DATOS DEL ESTUDIANTE - SIN LÍNEAS (ESTILO PRIMARIA) */
+        .datos-estudiante {
+            margin-top: 150px;
+            width: 100%;
+            font-size: 10.5pt;
+            border-collapse: collapse;
+            margin-left: 50px;
+        }
+        .datos-estudiante td { 
+            padding: 6px 0; 
+        }
+        .datos-estudiante .etiqueta {
+            font-weight: bold;
+            width: 35%;
+        }
         
         /* ======== HOJA 2: CARA INTERIOR ======== */
         .titulo-momento {
@@ -270,8 +304,13 @@ ob_start();
                 MARACAIBO ZULIA
             </div>
             
+            <!-- ===== LOGO ===== -->
             <div class="logo-portada">
-                LOGO
+                <?php if ($logo_base64): ?>
+                    <img src="<?php echo $logo_base64; ?>" alt="Logo">
+                <?php else: ?>
+                    <span class="logo-texto">LOGO</span>
+                <?php endif; ?>
             </div>
             
             <div class="titulos-portada">
@@ -279,32 +318,27 @@ ob_start();
                 <h2>AÑO ESCOLAR <?php echo $ano_escolar; ?></h2>
             </div>
             
+            <!-- ===== DATOS DEL ESTUDIANTE - SIN LÍNEAS ===== -->
             <table class="datos-estudiante">
                 <tr>
-                    <td style="width: 25%;">Estudiante:</td>
-                    <td style="width: 75%;" class="linea-inferior"><?php echo $estudiante; ?></td>
+                    <td class="etiqueta">Estudiante:</td>
+                    <td><?php echo $estudiante; ?></td>
                 </tr>
                 <tr>
-                    <td>C.E:</td>
-                    <td class="linea-inferior" style="width: 35%;"><?php echo $ce; ?></td>
+                    <td class="etiqueta">C.E:</td>
+                    <td><?php echo $ce; ?></td>
                 </tr>
                 <tr>
-                    <td colspan="2">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <tr>
-                                <td style="width: 20%;">Grupo:</td>
-                                <td style="width: 80%;" class="linea-inferior"><?php echo $grupo; ?></td>
-                            </tr>
-                        </table>
-                    </td>
+                    <td class="etiqueta">Grupo:</td>
+                    <td><?php echo $grupo; ?></td>
                 </tr>
                 <tr>
-                    <td>Docente:</td>
-                    <td class="linea-inferior"><?php echo $docente; ?></td>
+                    <td class="etiqueta">Docente:</td>
+                    <td><?php echo $docente; ?></td>
                 </tr>
                 <tr>
-                    <td>Representante:</td>
-                    <td class="linea-inferior"><?php echo $representante; ?></td>
+                    <td class="etiqueta">Representante:</td>
+                    <td><?php echo $representante; ?></td>
                 </tr>
             </table>
         </td>
@@ -455,7 +489,7 @@ $dompdf->setPaper('letter', 'landscape');
 $dompdf->loadHtml($html);
 $dompdf->render();
 
-// ========== GUARDAR BOLETÍN EN TABLA boletines (CORREGIDO) ==========
+// ========== GUARDAR BOLETÍN EN TABLA boletines ==========
 $estudiante_id = $_SESSION['estudiante_id'] ?? 0;
 if (!$estudiante_id && isset($_SESSION['estudiante'])) {
     $nombre_est = $_SESSION['estudiante'];
@@ -475,7 +509,7 @@ if ($estudiante_id) {
     $tipo = $_SESSION['tipo_boletin'] ?? 'inicial';
     $periodo_escolar = $_SESSION['ano_escolar'] ?? date('Y') . '-' . (date('Y')+1);
     
-    // Eliminar boletín anterior del mismo estudiante y período (opcional)
+    // Eliminar boletín anterior del mismo estudiante y período
     $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ?");
     $stmt_del->bind_param("is", $estudiante_id, $periodo_escolar);
     $stmt_del->execute();
@@ -495,9 +529,6 @@ if ($estudiante_id) {
     $m3_form = $_SESSION['m3_formacion'] ?? '';
     $m3_rel = $_SESSION['m3_relacion'] ?? '';
     $m3_sug = $_SESSION['m3_sugerencias'] ?? '';
-    
-    // Depuración (opcional: comenta después de probar)
-    // error_log("Guardando boletín - m3_proy: $m3_proy, m3_form: $m3_form");
     
     $stmt_bol = $conexion->prepare("INSERT INTO boletines 
         (estudiante_id, periodo, tipo_boletin, observacion, 
