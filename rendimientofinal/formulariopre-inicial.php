@@ -41,14 +41,18 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 $stmt_sec->close();
 
 // ========== CORRECCIÓN: Cambiar ORDER BY para que ordene por NOMBRE primero ==========
-$query_est = "SELECT id, cedula, cedula_escolar, nombre, apellido, genero, 
-                     fecha_nacimiento, lugar_nacimiento 
-              FROM estudiantes 
-              WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo' 
-              ORDER BY nombre ASC, apellido ASC";  // <-- CAMBIADO: primero nombre, luego apellido
+$query_est = "SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
+                     e.fecha_nacimiento, e.lugar_nacimiento 
+              FROM estudiantes e
+              INNER JOIN inscripciones i ON e.id = i.estudiante_id
+              WHERE e.sala = ? 
+              AND e.seccion_id = ? 
+              AND i.ano_escolar = ? 
+              AND e.estatus = 'Activo' 
+              ORDER BY e.nombre ASC, e.apellido ASC";
 
 $stmt_est = $conexion->prepare($query_est);
-$stmt_est->bind_param("si", $sala_seleccionada, $seccion_id); 
+$stmt_est->bind_param("sis", $sala_seleccionada, $seccion_id, $periodo); 
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
