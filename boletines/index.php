@@ -16,7 +16,8 @@ include '../includes/header.php';
     </div>
 
     <div class="row g-4">
-        <div class="col-md-6 mb-4">
+        <!-- BOLETÍN PARA INICIAL -->
+        <div class="col-md-4 mb-4">
             <a href="paso1_portada.php?tipo=inicial" class="text-decoration-none">
                 <div class="card p-4 dashboard-card text-center">
                     <div class="icon-box text-primary"><i class="fas fa-baby fa-3x"></i></div>
@@ -25,8 +26,10 @@ include '../includes/header.php';
                 </div>
             </a>
         </div>
-        <div class="col-md-6 mb-4">
-            <a href="paso1_portada.php?tipo=primaria" class="text-decoration-none">
+        
+        <!-- BOLETÍN PARA PRIMARIA -->
+        <div class="col-md-4 mb-4">
+            <a href="paso1_portada_primaria.php?tipo=primaria" class="text-decoration-none">
                 <div class="card p-4 dashboard-card text-center">
                     <div class="icon-box text-primary"><i class="fas fa-child fa-3x"></i></div>
                     <h5 class="fw-bold mt-3">Boletín para Primaria</h5>
@@ -34,15 +37,17 @@ include '../includes/header.php';
                 </div>
             </a>
         </div>
-        <div class="col-md-6 mb-4">
-    <a href="historial_boletines.php" class="text-decoration-none">
-        <div class="card p-4 dashboard-card text-center">
-            <div class="icon-box text-primary"><i class="fas fa-history fa-3x"></i></div>
-            <h5 class="fw-bold mt-3">Historial de Boletines</h5>
-            <p class="text-muted">Consultar boletines generados anteriormente</p>
+        
+        <!-- HISTORIAL DE BOLETINES -->
+        <div class="col-md-4 mb-4">
+            <a href="historial_boletines.php" class="text-decoration-none">
+                <div class="card p-4 dashboard-card text-center">
+                    <div class="icon-box text-primary"><i class="fas fa-history fa-3x"></i></div>
+                    <h5 class="fw-bold mt-3">Historial de Boletines</h5>
+                    <p class="text-muted">Consultar boletines generados anteriormente</p>
+                </div>
+            </a>
         </div>
-    </a>
-</div>
     </div>
 </div>
 
@@ -52,8 +57,16 @@ include '../includes/header.php';
         border: none;
         border-radius: 15px;
         box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
     }
-    .dashboard-card:hover { transform: translateY(-8px); box-shadow: 0 15px 30px rgba(0,0,0,0.15); }
+    .dashboard-card:hover { 
+        transform: translateY(-8px); 
+        box-shadow: 0 15px 30px rgba(0,0,0,0.15); 
+    }
     .icon-box { margin-bottom: 15px; }
 </style>
 

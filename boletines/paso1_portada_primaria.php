@@ -1,17 +1,13 @@
 <?php
 session_start();
 
-// Limpiar solo las variables de navegación, no los datos ya guardados
+// Limpiar variables de navegación
 unset($_SESSION['paso_actual']);
 
 require_once "../estadisticas/config_db.php";
 
-// Guardar el tipo de boletín (inicial/primaria) en sesión
-if (isset($_GET['tipo'])) {
-    $_SESSION['tipo_boletin'] = $_GET['tipo'];
-} elseif (!isset($_SESSION['tipo_boletin'])) {
-    $_SESSION['tipo_boletin'] = 'inicial';
-}
+// Guardar el tipo de boletín
+$_SESSION['tipo_boletin'] = 'primaria';
 
 // Búsqueda AJAX para autocompletado
 if (isset($_GET['buscar_estudiante'])) {
@@ -49,14 +45,13 @@ if (isset($_GET['buscar_estudiante'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $_SESSION['estudiante'] = htmlspecialchars($_POST['estudiante']);
     $_SESSION['ce'] = htmlspecialchars($_POST['ce']);
-    $_SESSION['grupo'] = htmlspecialchars($_POST['grupo']);
+    $_SESSION['grado'] = htmlspecialchars($_POST['grado']);
     $_SESSION['ano_escolar'] = htmlspecialchars($_POST['ano_escolar'] ?? '2025 / 2026');
     $_SESSION['docente'] = htmlspecialchars($_POST['docente']);
     $_SESSION['representante'] = htmlspecialchars($_POST['representante']);
     $_SESSION['estudiante_id'] = intval($_POST['estudiante_id']);
     
-    // Redirigir al panel de control del boletín
-    header('Location: panel_boletin_inicial.php');
+    header('Location: panel_boletin_primaria.php');
     exit;
 }
 
@@ -67,7 +62,7 @@ include '../includes/header.php';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seleccionar Estudiante - Boletín Inicial</title>
+    <title>Seleccionar Estudiante - Boletín Primaria</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         :root {
@@ -265,7 +260,6 @@ include '../includes/header.php';
             overflow: hidden;
         }
 
-        /* ===== ANIMACIÓN ===== */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -275,7 +269,6 @@ include '../includes/header.php';
             animation: fadeIn 0.5s ease;
         }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .portada-container {
                 padding: 12px 15px;
@@ -307,13 +300,11 @@ include '../includes/header.php';
     </style>
 </head>
 <body>
-    <!-- ===== HEADER INCLUIDO ===== -->
-    
     <div class="portada-container">
         <div class="card-portada">
             <h2>
                 <i class="fas fa-user-graduate"></i>
-                Seleccionar Estudiante - Boletín Inicial
+                Seleccionar Estudiante - Boletín Primaria
             </h2>
             <form method="POST">
                 <div class="grid-portada">
@@ -329,8 +320,8 @@ include '../includes/header.php';
                         <input type="text" name="ce" id="ce" readonly>
                     </div>
                     <div class="grupo-form">
-                        <label><i class="fas fa-users"></i> Grupo:</label>
-                        <input type="text" name="grupo" id="grupo" readonly>
+                        <label><i class="fas fa-users"></i> Grado:</label>
+                        <input type="text" name="grado" id="grado" readonly>
                     </div>
                     <div class="grupo-form">
                         <label><i class="fas fa-calendar-alt"></i> Año Escolar:</label>
@@ -362,7 +353,7 @@ include '../includes/header.php';
         const inputEstudiante = document.getElementById('estudiante');
         const sugerenciasDiv = document.getElementById('sugerencias');
         const ceInput = document.getElementById('ce');
-        const grupoInput = document.getElementById('grupo');
+        const gradoInput = document.getElementById('grado');
         const docenteInput = document.getElementById('docente');
         const representanteInput = document.getElementById('representante');
         const btnSiguiente = document.getElementById('btn_siguiente');
@@ -371,7 +362,7 @@ include '../includes/header.php';
 
         function limpiarCampos() {
             ceInput.value = ''; 
-            grupoInput.value = ''; 
+            gradoInput.value = ''; 
             docenteInput.value = ''; 
             representanteInput.value = '';
             estudianteIdInput.value = '';
@@ -382,7 +373,7 @@ include '../includes/header.php';
         function seleccionarEstudiante(data) {
             inputEstudiante.value = data.nombre_completo;
             ceInput.value = data.ce;
-            grupoInput.value = data.grupo;
+            gradoInput.value = data.grupo;
             docenteInput.value = data.docente;
             representanteInput.value = data.representante;
             estudianteIdInput.value = data.id;

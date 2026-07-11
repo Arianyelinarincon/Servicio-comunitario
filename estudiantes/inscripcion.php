@@ -54,6 +54,9 @@ while($sec = $secciones->fetch_assoc()) {
             </div>
 
             <form id="wizardForm" action="procesar_inscripcion.php" method="POST">
+                <!-- Se mantiene el campo oculto para el procesador -->
+                <input type="hidden" name="madre_cedula_temp" id="madre_cedula_temp">
+                
                 <ul class="nav nav-tabs nav-justified mb-4 border-0" id="stepTabs">
                     <li class="nav-item"><a class="nav-link active rounded-0" href="#step1" data-step="1">1. Datos del Alumno</a></li>
                     <li class="nav-item"><a class="nav-link disabled rounded-0" href="#step2" data-step="2">2. Datos del Representante</a></li>
@@ -61,7 +64,6 @@ while($sec = $secciones->fetch_assoc()) {
                     <li class="nav-item"><a class="nav-link disabled rounded-0" href="#step4" data-step="4">4. Historial Escolar</a></li>
                 </ul>
 
-                <!-- ================= PASO 1: ALUMNO ================= -->
                 <div id="step1" class="step p-3 bg-light rounded-3 mb-3">
                     <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DEL ALUMNO</h5>
                     <div class="row g-3">
@@ -82,30 +84,33 @@ while($sec = $secciones->fetch_assoc()) {
                             <select name="genero" class="form-select" required><option value="">--</option><option value="V">Varón</option><option value="H">Hembra</option></select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label fw-semibold">Orden nacimiento en el año <span class="text-danger">*</span>
-                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Indica el orden cronológico de nacimiento entre hermanos del mismo padre y madre (ej. 1 para el primero, 2 para el segundo). Este valor es el primer dígito utilizado para generar automáticamente la cédula estudiantil."></i>
-                            </label>
+                            <label class="form-label fw-semibold">Orden nacimiento en el año <span class="text-danger">*</span></label>
                             <input type="number" name="orden_nacimiento" id="orden_nacimiento" class="form-control" value="1" min="1" max="9">
                         </div>
+                        
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Cédula de la Madre (para generar Cédula Escolar) <span class="text-danger">*</span>
-                                <i class="fas fa-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Se usará para generar la Cédula Escolar de 11 dígitos"></i>
-                            </label>
-                            <input type="text" name="madre_cedula_temp" id="madre_cedula_temp" class="form-control" placeholder="Ej: 09799555" required>
+                            <label class="form-label fw-semibold">Cédula de referencia (para generar Cédula Escolar) <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <select name="tipo_cedula_base" id="tipo_cedula_base" class="form-select" style="max-width: 140px;">
+                                    <option value="madre">Madre</option>
+                                    <option value="padre">Padre</option>
+                                    <option value="representante">Representante</option>
+                                </select>
+                                <input type="text" name="cedula_base" id="cedula_base" class="form-control" placeholder="Ej: 09799555" required>
+                            </div>
                         </div>
+
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Cédula Escolar (automática)</label>
                             <input type="text" id="cedula_escolar_auto" class="form-control bg-light" readonly>
                             <input type="hidden" name="cedula_escolar" id="cedula_escolar_hidden">
                         </div>
 
-                        <!-- ========== Ubicación estilo SAIME ========== -->
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">País de Nacimiento</label>
                             <select name="pais_nacimiento" id="pais_nacimiento" class="form-select">
                                 <option value="">Seleccione...</option>
                             </select>
-                            <!-- Input oculto para "OTRO" -->
                             <input type="text" id="input_pais_nacimiento" name="pais_nacimiento_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el país..." style="display:none;">
                         </div>
                         <div class="col-md-4">
@@ -151,8 +156,6 @@ while($sec = $secciones->fetch_assoc()) {
                             <label class="form-label fw-semibold">Ciudad</label>
                             <input type="text" name="ciudad" class="form-control text-uppercase" placeholder="Ciudad...">
                         </div>
-                        <!-- ========== FIN ubicación estilo SAIME ========== -->
-
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">¿Sufre enfermedad?</label>
                             <select name="enfermedad" id="enfermedad" class="form-select">
@@ -189,7 +192,6 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-                <!-- ================= PASO 2: REPRESENTANTE ================= -->
                 <div id="step2" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
                     <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DEL REPRESENTANTE</h5>
                     <div class="row g-3">
@@ -205,10 +207,18 @@ while($sec = $secciones->fetch_assoc()) {
                             <label class="form-label fw-semibold">Fecha Nacimiento</label>
                             <input type="date" name="rep_fecha_nacimiento" class="form-control">
                         </div>
+                        
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Estado Civil</label>
-                            <input type="text" name="rep_estado_civil" class="form-control">
+                            <select name="rep_estado_civil" id="rep_estado_civil" class="form-select" onchange="toggleEstadoCivil(this.value)">
+                                <option value="SOLTERO">SOLTERO</option>
+                                <option value="CASADO">CASADO</option>
+                                <option value="DIVORCIADO">DIVORCIADO</option>
+                                <option value="OTRO">OTRO</option>
+                            </select>
+                            <input type="text" id="input_rep_estado_civil" name="rep_estado_civil_otro" class="form-control text-uppercase mt-1" placeholder="Especifique..." style="display:none;">
                         </div>
+                        
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Afinidad</label>
                             <input type="text" name="rep_afinidad" class="form-control">
@@ -222,7 +232,6 @@ while($sec = $secciones->fetch_assoc()) {
                             <select name="rep_sexo" class="form-select"><option value="">--</option><option value="V">Varón</option><option value="H">Hembra</option></select>
                         </div>
 
-                        <!-- ========== Ubicación estilo SAIME para Representante ========== -->
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">País de Nacimiento</label>
                             <select name="rep_pais_nacimiento" id="rep_pais_nacimiento" class="form-select">
@@ -273,16 +282,13 @@ while($sec = $secciones->fetch_assoc()) {
                             <label class="form-label fw-semibold">Ciudad</label>
                             <input type="text" name="rep_ciudad" class="form-control text-uppercase" placeholder="Ciudad...">
                         </div>
-                        <!-- ========== FIN ubicación estilo SAIME ========== -->
-
-                    </div>
+                        </div>
                     <div class="text-end mt-4">
                         <button type="button" class="btn btn-secondary px-4 prev-step"><i class="fas fa-arrow-left me-1"></i> Anterior</button>
                         <button type="button" class="btn btn-primary px-4 next-step">Siguiente <i class="fas fa-arrow-right ms-1"></i></button>
                     </div>
                 </div>
 
-                <!-- ================= PASO 3: PADRES ================= -->
                 <div id="step3" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
                     <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DE LOS PADRES</h5>
                     <div class="row g-3">
@@ -290,7 +296,7 @@ while($sec = $secciones->fetch_assoc()) {
                         <div class="col-md-3"><label>Cédula</label><input type="text" name="madre_cedula" id="madre_cedula" class="form-control"></div>
                         <div class="col-md-3"><label>Teléfono</label><input type="text" name="madre_telefono" class="form-control"></div>
                         <div class="col-md-6"><label>Nombre y Apellido del Padre</label><input type="text" name="padre_nombre" class="form-control text-uppercase"></div>
-                        <div class="col-md-3"><label>Cédula</label><input type="text" name="padre_cedula" class="form-control"></div>
+                        <div class="col-md-3"><label>Cédula</label><input type="text" name="padre_cedula" id="padre_cedula" class="form-control"></div>
                         <div class="col-md-3"><label>Teléfono</label><input type="text" name="padre_telefono" class="form-control"></div>
                     </div>
                     <div class="text-end mt-4">
@@ -299,7 +305,6 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-                <!-- ================= PASO 4: HISTORIAL ESCOLAR ================= -->
                 <div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
                     <h5 class="border-start border-4 border-navy ps-3 mb-4">GRADO Y SECCIÓN (Historial Escolar)</h5>
                     <div class="alert alert-info py-2">
@@ -348,6 +353,19 @@ while($sec = $secciones->fetch_assoc()) {
 </div>
 
 <script>
+// Función para ocultar o mostrar el campo "OTRO" de Estado Civil
+function toggleEstadoCivil(valor) {
+    var inputOtro = document.getElementById('input_rep_estado_civil');
+    if (valor === 'OTRO') {
+        inputOtro.style.display = 'block';
+        inputOtro.required = true;
+    } else {
+        inputOtro.style.display = 'none';
+        inputOtro.required = false;
+        inputOtro.value = '';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Tooltips
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -355,17 +373,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ========== GENERAR CÉDULA ESCOLAR ==========
     function generarCedulaEscolar() {
-        const madreCedulaRaw = document.getElementById('madre_cedula_temp')?.value.trim();
+        const cedulaBaseRaw = document.getElementById('cedula_base')?.value.trim();
         const fechaNac = document.getElementById('fecha_nacimiento')?.value;
         const orden = parseInt(document.getElementById('orden_nacimiento')?.value) || 1;
-        if (!madreCedulaRaw || !fechaNac) {
+        
+        // Sincronizar campo oculto para el procesador
+        document.getElementById('madre_cedula_temp').value = cedulaBaseRaw;
+
+        if (!cedulaBaseRaw || !fechaNac) {
             document.getElementById('cedula_escolar_auto').value = '';
             document.getElementById('cedula_escolar_hidden').value = '';
             return;
         }
         const año = new Date(fechaNac).getFullYear().toString();
         const año2Dig = año.slice(-2);
-        let cedulaLimpia = madreCedulaRaw.replace(/\D/g, '');
+        let cedulaLimpia = cedulaBaseRaw.replace(/\D/g, '');
         if (cedulaLimpia.length < 8) {
             cedulaLimpia = cedulaLimpia.padStart(8, '0');
         } else if (cedulaLimpia.length > 8) {
@@ -374,22 +396,47 @@ document.addEventListener('DOMContentLoaded', function() {
         const ce = orden.toString() + año2Dig + cedulaLimpia;
         document.getElementById('cedula_escolar_auto').value = ce;
         document.getElementById('cedula_escolar_hidden').value = ce;
+    }
+
+    // ========== SINCRONIZAR CÉDULA A LOS PADRES ==========
+    function sincronizarCedula() {
+        const tipo = document.getElementById('tipo_cedula_base')?.value;
+        const cedula = document.getElementById('cedula_base')?.value;
         
-        const madreCedulaStep3 = document.getElementById('madre_cedula');
-        if (madreCedulaStep3 && madreCedulaStep3.value !== madreCedulaRaw) {
-            madreCedulaStep3.value = madreCedulaRaw;
+        const inputMadre = document.getElementById('madre_cedula');
+        const inputPadre = document.getElementById('padre_cedula');
+        
+        if (inputMadre && inputPadre) {
+            if (tipo === 'madre') {
+                inputMadre.value = cedula;
+                if (inputPadre.value === cedula) inputPadre.value = '';
+            } else if (tipo === 'padre') {
+                inputPadre.value = cedula;
+                if (inputMadre.value === cedula) inputMadre.value = '';
+            }
         }
     }
-    document.getElementById('madre_cedula_temp')?.addEventListener('input', generarCedulaEscolar);
+
+    // Eventos para generación y sincronización
+    document.getElementById('cedula_base')?.addEventListener('input', function() {
+        generarCedulaEscolar();
+        sincronizarCedula();
+    });
+    document.getElementById('tipo_cedula_base')?.addEventListener('change', sincronizarCedula);
     document.getElementById('fecha_nacimiento')?.addEventListener('change', generarCedulaEscolar);
     document.getElementById('orden_nacimiento')?.addEventListener('input', generarCedulaEscolar);
+    
+    // Ejecutar al inicio por si hay datos
     generarCedulaEscolar();
 
+    // Mantener la sincronización bidireccional si escriben manualmente en el paso 3 (Madre)
     document.getElementById('madre_cedula')?.addEventListener('input', function() {
         const madreStep3 = this.value.trim();
-        const madreTemp = document.getElementById('madre_cedula_temp');
-        if (madreTemp && madreTemp.value !== madreStep3) {
-            madreTemp.value = madreStep3;
+        const cedulaBase = document.getElementById('cedula_base');
+        const tipoCedula = document.getElementById('tipo_cedula_base');
+        
+        if (cedulaBase && tipoCedula && tipoCedula.value === 'madre' && cedulaBase.value !== madreStep3) {
+            cedulaBase.value = madreStep3;
             generarCedulaEscolar();
         }
     });
@@ -403,7 +450,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
     toggleEnfermedad(); toggleEducacionFisica(); toggleAlergia();
 
-    // Wizard
+    // ========== WIZARD CON VALIDACIÓN INTELIGENTE ==========
     const steps = document.querySelectorAll('.step');
     const nextBtns = document.querySelectorAll('.next-step');
     const prevBtns = document.querySelectorAll('.prev-step');
@@ -411,7 +458,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const progressBar = document.getElementById('progressBar');
     let currentStep = 0;
     const totalSteps = steps.length;
+    
     function updateProgress() { progressBar.style.width = ((currentStep+1)/totalSteps*100)+'%'; }
+    
     function showStep(step) {
         steps.forEach((s,i)=>s.style.display = i===step ? 'block' : 'none');
         tabs.forEach((tab,i)=>{
@@ -420,12 +469,52 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         currentStep = step; updateProgress();
     }
-    function nextHandler() { if(currentStep < totalSteps-1) showStep(currentStep+1); }
+    
+    function nextHandler() { 
+        const currentStepEl = steps[currentStep];
+        const inputs = currentStepEl.querySelectorAll('input, select, textarea');
+        let isValid = true;
+        
+        for (let i = 0; i < inputs.length; i++) {
+            if (!inputs[i].checkValidity()) {
+                inputs[i].reportValidity();
+                isValid = false;
+                break;
+            }
+        }
+        
+        if (isValid && currentStep < totalSteps-1) {
+            showStep(currentStep+1); 
+        }
+    }
+    
     function prevHandler() { if(currentStep > 0) showStep(currentStep-1); }
     nextBtns.forEach(btn=>{ btn.removeEventListener('click',nextHandler); btn.addEventListener('click',nextHandler); });
     prevBtns.forEach(btn=>{ btn.removeEventListener('click',prevHandler); btn.addEventListener('click',prevHandler); });
-    tabs.forEach((tab,idx)=>tab.addEventListener('click',(e)=>{ e.preventDefault(); if(idx <= currentStep+1) showStep(idx); }));
+    
     showStep(0);
+
+    // ========== VALIDACIÓN FINAL AL GUARDAR (FIJO) ==========
+    const wizardForm = document.getElementById('wizardForm');
+    if (wizardForm) {
+        wizardForm.addEventListener('submit', function(e) {
+            // Fuerza la actualización de campos ocultos antes de enviar
+            generarCedulaEscolar();
+            
+            if (!this.checkValidity()) {
+                e.preventDefault();
+                const primerInvalido = this.querySelector(':invalid');
+                if (primerInvalido) {
+                    const stepPadre = primerInvalido.closest('.step');
+                    const stepIndex = Array.from(steps).indexOf(stepPadre);
+                    if (stepIndex !== -1) {
+                        showStep(stepIndex);
+                        setTimeout(() => primerInvalido.reportValidity(), 100);
+                    }
+                }
+            }
+        });
+    }
 
     // Tabla dinámica
     const agregarBtn = document.getElementById('agregarFila');
@@ -448,20 +537,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-        // ========== CARGA DE DATOS GEOGRÁFICOS DESDE ARCGIS ==========
-    
-    // Función genérica para cargar selects desde ArcGIS
+    // ========== CARGA DE DATOS GEOGRÁFICOS ==========
     function cargarSelectArcGIS(url, selectId, valorDefault, callback) {
         fetch(url)
             .then(response => response.json())
             .then(data => {
                 const select = document.getElementById(selectId);
                 if (!select) return;
-                
                 const firstOption = select.options[0];
                 select.innerHTML = '';
                 select.appendChild(firstOption);
-                
                 if (data.length > 0) {
                     data.forEach(item => {
                         const option = document.createElement('option');
@@ -470,486 +555,140 @@ document.addEventListener('DOMContentLoaded', function() {
                         select.appendChild(option);
                     });
                 }
-                
                 const optionOtro = document.createElement('option');
                 optionOtro.value = 'OTRO';
                 optionOtro.textContent = '--- OTRO ---';
                 optionOtro.style.fontWeight = 'bold';
                 optionOtro.style.color = '#dc3545';
                 select.appendChild(optionOtro);
-                
-                if (valorDefault) {
-                    select.value = valorDefault;
-                }
-                
+                if (valorDefault) select.value = valorDefault;
                 if (callback) callback();
             })
             .catch(error => {
                 console.error('Error:', error);
                 const select = document.getElementById(selectId);
-                if (select) {
-                    select.innerHTML = '<option value="">Error al cargar datos</option>';
-                }
+                if (select) select.innerHTML = '<option value="">Error al cargar datos</option>';
             });
     }
 
-    // ========== Cargar Países (estáticos) ==========
-    function cargarPaises() {
-        fetch('ajax_geografico.php?action=get_paises')
-            .then(response => response.json())
-            .then(data => {
-                // Paises
-                const selectPais = document.getElementById('pais_nacimiento');
-                selectPais.innerHTML = '<option value="">Seleccione...</option>';
-                data.forEach(item => {
-                    const option = document.createElement('option');
-                    option.value = item.nombre;
-                    option.textContent = item.nombre;
-                    selectPais.appendChild(option);
-                });
-                const optionOtro = document.createElement('option');
-                optionOtro.value = 'OTRO';
-                optionOtro.textContent = '--- OTRO ---';
-                optionOtro.style.fontWeight = 'bold';
-                optionOtro.style.color = '#dc3545';
-                selectPais.appendChild(optionOtro);
-                selectPais.value = 'Venezuela';
-                manejarOtro('pais_nacimiento', 'input_pais_nacimiento');
-
-                // Paises Representante
-                const selectRepPais = document.getElementById('rep_pais_nacimiento');
-                selectRepPais.innerHTML = '<option value="">Seleccione...</option>';
-                data.forEach(item => {
-                    const option = document.createElement('option');
-                    option.value = item.nombre;
-                    option.textContent = item.nombre;
-                    selectRepPais.appendChild(option);
-                });
-                const optionOtro2 = document.createElement('option');
-                optionOtro2.value = 'OTRO';
-                optionOtro2.textContent = '--- OTRO ---';
-                optionOtro2.style.fontWeight = 'bold';
-                optionOtro2.style.color = '#dc3545';
-                selectRepPais.appendChild(optionOtro2);
-                selectRepPais.value = 'Venezuela';
-                manejarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
-            })
-            .catch(error => console.error('Error cargando países:', error));
-    }
-
-    // ========== Cargar Estados desde ArcGIS ==========
-    function cargarEstados() {
-        cargarSelectArcGIS('ajax_geografico.php?action=get_estados', 'estado_nacimiento', '', function() {
-            manejarOtro('estado_nacimiento', 'input_estado_nacimiento');
-        });
-        cargarSelectArcGIS('ajax_geografico.php?action=get_estados', 'estado_residencia', '', function() {
-            manejarOtro('estado_residencia', 'input_estado_residencia');
-        });
-        cargarSelectArcGIS('ajax_geografico.php?action=get_estados', 'rep_estado_nacimiento', '', function() {
-            manejarOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento');
-        });
-        cargarSelectArcGIS('ajax_geografico.php?action=get_estados', 'rep_estado_residencia', '', function() {
-            manejarOtro('rep_estado_residencia', 'input_rep_estado_residencia');
-        });
-    }
-
-    // ========== Cargar Municipios desde ArcGIS ==========
-    function cargarMunicipios(estado, selectMunicipioId, selectParroquiaId, valorDefault) {
-        if (!estado || estado === 'OTRO' || estado === '') {
-            document.getElementById(selectMunicipioId).innerHTML = '<option value="">Primero seleccione un estado</option>';
-            document.getElementById(selectMunicipioId).disabled = true;
-            document.getElementById(selectParroquiaId).innerHTML = '<option value="">Primero seleccione un municipio</option>';
-            document.getElementById(selectParroquiaId).disabled = true;
-            
-            const inputId = 'input_' + selectMunicipioId;
-            const input = document.getElementById(inputId);
-            if (input) { input.style.display = 'none'; }
-            return;
-        }
-        
-        fetch('ajax_geografico.php?action=get_municipios&estado=' + encodeURIComponent(estado))
-            .then(response => response.json())
-            .then(data => {
-                const select = document.getElementById(selectMunicipioId);
-                select.innerHTML = '';
-                
-                const optionDefault = document.createElement('option');
-                optionDefault.value = '';
-                optionDefault.textContent = 'Seleccione un municipio...';
-                select.appendChild(optionDefault);
-                
-                if (data.length > 0) {
-                    data.forEach(item => {
-                        const option = document.createElement('option');
-                        option.value = item.nombre;
-                        option.textContent = item.nombre;
-                        select.appendChild(option);
-                    });
-                }
-                
-                const optionOtro = document.createElement('option');
-                optionOtro.value = 'OTRO';
-                optionOtro.textContent = '--- OTRO ---';
-                optionOtro.style.fontWeight = 'bold';
-                optionOtro.style.color = '#dc3545';
-                select.appendChild(optionOtro);
-                
-                select.disabled = false;
-                
-                if (valorDefault) {
-                    select.value = valorDefault;
-                }
-                
-                document.getElementById(selectParroquiaId).innerHTML = '<option value="">Primero seleccione un municipio</option>';
-                document.getElementById(selectParroquiaId).disabled = true;
-                
-                const inputId = 'input_' + selectMunicipioId;
-                const input = document.getElementById(inputId);
-                if (input) {
-                    manejarOtro(selectMunicipioId, inputId);
-                }
-            })
-            .catch(error => console.error('Error:', error));
-    }
-
-    // ========== Cargar Parroquias desde ArcGIS ==========
-    function cargarParroquias(municipio, selectParroquiaId, valorDefault) {
-        if (!municipio || municipio === 'OTRO' || municipio === '') {
-            document.getElementById(selectParroquiaId).innerHTML = '<option value="">Primero seleccione un municipio</option>';
-            document.getElementById(selectParroquiaId).disabled = true;
-            
-            const inputId = 'input_' + selectParroquiaId;
-            const input = document.getElementById(inputId);
-            if (input) { input.style.display = 'none'; }
-            return;
-        }
-        
-        fetch('ajax_geografico.php?action=get_parroquias&municipio=' + encodeURIComponent(municipio))
-            .then(response => response.json())
-            .then(data => {
-                const select = document.getElementById(selectParroquiaId);
-                select.innerHTML = '';
-                
-                const optionDefault = document.createElement('option');
-                optionDefault.value = '';
-                optionDefault.textContent = 'Seleccione una parroquia...';
-                select.appendChild(optionDefault);
-                
-                if (data.length > 0) {
-                    data.forEach(item => {
-                        const option = document.createElement('option');
-                        option.value = item.nombre;
-                        option.textContent = item.nombre;
-                        select.appendChild(option);
-                    });
-                }
-                
-                const optionOtro = document.createElement('option');
-                optionOtro.value = 'OTRO';
-                optionOtro.textContent = '--- OTRO ---';
-                optionOtro.style.fontWeight = 'bold';
-                optionOtro.style.color = '#dc3545';
-                select.appendChild(optionOtro);
-                
-                select.disabled = false;
-                
-                if (valorDefault) {
-                    select.value = valorDefault;
-                }
-                
-                const inputId = 'input_' + selectParroquiaId;
-                const input = document.getElementById(inputId);
-                if (input) {
-                    manejarOtro(selectParroquiaId, inputId);
-                }
-            })
-            .catch(error => console.error('Error:', error));
-    }
-
-    // ========== MANEJAR OPCIÓN "OTRO" REVERSIBLE ==========
-function manejarOtro(selectId, inputId) {
-    const select = document.getElementById(selectId);
-    const input = document.getElementById(inputId);
-    if (!select || !input) return;
-    
-    select.addEventListener('change', function() {
-        if (this.value === 'OTRO') {
-            this.style.display = 'none';
-            input.style.display = 'block';
-            input.value = '';
-            input.focus();
-            input.required = true;
-            input.dataset.valorAnterior = this.dataset.valorAnterior || '';
-        } else {
-            this.style.display = 'block';
-            input.style.display = 'none';
-            input.value = '';
-            input.required = false;
-            this.dataset.valorAnterior = this.value;
-        }
-    });
-
-    input.addEventListener('blur', function() {
-        if (this.value.trim() === '') {
-            select.style.display = 'block';
-            this.style.display = 'none';
-            this.required = false;
-            if (select.dataset.valorAnterior) {
-                select.value = select.dataset.valorAnterior;
-            } else {
-                select.value = '';
-            }
-        }
-    });
-
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            select.style.display = 'block';
-            this.style.display = 'none';
-            this.value = '';
-            this.required = false;
-            if (select.dataset.valorAnterior) {
-                select.value = select.dataset.valorAnterior;
-            } else {
-                select.value = '';
-            }
-        }
-    });
-}
-
-// ========== FUNCIÓN PARA CREAR INPUT "OTRO" ==========
-function crearInputOtro(selectId, inputId, placeholder) {
-    let input = document.getElementById(inputId);
-    if (!input) {
-        input = document.createElement('input');
-        input.type = 'text';
-        input.id = inputId;
-        input.name = inputId.replace('input_', '');
-        input.className = 'form-control text-uppercase mt-1';
-        input.placeholder = placeholder || 'Escriba aquí...';
-        input.style.display = 'none';
-        
+    function manejarOtro(selectId, inputId) {
         const select = document.getElementById(selectId);
-        if (select) {
-            select.parentNode.appendChild(input);
-        }
-    }
-    return input;
-}
-
-// ========== CARGAR SELECT DESDE AJAX ==========
-function cargarSelectAjax(url, selectId, valorDefault, callback) {
-    fetch(url)
-        .then(response => response.json())
-        .then(data => {
-            const select = document.getElementById(selectId);
-            if (!select) return;
-            
-            const firstOption = select.options[0];
-            select.innerHTML = '';
-            select.appendChild(firstOption);
-            
-            if (data.length > 0) {
-                data.forEach(item => {
-                    const option = document.createElement('option');
-                    option.value = item.nombre;
-                    option.textContent = item.nombre;
-                    select.appendChild(option);
-                });
-            }
-            
-            const optionOtro = document.createElement('option');
-            optionOtro.value = 'OTRO';
-            optionOtro.textContent = '--- OTRO ---';
-            optionOtro.style.fontWeight = 'bold';
-            optionOtro.style.color = '#dc3545';
-            select.appendChild(optionOtro);
-            
-            if (valorDefault) {
-                select.value = valorDefault;
-            }
-            
-            if (callback) callback();
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            const select = document.getElementById(selectId);
-            if (select) {
-                select.innerHTML = '<option value="">Error al cargar datos</option>';
+        const input = document.getElementById(inputId);
+        if (!select || !input) return;
+        select.addEventListener('change', function() {
+            if (this.value === 'OTRO') {
+                this.style.display = 'none';
+                input.style.display = 'block';
+                input.value = '';
+                input.focus();
+                input.required = true;
+                input.dataset.valorAnterior = this.dataset.valorAnterior || '';
+            } else {
+                this.style.display = 'block';
+                input.style.display = 'none';
+                input.value = '';
+                input.required = false;
+                this.dataset.valorAnterior = this.value;
             }
         });
-}
-
-// ========== Cargar Países (SOLO VENEZUELA + OTRO) ==========
-function cargarPaises() {
-    // País - Alumno
-    const selectPais = document.getElementById('pais_nacimiento');
-    selectPais.innerHTML = '<option value="">Seleccione...</option>';
-    
-    const optionVen = document.createElement('option');
-    optionVen.value = 'Venezuela';
-    optionVen.textContent = 'Venezuela';
-    selectPais.appendChild(optionVen);
-    
-    const optionOtro = document.createElement('option');
-    optionOtro.value = 'OTRO';
-    optionOtro.textContent = '--- OTRO ---';
-    optionOtro.style.fontWeight = 'bold';
-    optionOtro.style.color = '#dc3545';
-    selectPais.appendChild(optionOtro);
-    selectPais.value = 'Venezuela';
-    
-    crearInputOtro('pais_nacimiento', 'input_pais_nacimiento', 'Escriba el país...');
-    manejarOtro('pais_nacimiento', 'input_pais_nacimiento');
-
-    // País - Representante
-    const selectRepPais = document.getElementById('rep_pais_nacimiento');
-    selectRepPais.innerHTML = '<option value="">Seleccione...</option>';
-    
-    const optionVen2 = document.createElement('option');
-    optionVen2.value = 'Venezuela';
-    optionVen2.textContent = 'Venezuela';
-    selectRepPais.appendChild(optionVen2);
-    
-    const optionOtro2 = document.createElement('option');
-    optionOtro2.value = 'OTRO';
-    optionOtro2.textContent = '--- OTRO ---';
-    optionOtro2.style.fontWeight = 'bold';
-    optionOtro2.style.color = '#dc3545';
-    selectRepPais.appendChild(optionOtro2);
-    selectRepPais.value = 'Venezuela';
-    
-    crearInputOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento', 'Escriba el país...');
-    manejarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
-}
-
-// ========== Cargar Estados ==========
-function cargarEstados() {
-    cargarSelectAjax('ajax_geografico.php?action=get_estados', 'estado_nacimiento', '', function() {
-        crearInputOtro('estado_nacimiento', 'input_estado_nacimiento', 'Escriba el estado...');
-        manejarOtro('estado_nacimiento', 'input_estado_nacimiento');
-    });
-    cargarSelectAjax('ajax_geografico.php?action=get_estados', 'estado_residencia', '', function() {
-        crearInputOtro('estado_residencia', 'input_estado_residencia', 'Escriba el estado...');
-        manejarOtro('estado_residencia', 'input_estado_residencia');
-    });
-    cargarSelectAjax('ajax_geografico.php?action=get_estados', 'rep_estado_nacimiento', '', function() {
-        crearInputOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento', 'Escriba el estado...');
-        manejarOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento');
-    });
-    cargarSelectAjax('ajax_geografico.php?action=get_estados', 'rep_estado_residencia', '', function() {
-        crearInputOtro('rep_estado_residencia', 'input_rep_estado_residencia', 'Escriba el estado...');
-        manejarOtro('rep_estado_residencia', 'input_rep_estado_residencia');
-    });
-}
-
-// ========== Cargar Municipios ==========
-function cargarMunicipios(estado, selectMunicipioId, selectParroquiaId, valorDefault) {
-    if (!estado || estado === 'OTRO' || estado === '') {
-        document.getElementById(selectMunicipioId).innerHTML = '<option value="">Primero seleccione un estado</option>';
-        document.getElementById(selectMunicipioId).disabled = true;
-        document.getElementById(selectParroquiaId).innerHTML = '<option value="">Primero seleccione un municipio</option>';
-        document.getElementById(selectParroquiaId).disabled = true;
-        
-        const inputId = 'input_' + selectMunicipioId;
-        const input = document.getElementById(inputId);
-        if (input) { input.style.display = 'none'; }
-        return;
+        input.addEventListener('blur', function() {
+            if (this.value.trim() === '') {
+                select.style.display = 'block';
+                this.style.display = 'none';
+                this.required = false;
+                if (select.dataset.valorAnterior) select.value = select.dataset.valorAnterior;
+                else select.value = '';
+            }
+        });
     }
-    
-    const url = 'ajax_geografico.php?action=get_municipios&estado=' + encodeURIComponent(estado);
-    cargarSelectAjax(url, selectMunicipioId, valorDefault, function() {
-        const inputId = 'input_' + selectMunicipioId;
-        const input = document.getElementById(inputId);
-        if (input) {
-            crearInputOtro(selectMunicipioId, inputId, 'Escriba el municipio...');
-            manejarOtro(selectMunicipioId, inputId);
-        }
-        document.getElementById(selectMunicipioId).disabled = false;
-    });
-}
 
-// ========== Cargar Parroquias ==========
-function cargarParroquias(municipio, selectParroquiaId, valorDefault) {
-    if (!municipio || municipio === 'OTRO' || municipio === '') {
-        document.getElementById(selectParroquiaId).innerHTML = '<option value="">Primero seleccione un municipio</option>';
-        document.getElementById(selectParroquiaId).disabled = true;
-        
-        const inputId = 'input_' + selectParroquiaId;
-        const input = document.getElementById(inputId);
-        if (input) { input.style.display = 'none'; }
-        return;
+    function crearInputOtro(selectId, inputId, placeholder) {
+        let input = document.getElementById(inputId);
+        if (!input) {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.id = inputId;
+            input.name = inputId.replace('input_', '');
+            input.className = 'form-control text-uppercase mt-1';
+            input.placeholder = placeholder || 'Escriba aquí...';
+            input.style.display = 'none';
+            const select = document.getElementById(selectId);
+            if (select) select.parentNode.appendChild(input);
+        }
+        return input;
     }
-    
-    const url = 'ajax_geografico.php?action=get_parroquias&municipio=' + encodeURIComponent(municipio);
-    cargarSelectAjax(url, selectParroquiaId, valorDefault, function() {
-        const inputId = 'input_' + selectParroquiaId;
-        const input = document.getElementById(inputId);
-        if (input) {
-            crearInputOtro(selectParroquiaId, inputId, 'Escriba la parroquia...');
-            manejarOtro(selectParroquiaId, inputId);
-        }
-        document.getElementById(selectParroquiaId).disabled = false;
-    });
-}
 
-// ========== EVENTOS EN CADENA - Alumno ==========
-document.getElementById('estado_nacimiento')?.addEventListener('change', function() {
-    cargarMunicipios(this.value, 'municipio', 'parroquia', '');
-});
+    function cargarPaises() {
+        const selectPais = document.getElementById('pais_nacimiento');
+        selectPais.innerHTML = '<option value="">Seleccione...</option>';
+        const optionVen = document.createElement('option');
+        optionVen.value = 'Venezuela';
+        optionVen.textContent = 'Venezuela';
+        selectPais.appendChild(optionVen);
+        const optionOtro = document.createElement('option');
+        optionOtro.value = 'OTRO';
+        optionOtro.textContent = '--- OTRO ---';
+        optionOtro.style.fontWeight = 'bold';
+        optionOtro.style.color = '#dc3545';
+        selectPais.appendChild(optionOtro);
+        selectPais.value = 'Venezuela';
+        crearInputOtro('pais_nacimiento', 'input_pais_nacimiento', 'Escriba el país...');
+        manejarOtro('pais_nacimiento', 'input_pais_nacimiento');
 
-document.getElementById('estado_residencia')?.addEventListener('change', function() {
-    cargarMunicipios(this.value, 'municipio', 'parroquia', '');
-});
+        const selectRepPais = document.getElementById('rep_pais_nacimiento');
+        selectRepPais.innerHTML = '<option value="">Seleccione...</option>';
+        const optionVen2 = document.createElement('option');
+        optionVen2.value = 'Venezuela';
+        optionVen2.textContent = 'Venezuela';
+        selectRepPais.appendChild(optionVen2);
+        const optionOtro2 = document.createElement('option');
+        optionOtro2.value = 'OTRO';
+        optionOtro2.textContent = '--- OTRO ---';
+        optionOtro2.style.fontWeight = 'bold';
+        optionOtro2.style.color = '#dc3545';
+        selectRepPais.appendChild(optionOtro2);
+        selectRepPais.value = 'Venezuela';
+        crearInputOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento', 'Escriba el país...');
+        manejarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
+    }
 
-document.getElementById('municipio')?.addEventListener('change', function() {
-    cargarParroquias(this.value, 'parroquia', '');
-});
+    function cargarEstados() {
+        const url = 'ajax_geografico.php?action=get_estados';
+        ['estado_nacimiento', 'estado_residencia', 'rep_estado_nacimiento', 'rep_estado_residencia'].forEach(id => {
+             cargarSelectArcGIS(url, id, '', function() {
+                crearInputOtro(id, 'input_' + id, 'Escriba el estado...');
+                manejarOtro(id, 'input_' + id);
+            });
+        });
+    }
 
-// ========== EVENTOS EN CADENA - Representante ==========
-document.getElementById('rep_estado_nacimiento')?.addEventListener('change', function() {
-    cargarMunicipios(this.value, 'rep_municipio', 'rep_parroquia', '');
-});
+    function cargarMunicipios(estado, selectMunicipioId, selectParroquiaId, valorDefault) {
+        if (!estado || estado === 'OTRO') return;
+        const url = 'ajax_geografico.php?action=get_municipios&estado=' + encodeURIComponent(estado);
+        cargarSelectArcGIS(url, selectMunicipioId, valorDefault, function() {
+            crearInputOtro(selectMunicipioId, 'input_' + selectMunicipioId, 'Escriba el municipio...');
+            manejarOtro(selectMunicipioId, 'input_' + selectMunicipioId);
+            document.getElementById(selectMunicipioId).disabled = false;
+        });
+    }
 
-document.getElementById('rep_estado_residencia')?.addEventListener('change', function() {
-    cargarMunicipios(this.value, 'rep_municipio', 'rep_parroquia', '');
-});
+    function cargarParroquias(municipio, selectParroquiaId, valorDefault) {
+        if (!municipio || municipio === 'OTRO') return;
+        const url = 'ajax_geografico.php?action=get_parroquias&municipio=' + encodeURIComponent(municipio);
+        cargarSelectArcGIS(url, selectParroquiaId, valorDefault, function() {
+            crearInputOtro(selectParroquiaId, 'input_' + selectParroquiaId, 'Escriba la parroquia...');
+            manejarOtro(selectParroquiaId, 'input_' + selectParroquiaId);
+            document.getElementById(selectParroquiaId).disabled = false;
+        });
+    }
 
-document.getElementById('rep_municipio')?.addEventListener('change', function() {
-    cargarParroquias(this.value, 'rep_parroquia', '');
-});
+    document.getElementById('estado_nacimiento')?.addEventListener('change', function() { cargarMunicipios(this.value, 'municipio', 'parroquia', ''); });
+    document.getElementById('estado_residencia')?.addEventListener('change', function() { cargarMunicipios(this.value, 'municipio', 'parroquia', ''); });
+    document.getElementById('municipio')?.addEventListener('change', function() { cargarParroquias(this.value, 'parroquia', ''); });
+    document.getElementById('rep_estado_nacimiento')?.addEventListener('change', function() { cargarMunicipios(this.value, 'rep_municipio', 'rep_parroquia', ''); });
+    document.getElementById('rep_estado_residencia')?.addEventListener('change', function() { cargarMunicipios(this.value, 'rep_municipio', 'rep_parroquia', ''); });
+    document.getElementById('rep_municipio')?.addEventListener('change', function() { cargarParroquias(this.value, 'rep_parroquia', ''); });
 
-// ========== Cargar datos al iniciar ==========
-cargarPaises();
-cargarEstados();
-
-    // ========== EVENTOS EN CADENA - Alumno ==========
-    document.getElementById('estado_nacimiento')?.addEventListener('change', function() {
-        cargarMunicipios(this.value, 'municipio', 'parroquia', '');
-    });
-
-    document.getElementById('estado_residencia')?.addEventListener('change', function() {
-        cargarMunicipios(this.value, 'municipio', 'parroquia', '');
-    });
-
-    document.getElementById('municipio')?.addEventListener('change', function() {
-        cargarParroquias(this.value, 'parroquia', '');
-    });
-
-    // ========== EVENTOS EN CADENA - Representante ==========
-    document.getElementById('rep_estado_nacimiento')?.addEventListener('change', function() {
-        cargarMunicipios(this.value, 'rep_municipio', 'rep_parroquia', '');
-    });
-
-    document.getElementById('rep_estado_residencia')?.addEventListener('change', function() {
-        cargarMunicipios(this.value, 'rep_municipio', 'rep_parroquia', '');
-    });
-
-    document.getElementById('rep_municipio')?.addEventListener('change', function() {
-        cargarParroquias(this.value, 'rep_parroquia', '');
-    });
-
-    // ========== Cargar datos al iniciar ==========
     cargarPaises();
     cargarEstados();
 });

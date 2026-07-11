@@ -81,7 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             alergia=?, alergia_cual=?, madre_nombre=?, madre_cedula=?, madre_telefono=?,
             padre_nombre=?, padre_cedula=?, padre_telefono=?, sala=?
             WHERE id=?");
-        $stmt_upd->bind_param("ssssisssssssssssssssssssssi",
+
+        // ✅ CORRECCIÓN: Generamos la cadena de tipos dinámicamente (27 variables: 25 strings + 2 ints)
+        // Los primeros 4 son strings, luego 1 int, luego 21 strings, luego 1 int
+        $types = str_repeat('s', 4) . 'i' . str_repeat('s', 21) . 'i';
+        $stmt_upd->bind_param($types,
             $nombre, $apellido, $fecha_nac, $genero, $orden_nacimiento,
             $nacionalidad, $pais_nac, $estado_nac, $direccion,
             $estado_res, $municipio, $parroquia, $ciudad,
@@ -123,7 +127,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt_rep->close();
 
         // 3. Actualizar inscripciones (historial escolar)
-        // Primero eliminar las existentes y luego insertar las nuevas
         $stmt_del = $conexion->prepare("DELETE FROM inscripciones WHERE estudiante_id = ?");
         $stmt_del->bind_param("i", $id);
         $stmt_del->execute();
@@ -157,9 +160,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt_ins->close();
 
         $conexion->commit();
-        $mensaje = "¡Datos actualizados con éxito!";
-        $tipo_mensaje = "success";
-        // Recargar datos actualizados
         header("Location: editar_estudiantes.php?id=$id&msg=success");
         exit();
     } catch (Exception $e) {
