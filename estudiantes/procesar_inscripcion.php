@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rep_cedula = trim($_POST['rep_cedula'] ?? '');
     $rep_nombre = trim($_POST['rep_nombre'] ?? '');
     $rep_telefono = trim($_POST['rep_telefono'] ?? '');
-    $madre_cedula = trim($_POST['madre_cedula_temp'] ?? '');
+    $madre_cedula = trim($_POST['cedula_base'] ?? ''); 
 
     if (empty($nombre) || empty($apellido) || empty($fecha_nac) || empty($genero) || 
         empty($rep_cedula) || empty($rep_nombre) || empty($rep_telefono) || empty($madre_cedula)) {
@@ -123,18 +123,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $padre_nombre = $_POST['padre_nombre'] ?? '';
         $padre_cedula = $_POST['padre_cedula'] ?? '';
         $padre_telefono = $_POST['padre_telefono'] ?? '';
-        $sala = '';
+        $sala = ''; // Se actualizará después
 
+        // ✅ CORRECCIÓN: Eliminamos el campo 'alergias_condiciones' de la consulta
         $stmt = $conexion->prepare("INSERT INTO estudiantes 
-            (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, alergias_condiciones, 
+            (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, 
              representante_id, nacionalidad, pais_nacimiento, estado_nacimiento, direccion, 
              estado_residencia, municipio, parroquia, ciudad, enfermedad, enfermedad_cual, 
              educacion_fisica, educacion_fisica_porque, alergia, alergia_cual, 
              madre_nombre, madre_cedula, madre_telefono, padre_nombre, padre_cedula, padre_telefono, 
              orden_nacimiento, estatus, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
 
-        $stmt->bind_param("ssssssissssssssssssssssssssi", 
+        // ✅ CORRECCIÓN: Generamos la cadena de tipos dinámicamente (28 variables: 26 strings + 2 ints)
+        // Los primeros 6 son strings, luego 1 int, luego 20 strings, luego 1 int
+        $types = str_repeat('s', 6) . 'i' . str_repeat('s', 20) . 'i';
+        $stmt->bind_param($types, 
             $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
             $nacionalidad, $pais_nac, $estado_nac, $direccion, $estado_res, $municipio, $parroquia, $ciudad,
             $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
