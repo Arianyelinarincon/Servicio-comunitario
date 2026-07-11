@@ -171,6 +171,7 @@ ob_start();
             margin: 10px 0 0 0; 
             font-weight: normal; 
         }
+        
         /* DATOS DEL ESTUDIANTE - SIN LÍNEAS (ESTILO PRIMARIA) */
         .datos-estudiante {
             margin-top: 150px;
