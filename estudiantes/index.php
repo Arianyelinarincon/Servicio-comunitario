@@ -236,16 +236,8 @@ $meses_es = [
                                 <i class="fas fa-user-check"></i> Ver Activos
                             </a>
                         </div>
-                        <div class="col-md-3">
-                            <a href="../estadisticas/egresados.php" class="btn btn-outline-warning w-100">
-                                <i class="fas fa-user-times"></i> Ver Egresados
-                            </a>
-                        </div>
-                        <div class="col-md-3">
-                            <a href="inscripcion.php" class="btn btn-outline-success w-100">
-                                <i class="fas fa-plus-circle"></i> Nueva Inscripción
-                            </a>
-                        </div>
+                        
+                        
                         <div class="col-md-3">
                             <a href="../estadisticas/reporte_egresos.php" class="btn btn-outline-info w-100">
                                 <i class="fas fa-file-pdf"></i> Reporte de Egresos

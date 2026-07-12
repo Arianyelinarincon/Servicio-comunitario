@@ -6,7 +6,7 @@ require_once "config_db.php";
 
 // Configurar manejo de errores
 error_reporting(E_ALL);
-ini_set('display_errors', 0);
+ini_set('display_errors', 1);
 ini_set('log_errors', 1);
 ini_set('error_log', __DIR__ . '/../logs/errores.log');
 
@@ -158,95 +158,94 @@ if ($esAjax) {
     // BUSCAR ESTUDIANTE - OPTIMIZADO
     // ========================================================================
     if ($action === 'buscar_estudiante') {
-    $busqueda = sanitizarEntrada($_POST['busqueda'] ?? '');
-    $sala = sanitizarEntrada($_POST['sala'] ?? '');
-    $seccion_id = filter_var($_POST['seccion'] ?? 0, FILTER_VALIDATE_INT);
-    
-    if (strlen($busqueda) < 2) {
-        responderJSON(['estudiantes' => [], 'mensaje' => 'Escriba al menos 2 caracteres']);
-    }
-    
-    if (empty($sala) || !$seccion_id) {
-        responderJSON(['estudiantes' => [], 'error' => 'Filtros incompletos']);
-    }
-    
-    try {
-        $termino = "%" . trim($busqueda) . "%";
+        $busqueda = sanitizarEntrada($_POST['busqueda'] ?? '');
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion_id = filter_var($_POST['seccion'] ?? 0, FILTER_VALIDATE_INT);
         
-        // Consulta corregida: 'estado' cambió a 'estatus' y ajustado a 'Activo'
-        $sql = "
-            SELECT 
-                id, nombre, apellido, cedula, nacionalidad, genero,
-                fecha_nacimiento, fecha_ingreso,
-                CASE 
-                    WHEN CONCAT(apellido, ' ', nombre) LIKE ? THEN 1
-                    WHEN apellido LIKE ? THEN 2
-                    WHEN nombre LIKE ? THEN 3
-                    WHEN cedula LIKE ? THEN 4
-                    ELSE 5
-                END as relevancia
-            FROM estudiantes 
-            WHERE (
-                apellido LIKE ? 
-                OR nombre LIKE ? 
-                OR cedula LIKE ? 
-                OR CONCAT(apellido, ' ', nombre) LIKE ?
-                OR CONCAT(nombre, ' ', apellido) LIKE ?
-            )
-            AND sala = ? 
-            AND seccion_id = ? 
-            AND estatus = 'Activo' 
-            ORDER BY relevancia ASC, apellido ASC, nombre ASC
-            LIMIT 10
-        ";
-        
-        $stmt = $conexion->prepare($sql);
-        if (!$stmt) {
-            throw new Exception("Error en preparación de consulta: " . $conexion->error);
+        if (strlen($busqueda) < 2) {
+            responderJSON(['estudiantes' => [], 'mensaje' => 'Escriba al menos 2 caracteres']);
         }
         
-        $stmt->bind_param(
-            "ssssssssssi",
-            $termino, $termino, $termino, $termino,
-            $termino, $termino, $termino, $termino, $termino,
-            $sala, 
-            $seccion_id 
-        );
-        
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        $estudiantes = [];
-        while ($row = $result->fetch_assoc()) {
-            $estudiantes[] = [
-                'id' => (int)$row['id'],
-                'apellido' => htmlspecialchars($row['apellido']),
-                'nombre' => htmlspecialchars($row['nombre']),
-                'nombre_completo' => htmlspecialchars($row['apellido'] . ' ' . $row['nombre']),
-                'genero' => htmlspecialchars($row['genero']),
-                'nacionalidad' => htmlspecialchars($row['nacionalidad']),
-                'cedula' => htmlspecialchars($row['cedula'] ?? ''), // Manejo por si es NULL
-                'fecha_nacimiento' => $row['fecha_nacimiento'] ? date('d/m/Y', strtotime($row['fecha_nacimiento'])) : null,
-                'fecha_ingreso' => $row['fecha_ingreso'] ? date('d/m/Y', strtotime($row['fecha_ingreso'])) : null,
-            ];
+        if (empty($sala) || !$seccion_id) {
+            responderJSON(['estudiantes' => [], 'error' => 'Filtros incompletos']);
         }
         
-        responderJSON([
-            'estudiantes' => $estudiantes,
-            'total' => count($estudiantes)
-        ]);
-        
-    } catch (Exception $e) {
-        logError('Error en búsqueda de estudiantes', [
-            'busqueda' => $busqueda,
-            'sala' => $sala,
-            'seccion' => $seccion_id,
-            'error' => $e->getMessage()
-        ]);
-        responderJSON(['estudiantes' => [], 'error' => 'Error al buscar estudiantes'], 500);
+        try {
+            $termino = "%" . trim($busqueda) . "%";
+            
+            $sql = "
+                SELECT 
+                    id, nombre, apellido, cedula, nacionalidad, genero,
+                    fecha_nacimiento, fecha_ingreso,
+                    CASE 
+                        WHEN CONCAT(apellido, ' ', nombre) LIKE ? THEN 1
+                        WHEN apellido LIKE ? THEN 2
+                        WHEN nombre LIKE ? THEN 3
+                        WHEN cedula LIKE ? THEN 4
+                        ELSE 5
+                    END as relevancia
+                FROM estudiantes 
+                WHERE (
+                    apellido LIKE ? 
+                    OR nombre LIKE ? 
+                    OR cedula LIKE ? 
+                    OR CONCAT(apellido, ' ', nombre) LIKE ?
+                    OR CONCAT(nombre, ' ', apellido) LIKE ?
+                )
+                AND sala = ? 
+                AND seccion_id = ? 
+                AND estatus = 'Activo' 
+                ORDER BY relevancia ASC, apellido ASC, nombre ASC
+                LIMIT 10
+            ";
+            
+            $stmt = $conexion->prepare($sql);
+            if (!$stmt) {
+                throw new Exception("Error en preparación de consulta: " . $conexion->error);
+            }
+            
+            $stmt->bind_param(
+                "ssssssssssi",
+                $termino, $termino, $termino, $termino,
+                $termino, $termino, $termino, $termino, $termino,
+                $sala, 
+                $seccion_id 
+            );
+            
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            $estudiantes = [];
+            while ($row = $result->fetch_assoc()) {
+                $estudiantes[] = [
+                    'id' => (int)$row['id'],
+                    'apellido' => htmlspecialchars($row['apellido']),
+                    'nombre' => htmlspecialchars($row['nombre']),
+                    'nombre_completo' => htmlspecialchars($row['apellido'] . ' ' . $row['nombre']),
+                    'genero' => htmlspecialchars($row['genero']),
+                    'nacionalidad' => htmlspecialchars($row['nacionalidad']),
+                    'cedula' => htmlspecialchars($row['cedula'] ?? ''),
+                    'fecha_nacimiento' => $row['fecha_nacimiento'] ? date('d/m/Y', strtotime($row['fecha_nacimiento'])) : null,
+                    'fecha_ingreso' => $row['fecha_ingreso'] ? date('d/m/Y', strtotime($row['fecha_ingreso'])) : null,
+                ];
+            }
+            
+            responderJSON([
+                'estudiantes' => $estudiantes,
+                'total' => count($estudiantes)
+            ]);
+            
+        } catch (Exception $e) {
+            logError('Error en búsqueda de estudiantes', [
+                'busqueda' => $busqueda,
+                'sala' => $sala,
+                'seccion' => $seccion_id,
+                'error' => $e->getMessage()
+            ]);
+            responderJSON(['estudiantes' => [], 'error' => 'Error al buscar estudiantes'], 500);
+        }
+        exit;
     }
-    exit;
-}
     
     // ========================================================================
     // VERIFICAR EGRESO DUPLICADO
@@ -275,13 +274,91 @@ if ($esAjax) {
         exit;
     }
     
+    // ========================================================================
+    // CONFIRMAR EGRESO (GUARDAR INMEDIATAMENTE)
+    // ========================================================================
+    if ($action === 'confirmar_egreso') {
+        $estudiante_id = filter_var($_POST['estudiante_id'] ?? 0, FILTER_VALIDATE_INT);
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion_id = filter_var($_POST['seccion_id'] ?? 0, FILTER_VALIDATE_INT);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        $fecha_egreso = sanitizarEntrada($_POST['fecha_egreso'] ?? '');
+        $motivo = sanitizarEntrada($_POST['motivo'] ?? '');
+        $genero = sanitizarEntrada($_POST['genero'] ?? '');
+
+        if (!$estudiante_id || empty($sala) || !$seccion_id || empty($periodo) || empty($fecha_egreso)) {
+            responderJSON(['success' => false, 'error' => 'Faltan datos obligatorios'], 400);
+        }
+
+        try {
+            $conexion->begin_transaction();
+
+            // 1. Insertar en egresos
+            $stmt = $conexion->prepare("
+                INSERT INTO egresos (estudiante_id, sala, seccion_id, periodo, fecha_egreso, motivo, genero) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->bind_param("iisssss", $estudiante_id, $sala, $seccion_id, $periodo, $fecha_egreso, $motivo, $genero);
+            $stmt->execute();
+            $stmt->close();
+
+            // 2. Actualizar estudiante a Inactivo
+            $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
+            $stmt_up->bind_param("i", $estudiante_id);
+            $stmt_up->execute();
+            $stmt_up->close();
+
+            $conexion->commit();
+            responderJSON(['success' => true]);
+        } catch (Exception $e) {
+            $conexion->rollback();
+            logError('Error al confirmar egreso', ['estudiante_id' => $estudiante_id, 'error' => $e->getMessage()]);
+            responderJSON(['success' => false, 'error' => 'Error al guardar: ' . $e->getMessage()], 500);
+        }
+        exit;
+    }
+    
+    // ========================================================================
+    // CONFIRMAR INGRESO (GUARDAR INDIVIDUALMENTE)
+    // ========================================================================
+    if ($action === 'confirmar_ingreso') {
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion_id = filter_var($_POST['seccion_id'] ?? 0, FILTER_VALIDATE_INT);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        $apellido = sanitizarEntrada($_POST['apellido'] ?? '');
+        $nombre = sanitizarEntrada($_POST['nombre'] ?? '');
+        $genero = sanitizarEntrada($_POST['genero'] ?? 'V');
+        $nacionalidad = sanitizarEntrada($_POST['nacionalidad'] ?? 'Venezolana');
+        $ci = sanitizarEntrada($_POST['ci'] ?? '');
+        $fn = sanitizarEntrada($_POST['fn'] ?? '');
+        $fi = sanitizarEntrada($_POST['fi'] ?? '');
+
+        if (empty($apellido) && empty($nombre)) {
+            responderJSON(['success' => false, 'error' => 'Datos incompletos'], 400);
+        }
+
+        try {
+            $stmt = $conexion->prepare("
+                INSERT INTO ingresos (sala, seccion_id, periodo, apellido, nombre, genero, nacionalidad, ci, fecha_nacimiento, fecha_ingreso, confirmado) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            ");
+            $stmt->bind_param("sissssssss", $sala, $seccion_id, $periodo, $apellido, $nombre, $genero, $nacionalidad, $ci, $fn, $fi);
+            $stmt->execute();
+            responderJSON(['success' => true, 'id' => $stmt->insert_id]);
+        } catch (Exception $e) {
+            logError('Error al confirmar ingreso', ['error' => $e->getMessage()]);
+            responderJSON(['success' => false, 'error' => 'Error al guardar'], 500);
+        }
+        exit;
+    }
+    
     // Si la acción no es válida
     responderJSON(['error' => 'Acción no válida'], 400);
     exit;
 }
 
 // ============================================================================
-// PROCESAR GUARDADO DE DATOS
+// PROCESAR GUARDADO DE DATOS (EGRESOS YA NO SE GUARDAN AQUÍ)
 // ============================================================================
 $mensaje = '';
 $errores_validacion = [];
@@ -370,39 +447,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_y_pdf'])) {
                 $stmt_ingreso->close();
             }
             
-            // Guardar egresos (solo los confirmados llegarán porque los no confirmados están disabled)
-            if (isset($_POST['egreso_estudiante_id']) && is_array($_POST['egreso_estudiante_id'])) {
-                $stmt_egreso = $conexion->prepare("
-                    INSERT INTO egresos (estudiante_id, sala, seccion_id, periodo, fecha_egreso, motivo, genero) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ");
-                
-                $stmt_update = $conexion->prepare("
-                    UPDATE estudiantes SET estado = 'egresado', fecha_egreso = ? WHERE id = ?
-                ");
-                
-                $count = count($_POST['egreso_estudiante_id']);
-                for ($i = 0; $i < $count; $i++) {
-                    $estudiante_id = filter_var($_POST['egreso_estudiante_id'][$i] ?? 0, FILTER_VALIDATE_INT);
-                    if ($estudiante_id <= 0) continue;
-                    
-                    $fecha_egreso = sanitizarEntrada($_POST['egreso_fecha'][$i] ?? date('Y-m-d'));
-                    $motivo = sanitizarEntrada($_POST['egreso_motivo'][$i] ?? '');
-                    $genero = sanitizarEntrada($_POST['egreso_genero'][$i] ?? 'V');
-                    
-                    $stmt_egreso->bind_param(
-                        "iisssss",
-                        $estudiante_id, $sala, $seccion_id, $periodo,
-                        $fecha_egreso, $motivo, $genero
-                    );
-                    $stmt_egreso->execute();
-                    
-                    $stmt_update->bind_param("si", $fecha_egreso, $estudiante_id);
-                    $stmt_update->execute();
-                }
-                $stmt_egreso->close();
-                $stmt_update->close();
-            }
+            // Los egresos ya fueron guardados individualmente por AJAX, no se procesan aquí
             
             // Confirmar transacción
             $conexion->commit();
@@ -704,7 +749,7 @@ $csrf_token = generarTokenCSRF();
             <i class="fas fa-calendar-check text-primary"></i> Control de Asistencia
         </h4>
         <div>
-            <a href="../estudiantes/index.php" class="btn btn-outline-warning me-2">
+            <a href="egresados.php" class="btn btn-outline-warning me-2">
                 <i class="fas fa-user-times"></i> Ver Egresados
             </a>
             <a href="historial_resumenes.php" class="btn btn-info">
@@ -1016,31 +1061,38 @@ $csrf_token = generarTokenCSRF();
                                 <th>CI o CE</th>
                                 <th>F.N</th>
                                 <th>F.I</th>
-                                <th style="width:50px;"></th>
+                                <th style="width:120px;">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr class="fila-ingreso">
+                            <tr class="fila-ingreso" data-confirmada="false">
                                 <td>
-                                    <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
-                                    <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
+                                    <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm campo-apellido" placeholder="Apellido">
+                                    <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1 campo-nombre" placeholder="Nombre">
                                 </td>
                                 <td>
-                                    <select name="ingreso_genero[]" class="form-select form-select-sm">
+                                    <select name="ingreso_genero[]" class="form-select form-select-sm campo-genero">
                                         <option value="V">Varón (V)</option>
                                         <option value="H">Hembra (H)</option>
                                     </select>
                                 </td>
                                 <td>
-                                    <select name="ingreso_nacionalidad[]" class="form-select form-select-sm">
+                                    <select name="ingreso_nacionalidad[]" class="form-select form-select-sm campo-nacionalidad">
                                         <option value="Venezolana">Venezolana</option>
                                         <option value="Extranjera">Extranjera</option>
                                     </select>
                                 </td>
-                                <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-                                <td><input type="date" name="ingreso_fn[]" class="form-control form-control-sm"></td>
-                                <td><input type="date" name="ingreso_fi[]" class="form-control form-control-sm"></td>
-                                <td>
+                                <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm campo-ci" placeholder="Cédula" maxlength="11"></td>
+                                <td><input type="date" name="ingreso_fn[]" class="form-control form-control-sm campo-fn"></td>
+                                <td><input type="date" name="ingreso_fi[]" class="form-control form-control-sm campo-fi"></td>
+                                <td style="white-space: nowrap;">
+                                    <button type="button" class="btn btn-sm btn-outline-success btn-confirmar-ingreso" 
+                                            title="Confirmar ingreso" style="display:none;">
+                                        <i class="fas fa-check"></i> Confirmar
+                                    </button>
+                                    <span class="badge bg-success estado-confirmado" style="display:none;">
+                                        <i class="fas fa-check-circle"></i> Confirmado
+                                    </span>
                                     <button type="button" class="btn btn-sm btn-danger" onclick="eliminarFila(this, 'ingreso')" aria-label="Eliminar ingreso">
                                         <i class="fas fa-times"></i>
                                     </button>
@@ -1151,6 +1203,9 @@ $csrf_token = generarTokenCSRF();
     </form>
     <?php endif; ?>
 </div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- JavaScript -->
 <script>
@@ -1476,27 +1531,35 @@ function agregarFila(tipo) {
         const tbody = document.querySelector('#tablaIngresos tbody');
         const fila = document.createElement('tr');
         fila.className = 'fila-ingreso';
+        fila.setAttribute('data-confirmada', 'false');
         fila.innerHTML = `
             <td>
-                <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
-                <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
+                <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm campo-apellido" placeholder="Apellido">
+                <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1 campo-nombre" placeholder="Nombre">
             </td>
             <td>
-                <select name="ingreso_genero[]" class="form-select form-select-sm">
+                <select name="ingreso_genero[]" class="form-select form-select-sm campo-genero">
                     <option value="V">Varón (V)</option>
                     <option value="H">Hembra (H)</option>
                 </select>
             </td>
             <td>
-                <select name="ingreso_nacionalidad[]" class="form-select form-select-sm">
+                <select name="ingreso_nacionalidad[]" class="form-select form-select-sm campo-nacionalidad">
                     <option value="Venezolana">Venezolana</option>
                     <option value="Extranjera">Extranjera</option>
                 </select>
             </td>
-            <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-            <td><input type="date" name="ingreso_fn[]" class="form-control form-control-sm"></td>
-            <td><input type="date" name="ingreso_fi[]" class="form-control form-control-sm"></td>
-            <td>
+            <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm campo-ci" placeholder="Cédula" maxlength="11"></td>
+            <td><input type="date" name="ingreso_fn[]" class="form-control form-control-sm campo-fn"></td>
+            <td><input type="date" name="ingreso_fi[]" class="form-control form-control-sm campo-fi"></td>
+            <td style="white-space: nowrap;">
+                <button type="button" class="btn btn-sm btn-outline-success btn-confirmar-ingreso" 
+                        title="Confirmar ingreso" style="display:none;">
+                    <i class="fas fa-check"></i> Confirmar
+                </button>
+                <span class="badge bg-success estado-confirmado" style="display:none;">
+                    <i class="fas fa-check-circle"></i> Confirmado
+                </span>
                 <button type="button" class="btn btn-sm btn-danger" onclick="eliminarFila(this, 'ingreso')" aria-label="Eliminar ingreso">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1592,24 +1655,131 @@ function confirmarEgreso(btn) {
         return;
     }
     
+    const fechaEgreso = fila.querySelector('.campo-fecha-egreso').value;
+    const motivo = fila.querySelector('.campo-motivo').value;
+    const genero = fila.querySelector('.campo-genero').value === 'Varón' ? 'V' : 'H';
+    const sala = AppAsistencia.elementos.sala.value;
+    const seccion = AppAsistencia.elementos.seccion.value;
+    const periodo = AppAsistencia.elementos.mes.value || '<?= date('Y-m') ?>';
+    
+    if (!fechaEgreso) {
+        alert('Debe ingresar la fecha de egreso.');
+        return;
+    }
+    
     AppAsistencia.verificarEgresoDuplicado(estudianteId, (existe) => {
         if (existe) {
             alert('⚠️ Este estudiante ya fue registrado como egresado en este período. No se puede confirmar.');
             return;
         }
         
-        fila.setAttribute('data-confirmada', 'true');
-        btn.style.display = 'none';
-        const estadoConfirmado = fila.querySelector('.estado-confirmado');
-        if (estadoConfirmado) estadoConfirmado.style.display = 'inline-block';
+        const formData = new FormData();
+        formData.append('action', 'confirmar_egreso');
+        formData.append('estudiante_id', estudianteId);
+        formData.append('sala', sala);
+        formData.append('seccion_id', seccion);
+        formData.append('periodo', periodo);
+        formData.append('fecha_egreso', fechaEgreso);
+        formData.append('motivo', motivo);
+        formData.append('genero', genero);
         
-        fila.querySelectorAll('input, select').forEach(el => {
-            if (!el.classList.contains('estudiante-id-input') && el.type !== 'hidden') {
-                el.disabled = true;
-            }
-        });
+        fetch('index.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    fila.setAttribute('data-confirmada', 'true');
+                    btn.style.display = 'none';
+                    const estadoConfirmado = fila.querySelector('.estado-confirmado');
+                    if (estadoConfirmado) estadoConfirmado.style.display = 'inline-block';
+                    
+                    fila.querySelectorAll('input, select').forEach(el => {
+                        if (!el.classList.contains('estudiante-id-input') && el.type !== 'hidden') {
+                            el.disabled = true;
+                        }
+                    });
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo confirmar el egreso.'));
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                alert('Error de conexión al confirmar el egreso.');
+            });
     });
 }
+
+// ============================================================================
+// CONFIRMAR INGRESO INDIVIDUAL
+// ============================================================================
+function confirmarIngreso(btn) {
+    const fila = btn.closest('tr');
+    const apellido = fila.querySelector('.campo-apellido').value.trim();
+    const nombre = fila.querySelector('.campo-nombre').value.trim();
+    const genero = fila.querySelector('.campo-genero').value;
+    const nacionalidad = fila.querySelector('.campo-nacionalidad').value;
+    const ci = fila.querySelector('.campo-ci').value.trim();
+    const fn = fila.querySelector('.campo-fn').value;
+    const fi = fila.querySelector('.campo-fi').value;
+    const sala = AppAsistencia.elementos.sala.value;
+    const seccion = AppAsistencia.elementos.seccion.value;
+    const periodo = AppAsistencia.elementos.mes.value || '<?= date('Y-m') ?>';
+
+    if (!apellido && !nombre) {
+        alert('Debe ingresar al menos apellido o nombre.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'confirmar_ingreso');
+    formData.append('sala', sala);
+    formData.append('seccion_id', seccion);
+    formData.append('periodo', periodo);
+    formData.append('apellido', apellido);
+    formData.append('nombre', nombre);
+    formData.append('genero', genero);
+    formData.append('nacionalidad', nacionalidad);
+    formData.append('ci', ci);
+    formData.append('fn', fn);
+    formData.append('fi', fi);
+
+    fetch('index.php?ajax=1', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                fila.setAttribute('data-confirmada', 'true');
+                btn.style.display = 'none';
+                fila.querySelector('.estado-confirmado').style.display = 'inline-block';
+                fila.querySelectorAll('input, select').forEach(el => el.disabled = true);
+                setTimeout(() => {
+                    window.location.href = 'ingresos.php';
+                }, 800);
+            } else {
+                alert('Error: ' + (data.error || 'No se pudo confirmar el ingreso.'));
+            }
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            alert('Error de conexión al confirmar el ingreso.');
+        });
+}
+
+// Mostrar/ocultar botón confirmar según contenido de la fila
+document.getElementById('tablaIngresos')?.addEventListener('input', function(e) {
+    const fila = e.target.closest('.fila-ingreso');
+    if (!fila) return;
+    const apellido = fila.querySelector('.campo-apellido')?.value.trim() || '';
+    const nombre = fila.querySelector('.campo-nombre')?.value.trim() || '';
+    const btnConfirmar = fila.querySelector('.btn-confirmar-ingreso');
+    if (btnConfirmar && fila.getAttribute('data-confirmada') !== 'true') {
+        btnConfirmar.style.display = (apellido || nombre) ? 'inline-block' : 'none';
+    }
+});
+
+// Delegación de evento click para confirmar ingreso
+document.getElementById('tablaIngresos')?.addEventListener('click', function(e) {
+    const btn = e.target.closest('.btn-confirmar-ingreso');
+    if (btn) confirmarIngreso(btn);
+});
 
 // ============================================================================
 // INICIALIZACIÓN
