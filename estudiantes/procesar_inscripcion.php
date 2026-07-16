@@ -1,6 +1,21 @@
 <?php
 session_start();
 require_once '../config/conexion.php';
+
+// ========== FUNCIÓN DE AUDITORÍA (si no está definida) ==========
+if (!function_exists('registrarAuditoria')) {
+    function registrarAuditoria($conexion, $usuario_id, $accion, $tabla, $registro_id, $detalles = null) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $stmt = $conexion->prepare("INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, detalles, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt) {
+            $stmt->bind_param("ississ", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+}
+
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -125,7 +140,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $padre_telefono = $_POST['padre_telefono'] ?? '';
         $sala = ''; // Se actualizará después
 
-        // ✅ CORRECCIÓN: Eliminamos el campo 'alergias_condiciones' de la consulta
         $stmt = $conexion->prepare("INSERT INTO estudiantes 
             (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, 
              representante_id, nacionalidad, pais_nacimiento, estado_nacimiento, direccion, 
@@ -135,8 +149,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              orden_nacimiento, estatus, created_at) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
 
-        // ✅ CORRECCIÓN: Generamos la cadena de tipos dinámicamente (28 variables: 26 strings + 2 ints)
-        // Los primeros 6 son strings, luego 1 int, luego 20 strings, luego 1 int
         $types = str_repeat('s', 6) . 'i' . str_repeat('s', 20) . 'i';
         $stmt->bind_param($types, 
             $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
@@ -193,6 +205,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_upd->bind_param("si", $sala_actual, $estudiante_id);
             $stmt_upd->execute();
             $stmt_upd->close();
+        }
+
+        // ==================== 5. AUDITORÍA ====================
+        $usuario_id = $_SESSION['usuario_id'] ?? 0;
+        if ($usuario_id > 0) {
+            $detalles = "Nuevo estudiante: $nombre $apellido (Cédula Escolar: $cedula_escolar, Sala: $sala_actual)";
+            registrarAuditoria($conexion, $usuario_id, 'INSCRIBIR_ESTUDIANTE', 'estudiantes', $estudiante_id, $detalles);
         }
 
         $conexion->commit();

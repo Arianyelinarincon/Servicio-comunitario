@@ -38,7 +38,8 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
 </head>
 <body>
 
-<div class="d-flex">
+<div class="d-flex" style="min-height: 100vh;">
+    <!-- SIDEBAR FIJO -->
     <nav id="sidebar" class="shadow <?php echo $sidebar_class; ?>">
         <div class="sidebar-header text-center py-4">
             <h3 class="fw-bold text-white">S.G.E.</h3>
@@ -69,8 +70,10 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
         </ul>
     </nav>
 
+    <!-- CONTENIDO PRINCIPAL -->
     <div id="content" style="width: 100%;">
-        <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm py-3 px-4">
+        <!-- BARRA SUPERIOR FIJA -->
+        <nav id="navbar-top" class="navbar navbar-expand-lg navbar-light bg-white shadow-sm py-3 px-4">
             <button type="button" id="sidebarCollapse" class="btn btn-primary" style="background-color: #002d54;">
                 <i class="fas fa-align-left"></i>
             </button>
@@ -78,4 +81,6 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
                 <?php echo ($rol_normalizado === 'super_admin') ? 'PANEL DE DIRECTORA' : 'PANEL DE SECRETARÍA'; ?>
             </div>
         </nav>
-        <div class="p-4">
+        
+        <!-- Aquí va el contenido de cada página -->
+        <div class="p-4" id="main-content">

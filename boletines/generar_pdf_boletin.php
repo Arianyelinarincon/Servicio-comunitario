@@ -1,13 +1,12 @@
 <?php
 session_start();
-
 if (!isset($_SESSION['estudiante'])) {
     // header("Location: index.php");
     // exit();
 }
 
 require_once '../estadisticas/dompdf/autoload.inc.php';
-require_once '../config/conexion.php';   // <-- CONEXIÓN A BD
+require_once '../config/conexion.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -36,14 +35,39 @@ $m3_form = nl2br(htmlspecialchars($_SESSION['m3_formacion'] ?? ''));
 $m3_rel = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
 $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
 
-// ================================================================
-// LOGO - CONVERSIÓN A BASE64
-// ================================================================
+// ========== LOGO - RUTA ABSOLUTA ==========
+// Usamos la ruta absoluta de XAMPP
 $logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
-$logo_base64 = '';
-if (file_exists($logo_path)) {
-    $logo_data = file_get_contents($logo_path);
-    $logo_base64 = 'data:image/png;base64,' . base64_encode($logo_data);
+$logo_html = '';
+
+// Verificar si la extensión GD está cargada
+if (extension_loaded('gd')) {
+    if (file_exists($logo_path)) {
+        try {
+            // Leer la imagen y convertir a base64
+            $logo_data = file_get_contents($logo_path);
+            // Detectar el tipo de imagen
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime_type = finfo_file($finfo, $logo_path);
+            finfo_close($finfo);
+            
+            if ($mime_type && strpos($mime_type, 'image/') === 0) {
+                $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
+                $logo_html = '<img src="' . $logo_base64 . '" style="width:75px; height:auto; display:block; margin:0 auto;" alt="Logo">';
+            } else {
+                // Si no es una imagen válida, mostrar texto
+                $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
+            }
+        } catch (Exception $e) {
+            $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
+        }
+    } else {
+        // El archivo no existe
+        $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
+    }
+} else {
+    // GD no está instalada
+    $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
 }
 
 $options = new Options();
@@ -59,12 +83,10 @@ ob_start();
     <meta charset="UTF-8">
     <title>Boletín Informativo Inicial</title>
     <style>
-        /* CONFIGURACIÓN DE HOJA CARTA HORIZONTAL */
         @page {
             size: 279.4mm 215.9mm; 
             margin: 10mm; 
         }
-        
         body {
             font-family: Arial, sans-serif;
             font-size: 11pt; 
@@ -73,7 +95,6 @@ ob_start();
             margin: 0;
             padding: 0;
         }
-
         .tabla-triptico {
             width: 100%;
             border-collapse: collapse;
@@ -84,14 +105,10 @@ ob_start();
             padding: 0 15px; 
             vertical-align: top;
         }
-
+        .linea-inferior { border-bottom: 1px solid #000; }
         .texto-negrita { font-weight: bold; }
-
-        /* ======== HOJA 1: CARA EXTERIOR ======== */
-        
-        /* COL 1: OBSERVACIÓN */
         .caja-observacion-fija {
-            height: 220px; /* Espacio fijo que no se amplía */
+            height: 220px;
             overflow: hidden;
             text-align: justify;
             margin-top: 5px;
@@ -100,10 +117,10 @@ ob_start();
             text-align: center;
             font-size: 12pt;
             height: 100px;
-            line-height: 100px; /* Centra el texto verticalmente */
+            line-height: 100px;
         }
         .firmas-observacion {
-            margin-top: 200px; /* Empuja las firmas hacia abajo */
+            margin-top: 200px;
             width: 100%;
             text-align: center;
         }
@@ -113,82 +130,41 @@ ob_start();
             margin: 0 auto;
             padding-top: 5px;
         }
-        /* Nueva clase para líneas al lado del texto */
         .linea-firma-inline {
             display: inline-block;
-            border-bottom: 1px solid #000; /* Línea negra inferior */
+            border-bottom: 1px solid #000;
             height: 0px;
-            vertical-align: bottom; /* Alinea la línea con la base del texto */
-            margin-left: 5px; /* Espacio entre la palabra y la línea */
+            vertical-align: bottom;
+            margin-left: 5px;
         }
-
-        /* COL 2: CITAS */
-        .citas-container {
-            text-align: center;
-        }
+        .citas-container { text-align: center; }
         .bloque-cita-arriba { margin-top: 20px; }
-        .bloque-cita-medio { margin-top: 200px; } /* Empuja al centro */
-        .bloque-cita-abajo { margin-top: 200px; } /* Empuja al fondo */
+        .bloque-cita-medio { margin-top: 200px; }
+        .bloque-cita-abajo { margin-top: 200px; }
         .cita-texto { margin-bottom: 5px; font-style: italic; }
         .cita-autor { font-weight: bold; }
-
-        /* COL 3: PORTADA */
         .header-portada {
             text-align: center;
             font-size: 10pt;
             line-height: 1.3;
         }
-        /* ===== LOGO ===== */
         .logo-portada {
-            width: 75px;
-            height: auto;
-            margin: 20px auto;
             text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .logo-portada img {
-            width: 75px;
-            height: auto;
-            display: block;
-            margin: 0 auto;
-        }
-        .logo-portada .logo-texto {
-            font-weight: bold;
-            font-size: 12pt;
+            margin: 20px auto;
         }
         .titulos-portada {
             text-align: center;
             margin-bottom: 10px;
         }
-        .titulos-portada h1 { 
-            font-size: 13pt; 
-            margin-top: 30px; 
-        }
-        .titulos-portada h2 { 
-            font-size: 11pt; 
-            margin: 10px 0 0 0; 
-            font-weight: normal; 
-        }
-        
-        /* DATOS DEL ESTUDIANTE - SIN LÍNEAS (ESTILO PRIMARIA) */
+        .titulos-portada h1 { font-size: 13pt; margin-top: 30px; }
+        .titulos-portada h2 { font-size: 11pt; margin: 10px 0 0 0; font-weight: normal; }
         .datos-estudiante {
-            margin-top: 150px;
+            margin-top: 140px;
             width: 100%;
-            font-size: 10.5pt;
+            font-size: 11pt;
             border-collapse: collapse;
-            margin-left: 50px;
         }
-        .datos-estudiante td { 
-            padding: 6px 0; 
-        }
-        .datos-estudiante .etiqueta {
-            font-weight: bold;
-            width: 35%;
-        }
-        
-        /* ======== HOJA 2: CARA INTERIOR ======== */
+        .datos-estudiante td { padding: 8px 0; }
         .titulo-momento {
             text-align: center;
             font-weight: bold;
@@ -199,17 +175,13 @@ ob_start();
             font-weight: bold;
             display: block;
             margin-top: 10px;
-            
         }
-        
-        /* ALTURAS FIJAS ESTRICTAS PARA CADA ÁREA */
         .espacio-proyecto {
             height: 50px;
             border-bottom: 1px solid #000000;
             overflow: hidden;
             display: block;
             margin-bottom: 10px;
-
         }
         .espacio-aprendizaje {
             height: 160px;
@@ -217,15 +189,13 @@ ob_start();
             overflow: hidden;
             display: block;
             margin-bottom: 10px;
-            
         }
         .espacio-sugerencia {
             height: 70px;
             overflow: hidden;
             display: block;
-            margin-bottom: 25px; /* Separación con las firmas del fondo */
+            margin-bottom: 25px;
         }
-
         .firmas-momento {
             width: 100%;
             font-size: 9pt;
@@ -237,8 +207,6 @@ ob_start();
             height: 30px;
             padding-bottom: 5px;
         }
-        
-        
         .page-break { page-break-before: always; }
     </style>
 </head>
@@ -248,13 +216,10 @@ ob_start();
     <tr>
         <td class="columna-triptico">
             <div class="texto-negrita">Observacion:</div>
-            
             <div class="caja-observacion-fija">
                 <?php echo $observacion; ?>
             </div>
-            
             <div class="sello-recuadro">SELLO</div>
-            
             <table class="firmas-observacion">
                 <tr>
                     <td style="width: 50%;">
@@ -277,22 +242,18 @@ ob_start();
 
         <td class="columna-triptico">
             <div class="citas-container">
-                
                 <div class="bloque-cita-arriba">
                     <div class="cita-texto">Instruye al niño en su camino (Dios).<br>Y ni aun de viejo se apartara de el.</div>
                     <div class="cita-autor">Proverbios 22:6</div>
                 </div>
-                
                 <div class="bloque-cita-medio">
                     <div class="cita-texto">"Pocos conocen su utlidad"</div>
                     <div class="cita-autor">Frase de simon Rodriguez</div>
                 </div>
-                
                 <div class="bloque-cita-abajo">
                     <div class="cita-texto">"La enseñanza de las buenas costumbres o habitos sociales es tan esencial como la instrucción"</div>
                     <div class="cita-autor">Pensamiento de simon bolivar</div>
                 </div>
-                
             </div>
         </td>
 
@@ -305,13 +266,8 @@ ob_start();
                 MARACAIBO ZULIA
             </div>
             
-            <!-- ===== LOGO ===== -->
             <div class="logo-portada">
-                <?php if ($logo_base64): ?>
-                    <img src="<?php echo $logo_base64; ?>" alt="Logo">
-                <?php else: ?>
-                    <span class="logo-texto">LOGO</span>
-                <?php endif; ?>
+                <?php echo $logo_html; ?>
             </div>
             
             <div class="titulos-portada">
@@ -319,27 +275,32 @@ ob_start();
                 <h2>AÑO ESCOLAR <?php echo $ano_escolar; ?></h2>
             </div>
             
-            <!-- ===== DATOS DEL ESTUDIANTE - SIN LÍNEAS ===== -->
             <table class="datos-estudiante">
                 <tr>
-                    <td class="etiqueta">Estudiante:</td>
-                    <td><?php echo $estudiante; ?></td>
+                    <td style="width: 25%;">Estudiante:</td>
+                    <td style="width: 75%;" class="linea-inferior"><?php echo $estudiante; ?></td>
                 </tr>
                 <tr>
-                    <td class="etiqueta">C.E:</td>
-                    <td><?php echo $ce; ?></td>
+                    <td>C.E:</td>
+                    <td class="linea-inferior" style="width: 35%;"><?php echo $ce; ?></td>
                 </tr>
                 <tr>
-                    <td class="etiqueta">Grupo:</td>
-                    <td><?php echo $grupo; ?></td>
+                    <td colspan="2">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr>
+                                <td style="width: 20%;">Grupo:</td>
+                                <td style="width: 80%;" class="linea-inferior"><?php echo $grupo; ?></td>
+                            </tr>
+                        </table>
+                    </td>
                 </tr>
                 <tr>
-                    <td class="etiqueta">Docente:</td>
-                    <td><?php echo $docente; ?></td>
+                    <td>Docente:</td>
+                    <td class="linea-inferior"><?php echo $docente; ?></td>
                 </tr>
                 <tr>
-                    <td class="etiqueta">Representante:</td>
-                    <td><?php echo $representante; ?></td>
+                    <td>Representante:</td>
+                    <td class="linea-inferior"><?php echo $representante; ?></td>
                 </tr>
             </table>
         </td>
@@ -352,21 +313,15 @@ ob_start();
     <tr>
         <td class="columna-triptico">
             <div class="titulo-momento">PRIMER MOMENTO DE EVALUACION</div>
-            
             <div class="etiqueta-area">PROYECTOS DE APRENDIZAJES:</div>
             <div class="espacio-proyecto"><?php echo $m1_proy; ?></div>
-            
             <div class="etiqueta-area">AREAS DE APRENDIZAJE</div>
-            
             <div style="margin-top: 9px; font-weight: bold; font-size: 10pt;">Formacion personal, social y comunicación</div>
             <div class="espacio-aprendizaje"><?php echo $m1_form; ?></div>
-            
             <div style="margin-top: 9px; font-weight: bold; font-size: 10pt;">Relacion entre los componentes del ambiente</div>
             <div class="espacio-aprendizaje"><?php echo $m1_rel; ?></div>
-            
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $m1_sug; ?></div>
-            
             <table class="firmas-momento">
                 <tr>
                     <td style="text-align: left;">
@@ -395,21 +350,15 @@ ob_start();
 
         <td class="columna-triptico">
             <div class="titulo-momento">SEGUNDO MOMENTO DE EVALUACION</div>
-            
             <div class="etiqueta-area">PROYECTOS DE APRENDIZAJES:</div>
             <div class="espacio-proyecto"><?php echo $m2_proy; ?></div>
-            
             <div class="etiqueta-area">AREAS DE APRENDIZAJE</div>
-            
             <div style="margin-top: 9px; font-weight: bold; font-size: 10pt;">Formacion personal, social y comunicación</div>
             <div class="espacio-aprendizaje"><?php echo $m2_form; ?></div>
-            
             <div style="margin-top: 9px; font-weight: bold; font-size: 10pt;">Relacion entre los componentes del ambiente</div>
             <div class="espacio-aprendizaje"><?php echo $m2_rel; ?></div>
-            
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $m2_sug; ?></div>
-            
             <table class="firmas-momento">
                 <tr>
                     <td style="text-align: left;">
@@ -438,21 +387,15 @@ ob_start();
 
         <td class="columna-triptico">
             <div class="titulo-momento">TERCER MOMENTO DE EVALUACION</div>
-            
             <div class="etiqueta-area">PROYECTOS DE APRENDIZAJES:</div>
             <div class="espacio-proyecto"><?php echo $m3_proy; ?></div>
-            
             <div class="etiqueta-area">AREAS DE APRENDIZAJE</div>
-            
             <div style="margin-top: 9px; font-weight: bold; font-size: 10pt;">Formacion personal, social y comunicación</div>
             <div class="espacio-aprendizaje"><?php echo $m3_form; ?></div>
-            
             <div style="margin-top: 9px; font-weight: bold; font-size: 10pt;">Relacion entre los componentes del ambiente</div>
             <div class="espacio-aprendizaje"><?php echo $m3_rel; ?></div>
-            
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $m3_sug; ?></div>
-            
             <table class="firmas-momento">
                 <tr>
                     <td style="text-align: left;">
@@ -486,11 +429,7 @@ ob_start();
 <?php
 $html = ob_get_clean();
 
-$dompdf->setPaper('letter', 'landscape');
-$dompdf->loadHtml($html);
-$dompdf->render();
-
-// ========== GUARDAR BOLETÍN EN TABLA boletines ==========
+// ========== GUARDAR BOLETÍN EN BD ==========
 $estudiante_id = $_SESSION['estudiante_id'] ?? 0;
 if (!$estudiante_id && isset($_SESSION['estudiante'])) {
     $nombre_est = $_SESSION['estudiante'];
@@ -510,13 +449,11 @@ if ($estudiante_id) {
     $tipo = $_SESSION['tipo_boletin'] ?? 'inicial';
     $periodo_escolar = $_SESSION['ano_escolar'] ?? date('Y') . '-' . (date('Y')+1);
     
-    // Eliminar boletín anterior del mismo estudiante y período
-    $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ?");
-    $stmt_del->bind_param("is", $estudiante_id, $periodo_escolar);
+    $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
+    $stmt_del->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
     $stmt_del->execute();
     $stmt_del->close();
     
-    // Asignar valores de sesión (con null si no existen)
     $obs = $_SESSION['observacion'] ?? '';
     $m1_proy = $_SESSION['m1_proyecto'] ?? '';
     $m1_form = $_SESSION['m1_formacion'] ?? '';
@@ -537,11 +474,10 @@ if ($estudiante_id) {
          m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
          m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    
-    $tipos = 'i' . str_repeat('s', 15); // 1 entero + 15 strings
+    $tipos = 'i' . str_repeat('s', 15);
     $stmt_bol->bind_param($tipos, 
-        $estudiante_id, $periodo_escolar, $tipo,
-        $obs, $m1_proy, $m1_form, $m1_rel, $m1_sug,
+        $estudiante_id, $periodo_escolar, $tipo, $obs,
+        $m1_proy, $m1_form, $m1_rel, $m1_sug,
         $m2_proy, $m2_form, $m2_rel, $m2_sug,
         $m3_proy, $m3_form, $m3_rel, $m3_sug
     );
@@ -549,5 +485,10 @@ if ($estudiante_id) {
     $stmt_bol->close();
 }
 
-$dompdf->stream("boletin_{$estudiante}.pdf", array('Attachment' => 0));
+$dompdf->setPaper('letter', 'landscape');
+$dompdf->loadHtml($html);
+$dompdf->render();
+
+$nombre_archivo = "boletin_inicial_" . str_replace(' ', '_', $estudiante) . ".pdf";
+$dompdf->stream($nombre_archivo, array('Attachment' => 0));
 ?>

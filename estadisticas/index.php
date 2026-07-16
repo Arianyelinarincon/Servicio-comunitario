@@ -80,25 +80,53 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     if ($action == 'buscar_estudiantes') {
         $termino = sanitizarEntrada($_POST['termino'] ?? '');
         $sala = sanitizarEntrada($_POST['sala'] ?? '');
-        $seccion = (int)($_POST['seccion_id'] ?? 1);
-        
+        $seccion = (int)($_POST['seccion_id'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? date('Y-m'));
+        $tipo = sanitizarEntrada($_POST['tipo'] ?? 'egreso'); // 'ingreso' o 'egreso'
+
         if (empty($termino) || empty($sala) || $seccion <= 0) {
             responderJSON(['estudiantes' => []]);
         }
-        
+
         $termino = "%$termino%";
-        $stmt = $conexion->prepare("
-    SELECT id, nombre, apellido, 
-           COALESCE(cedula, cedula_escolar) AS cedula,
-           genero, nacionalidad, fecha_nacimiento,
-           CONCAT(apellido, ' ', nombre) AS nombre_completo
-    FROM estudiantes
-    WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo'
-    AND (nombre LIKE ? OR apellido LIKE ? OR COALESCE(cedula, cedula_escolar) LIKE ?)
-    ORDER BY apellido, nombre
-    LIMIT 15
-");
-        $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
+        $anio = date('Y', strtotime($periodo . '-01'));
+        $mes = date('m', strtotime($periodo . '-01'));
+        $fecha_inicio = "$anio-$mes-01";
+        $fecha_fin = date('Y-m-t', strtotime($fecha_inicio));
+
+        $sql = "
+            SELECT id, nombre, apellido, 
+                   COALESCE(cedula, cedula_escolar) AS cedula,
+                   genero, nacionalidad, fecha_nacimiento,
+                   CONCAT(apellido, ' ', nombre) AS nombre_completo
+            FROM estudiantes
+            WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo'
+              AND (nombre LIKE ? OR apellido LIKE ? OR COALESCE(cedula, cedula_escolar) LIKE ?)
+        ";
+
+        if ($tipo === 'ingreso') {
+            // Excluir estudiantes que ya fueron ingresados en este mes (fecha_ingreso en el rango)
+            $sql .= " AND (fecha_ingreso IS NULL OR fecha_ingreso < ? OR fecha_ingreso > ?)";
+        } elseif ($tipo === 'egreso') {
+            // Excluir estudiantes que ya tienen egreso en este periodo
+            $sql .= " AND id NOT IN (
+                          SELECT estudiante_id FROM egresos 
+                          WHERE sala = ? AND seccion_id = ? AND periodo = ?
+                      )";
+        }
+
+        $sql .= " ORDER BY apellido, nombre LIMIT 15";
+
+        $stmt = $conexion->prepare($sql);
+
+        if ($tipo === 'ingreso') {
+            $stmt->bind_param("sisssss", $sala, $seccion, $termino, $termino, $termino, $fecha_inicio, $fecha_fin);
+        } elseif ($tipo === 'egreso') {
+            $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
+        } else {
+            $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
+        }
+
         $stmt->execute();
         $result = $stmt->get_result();
         $estudiantes = [];
@@ -174,7 +202,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         ]);
     }
 
-    // ========== NUEVA ACCIÓN PARA INGRESOS ==========
+    // ========== NUEVA ACCIÓN PARA INGRESOS (SIN REDIRECCIÓN) ==========
     if ($action == 'confirmar_ingreso') {
         if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
             responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
@@ -221,22 +249,31 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             $stmt->close();
         }
         
-        // Verificar duplicado en ingresos
-        $stmt = $conexion->prepare("SELECT id FROM ingresos WHERE id = ? AND sala = ? AND seccion_id = ? AND periodo = ?");
-        $stmt->bind_param("isis", $estudiante_id, $sala, $seccion, $periodo);
-        $stmt->execute();
-        if ($stmt->get_result()->num_rows > 0) {
-            responderJSON(['success' => false, 'error' => 'Este estudiante ya fue ingresado en este período']);
-        }
-        $stmt->close();
-        
+        // Actualizar fecha de ingreso (para evitar duplicados)
         $fecha_ingreso = date('Y-m-d');
-        $stmt = $conexion->prepare("INSERT INTO ingresos (id, sala, seccion_id, periodo, fecha_ingreso, genero) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssss", $estudiante_id, $sala, $seccion, $periodo, $fecha_ingreso, $genero);
+        $stmt = $conexion->prepare("UPDATE estudiantes SET fecha_ingreso = ? WHERE id = ?");
+        $stmt->bind_param("si", $fecha_ingreso, $estudiante_id);
         $stmt->execute();
         $stmt->close();
         
-        responderJSON(['success' => true]);
+        // Obtener datos del estudiante para la respuesta
+        $stmt = $conexion->prepare("SELECT nombre, apellido, genero, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
+        $stmt->bind_param("i", $estudiante_id);
+        $stmt->execute();
+        $estudiante = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        responderJSON([
+            'success' => true,
+            'mensaje' => 'Ingreso registrado correctamente',
+            'estudiante' => [
+                'nombre_completo' => $estudiante['apellido'] . ' ' . $estudiante['nombre'],
+                'genero' => $estudiante['genero'],
+                'ci' => $estudiante['cedula'],
+                'fn' => $estudiante['fecha_nacimiento'],
+                'fi' => $fecha_ingreso
+            ]
+        ]);
     }
 
     if ($action == 'cargar_egresos_existentes') {
@@ -1187,8 +1224,9 @@ function inicializarAutocompletadoEgreso(fila) {
         timeoutId = setTimeout(() => {
             const sala = document.getElementById('select-grado').value;
             const seccion = document.getElementById('select-seccion').value;
-            if (!sala || !seccion) {
-                dropdown.innerHTML = '<div class="p-2 text-muted small">Seleccione sala y sección primero</div>';
+            const periodo = document.getElementById('select-mes').value; // Obtener periodo
+            if (!sala || !seccion || !periodo) {
+                dropdown.innerHTML = '<div class="p-2 text-muted small">Seleccione sala, sección y mes primero</div>';
                 dropdown.style.display = 'block';
                 return;
             }
@@ -1198,6 +1236,8 @@ function inicializarAutocompletadoEgreso(fila) {
             formData.append('termino', termino);
             formData.append('sala', sala);
             formData.append('seccion_id', seccion);
+            formData.append('periodo', periodo);
+            formData.append('tipo', 'egreso'); // <-- IMPORTANTE
             
             fetch('index.php?ajax=1', { method: 'POST', body: formData })
                 .then(res => res.json())
@@ -1218,7 +1258,7 @@ function inicializarAutocompletadoEgreso(fila) {
                         });
                         dropdown.style.display = 'block';
                     } else {
-                        dropdown.innerHTML = '<div class="p-2 text-muted small">No se encontraron estudiantes</div>';
+                        dropdown.innerHTML = '<div class="p-2 text-muted small">No se encontraron estudiantes activos disponibles para egreso</div>';
                         dropdown.style.display = 'block';
                     }
                 })
@@ -1232,7 +1272,6 @@ function inicializarAutocompletadoEgreso(fila) {
     apellidoInput.addEventListener('input', realizarBusqueda);
     nombreInput.addEventListener('input', realizarBusqueda);
     
-    // Ocultar dropdown al perder el foco (con pequeño retraso para permitir click en item)
     apellidoInput.addEventListener('blur', () => {
         setTimeout(() => { dropdown.style.display = 'none'; }, 200);
     });
@@ -1263,7 +1302,7 @@ function seleccionarEstudianteEnFila(fila, estudiante) {
 
 // ========== EVENTOS PARA BOTONES CONFIRMAR ==========
 document.addEventListener('click', function(e) {
-    // Confirmar ingreso
+    // Confirmar ingreso (AHORA CON RESPUESTA JSON Y SIN REDIRECCIÓN)
     if (e.target.classList.contains('confirmar-ingreso')) {
         e.preventDefault();
         const fila = e.target.closest('tr');
@@ -1298,13 +1337,14 @@ document.addEventListener('click', function(e) {
         formData.append('seccion', seccion);
         formData.append('periodo', periodo);
         formData.append('csrf_token', '<?= $csrf_token ?>');
-        formData.append('estudiante_id', '0'); // Se buscará o creará en backend
+        formData.append('estudiante_id', '0');
         
         fetch('index.php?ajax=1', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    window.location.href = 'ingresos.php';
+                    alert('✅ ' + data.mensaje);
+                    location.reload(); // Recarga para actualizar la tabla de ingresos
                 } else {
                     alert('Error: ' + (data.error || 'No se pudo ingresar'));
                 }
@@ -1316,7 +1356,7 @@ document.addEventListener('click', function(e) {
             });
     }
     
-    // Confirmar egreso
+    // Confirmar egreso (se mantiene igual, ya redirige a egresados.php)
     if (e.target.classList.contains('confirmar-egreso')) {
         e.preventDefault();
         const fila = e.target.closest('tr');
@@ -1329,7 +1369,7 @@ document.addEventListener('click', function(e) {
         const sala = document.getElementById('select-grado').value;
         const seccion = document.getElementById('select-seccion').value;
         const periodo = document.getElementById('select-mes').value;
-        const motivo = 'Retiro'; // Puedes añadir un campo de motivo si lo deseas
+        const motivo = 'Retiro';
         
         if (!sala || !seccion || !periodo) {
             alert('Seleccione sala, sección y mes antes de confirmar.');
@@ -1365,7 +1405,7 @@ document.addEventListener('click', function(e) {
             });
     }
     
-    // Eliminar fila (el botón de eliminar usa onclick directamente, pero también podemos capturarlo aquí)
+    // Eliminar fila
     if (e.target.classList.contains('eliminar-fila')) {
         e.target.closest('tr').remove();
         recalcularTotalesClasificacion();
@@ -1392,7 +1432,6 @@ function cargarEgresosExistentes() {
             tbody.innerHTML = '';
             if (data.egresos && data.egresos.length > 0) {
                 data.egresos.forEach(eg => {
-                    // Crear una fila con los datos de egreso (ya confirmados)
                     const fila = document.createElement('tr');
                     fila.className = 'fila-egreso';
                     fila.innerHTML = `

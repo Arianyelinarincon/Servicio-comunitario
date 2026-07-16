@@ -20,7 +20,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $periodo = $_SESSION['ano_escolar'] ?? '2025 / 2026';
     $tipo = 'primaria';
     
+    // Verificar si existe
     $stmt = $conexion->prepare("SELECT id FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
+    if (!$stmt) {
+        die("Error en prepare: " . $conexion->error);
+    }
     $stmt->bind_param("iss", $estudiante_id, $periodo, $tipo);
     $stmt->execute();
     $existe = $stmt->get_result()->fetch_assoc();
@@ -31,6 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             m3_proyecto = ?, m3_formacion = ?, m3_sugerencias = ?,
             resultado_final = ?, literal_final = ?
             WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
+        if (!$stmt) {
+            die("Error en prepare (UPDATE): " . $conexion->error);
+        }
         $stmt->bind_param("sssssiss", 
             $_SESSION['l3_proyecto'], 
             $_SESSION['l3_analisis'],
@@ -46,6 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              m3_proyecto, m3_formacion, m3_sugerencias,
              resultado_final, literal_final)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if (!$stmt) {
+            die("Error en prepare (INSERT): " . $conexion->error);
+        }
         $observacion = $_SESSION['observacion'] ?? '';
         $stmt->bind_param("issssssss", 
             $estudiante_id, $periodo, $tipo, $observacion,
@@ -64,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 include '../includes/header.php';
 ?>
+<!-- HTML del formulario (sin cambios) -->
 <div style="font-family: 'Segoe UI', Arial, sans-serif; background: #f0f2f5; padding: 20px;">
     <div style="background: white; padding: 30px; border-radius: 10px; max-width: 900px; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
         <h2 style="color: #28a745; text-align: center;">Editar Tercer Lapso + Resultado Final - Primaria</h2>

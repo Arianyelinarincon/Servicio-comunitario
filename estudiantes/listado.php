@@ -6,6 +6,21 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 require_once '../config/conexion.php';
 
+// ========== FUNCIÓN DE AUDITORÍA (debe estar en conexion.php) ==========
+// Si no está definida, la definimos aquí por seguridad
+if (!function_exists('registrarAuditoria')) {
+    function registrarAuditoria($conexion, $usuario_id, $accion, $tabla, $registro_id, $detalles = null) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $stmt = $conexion->prepare("INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, detalles, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt) {
+            $stmt->bind_param("ississ", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+}
+
 // CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -17,10 +32,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         die("Error CSRF");
     }
     $id = intval($_POST['id']);
+    
+    // Obtener nombre del estudiante antes de eliminarlo (para auditoría)
+    $stmt_nombre = $conexion->prepare("SELECT nombre, apellido FROM estudiantes WHERE id = ?");
+    $stmt_nombre->bind_param("i", $id);
+    $stmt_nombre->execute();
+    $result_nombre = $stmt_nombre->get_result();
+    $estudiante = $result_nombre->fetch_assoc();
+    $stmt_nombre->close();
+    $nombre_estudiante = $estudiante ? $estudiante['nombre'] . ' ' . $estudiante['apellido'] : 'ID: ' . $id;
+    
     $stmt = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $stmt->close();
+    
+    // ========== AUDITORÍA ==========
+    $usuario_id = $_SESSION['usuario_id'] ?? 0;
+    if ($usuario_id > 0) {
+        registrarAuditoria($conexion, $usuario_id, 'ELIMINAR_ESTUDIANTE', 'estudiantes', $id, "Baja lógica (estatus -> Inactivo) del estudiante: $nombre_estudiante");
+    }
+    
     header("Location: listado.php?msg=deleted");
     exit();
 }

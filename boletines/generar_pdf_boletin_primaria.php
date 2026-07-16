@@ -7,7 +7,7 @@ if (!isset($_SESSION['estudiante'])) {
 }
 
 require_once '../estadisticas/dompdf/autoload.inc.php';
-require_once '../config/conexion.php';   // <-- CONEXIÓN A BD
+require_once '../config/conexion.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -40,18 +40,36 @@ $l3_relacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_relacion'] ?? 
 $l3_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_sugerencias'] ?? ''), 'UTF-8'));
 
 // === RESULTADO FINAL ===
-// Nota: La variable de decisión la dejamos intacta para que la lógica de la "X" funcione bien.
 $resultado_final = htmlspecialchars($_SESSION['resultado_final'] ?? '');
 $literal_final = mb_strtoupper(htmlspecialchars($_SESSION['literal_final'] ?? ''), 'UTF-8');
 
-// ================================================================
-// LOGO - CONVERSIÓN A BASE64
-// ================================================================
+// ========== LOGO - RUTA ABSOLUTA ==========
 $logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
-$logo_base64 = '';
-if (file_exists($logo_path)) {
-    $logo_data = file_get_contents($logo_path);
-    $logo_base64 = 'data:image/png;base64,' . base64_encode($logo_data);
+$logo_html = '';
+
+// Verificar si la extensión GD está cargada
+if (extension_loaded('gd')) {
+    if (file_exists($logo_path)) {
+        try {
+            $logo_data = file_get_contents($logo_path);
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime_type = finfo_file($finfo, $logo_path);
+            finfo_close($finfo);
+            
+            if ($mime_type && strpos($mime_type, 'image/') === 0) {
+                $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
+                $logo_html = '<img src="' . $logo_base64 . '" class="logo-img" alt="Logo">';
+            } else {
+                $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+            }
+        } catch (Exception $e) {
+            $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+        }
+    } else {
+        $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+    }
+} else {
+    $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
 }
 
 $options = new Options();
@@ -68,7 +86,7 @@ ob_start();
     <title>Boletín Informativo Primaria</title>
     <style>
         @page {
-            size: 279.4mm 215.9mm; /* Carta horizontal */
+            size: 279.4mm 215.9mm;
             margin: 10mm; 
         }
         
@@ -92,7 +110,6 @@ ob_start();
             vertical-align: top;
         }
 
-        /* ======== ESTILOS HOJA 2 ======== */
         .titulo-momento {
             text-align: center;
             font-weight: bold;
@@ -152,7 +169,6 @@ ob_start();
         .texto-negrita { font-weight: bold; }
         .page-break { page-break-before: always; }
 
-        /* Estilo para el logo */
         .logo-img {
             width: 75px;
             height: auto;
@@ -160,7 +176,6 @@ ob_start();
             margin: 0 auto;
         }
 
-        /* ======== ESTILOS PARA CASILLAS CON X MODERNA ======== */
         .casilla-container {
             display: inline-block;
             text-align: center;
@@ -191,24 +206,23 @@ ob_start();
             display: inline-block;
             width: 26px;
             height: 26px;
-            border: 2px solid #000; /* Borde negro */
+            border: 2px solid #000;
             border-radius: 4px;
             margin: 0 auto;
             text-align: center;
             line-height: 26px;
             font-size: 18pt;
             font-weight: bold;
-            background: #fff; /* Fondo blanco */
-            color: #000; /* Color de texto negro por si acaso */
+            background: #fff;
+            color: #000;
         }
-        /* Estilo para la X dentro de la casilla */
         .casilla-x .x-symbol {
             display: inline-block;
             font-family: 'Arial', sans-serif;
             font-weight: bold;
             font-size: 20pt;
             line-height: 26px;
-            color: #000; /* X de color negro */
+            color: #000;
         }
         .casilla .x-symbol {
             display: inline-block;
@@ -266,21 +280,20 @@ ob_start();
                 DE ACUERDO AL RESULTADO FINAL DEL RENDIMIENTO ESTUDIANTIL EL ALUMNO SE ENCUENTRA EN SITUACIÓN DE:
             </div>
 
-            <!-- ===== CASILLAS CON X MODERNA ===== -->
-     <div style="text-align: center; margin-bottom: 40px;">
-    <div class="casilla-container" style="display: inline-block; width: 45%; text-align: center;">
-        <div class="casilla-label">PROMOVIDO</div>
-        <div class="<?php echo ($resultado_final == 'Promovido') ? 'casilla-x' : 'casilla'; ?>">
-            <span class="x-symbol"><?php echo ($resultado_final == 'Promovido') ? 'X' : ''; ?></span>
-        </div>
-    </div>
-    <div class="casilla-container" style="display: inline-block; width: 45%; text-align: center;">
-        <div class="casilla-label">APLAZADO</div>
-        <div class="<?php echo ($resultado_final == 'Aplazado') ? 'casilla-x' : 'casilla'; ?>">
-            <span class="x-symbol"><?php echo ($resultado_final == 'Aplazado') ? 'X' : ''; ?></span>
-        </div>
-    </div>
-</div>
+            <div style="text-align: center; margin-bottom: 40px;">
+                <div class="casilla-container" style="display: inline-block; width: 45%; text-align: center;">
+                    <div class="casilla-label">PROMOVIDO</div>
+                    <div class="<?php echo ($resultado_final == 'Promovido') ? 'casilla-x' : 'casilla'; ?>">
+                        <span class="x-symbol"><?php echo ($resultado_final == 'Promovido') ? 'X' : ''; ?></span>
+                    </div>
+                </div>
+                <div class="casilla-container" style="display: inline-block; width: 45%; text-align: center;">
+                    <div class="casilla-label">APLAZADO</div>
+                    <div class="<?php echo ($resultado_final == 'Aplazado') ? 'casilla-x' : 'casilla'; ?>">
+                        <span class="x-symbol"><?php echo ($resultado_final == 'Aplazado') ? 'X' : ''; ?></span>
+                    </div>
+                </div>
+            </div>
             <div style="text-align: center; margin-bottom: 1px; font-weight: bold; font-size: 11pt;">
                 Al Grado: <span style="font-weight: normal; margin-left: 5px;"><?php echo $grado; ?></span>
             </div>
@@ -323,11 +336,7 @@ ob_start();
 
             <!-- ===== LOGO ===== -->
             <div style="text-align: center; margin: 25px 0;">
-                <?php if ($logo_base64): ?>
-                    <img src="<?php echo $logo_base64; ?>" class="logo-img" alt="Logo">
-                <?php else: ?>
-                    <div style="width: 75px; height: 75px; border: 2px solid #000; margin: 0 auto; text-align: center; line-height: 75px; font-size: 8pt; font-weight: bold;">LOGO</div>
-                <?php endif; ?>
+                <?php echo $logo_html; ?>
             </div>
 
             <div style="text-align: center; margin-bottom: 50px; font-weight: bold; line-height: 1.1;">
@@ -364,19 +373,15 @@ ob_start();
     <tr>
         <td class="columna-triptico">
             <div class="titulo-momento">PRIMER LAPSO</div>
-            
             <div class="etiqueta-area">PROYECTOS DE APRENDIZAJES:</div>
             <div class="espacio-proyecto"><?php echo $l1_proyecto; ?></div>
-            
             <div class="etiqueta-area" style="text-align: center; margin-bottom: 5px;">ANÁLISIS CUALITATIVO</div>
             <div class="espacio-aprendizaje">
                 <?php echo $l1_formacion; ?>
                 <?php if($l1_relacion) echo '<br><br>' . $l1_relacion; ?>
             </div>
-            
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $l1_sugerencias; ?></div>
-            
             <table class="firmas-momento">
                 <tr>
                     <td style="text-align: left;">
@@ -405,19 +410,15 @@ ob_start();
 
         <td class="columna-triptico">
             <div class="titulo-momento">SEGUNDO LAPSO</div>
-            
             <div class="etiqueta-area">PROYECTOS DE APRENDIZAJES:</div>
             <div class="espacio-proyecto"><?php echo $l2_proyecto; ?></div>
-            
             <div class="etiqueta-area" style="text-align: center; margin-bottom: 5px;">ANÁLISIS CUALITATIVO</div>
             <div class="espacio-aprendizaje">
                 <?php echo $l2_formacion; ?>
                 <?php if($l2_relacion) echo '<br><br>' . $l2_relacion; ?>
             </div>
-            
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $l2_sugerencias; ?></div>
-            
             <table class="firmas-momento">
                 <tr>
                     <td style="text-align: left;">
@@ -446,19 +447,15 @@ ob_start();
 
         <td class="columna-triptico">
             <div class="titulo-momento">TERCER LAPSO</div>
-            
             <div class="etiqueta-area">PROYECTOS DE APRENDIZAJES:</div>
             <div class="espacio-proyecto"><?php echo $l3_proyecto; ?></div>
-            
             <div class="etiqueta-area" style="text-align: center; margin-bottom: 5px;">ANÁLISIS CUALITATIVO</div>
             <div class="espacio-aprendizaje">
                 <?php echo $l3_formacion; ?>
                 <?php if($l3_relacion) echo '<br><br>' . $l3_relacion; ?>
             </div>
-            
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $l3_sugerencias; ?></div>
-            
             <table class="firmas-momento">
                 <tr>
                     <td style="text-align: left;">
@@ -527,7 +524,6 @@ if ($estudiante_id) {
     
     $obs = $_SESSION['observacion'] ?? '';
     
-    // Mapeo seguro a la base de datos
     $l1_proyecto_db = $_SESSION['l1_proyecto'] ?? '';
     $l1_formacion_db = $_SESSION['l1_formacion'] ?? '';
     $l1_relacion_db = $_SESSION['l1_relacion'] ?? '';
