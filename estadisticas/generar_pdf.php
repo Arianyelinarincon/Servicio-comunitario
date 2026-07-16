@@ -9,6 +9,56 @@ if (!isset($_SESSION['usuario'])) {
 // ========== DETECTAR SI VIENE DEL HISTORIAL (GET) O DEL FORMULARIO (POST) ==========
 $desde_historial = isset($_GET['id']) && !empty($_GET['id']);
 
+// Variables por defecto para evitar undefined
+$porcentaje_total = 0;
+$dias_habiles = 0;
+$mat_v = 0;
+$mat_h = 0;
+$mat_total = 0;
+$total_v = 0;
+$total_h = 0;
+$total_asistencia = 0;
+$nombre_docente = 'No definido';
+$sala = '';
+$seccion_id = 0;
+$turno = 'Mañana';
+$observaciones = '';
+$periodo = date('Y-m');
+$anio = date('Y');
+$mes_num = date('m');
+$periodo_inicio = $anio - 1;
+$periodo_fin = $anio;
+
+// Mapeo de nombres de salas
+$nombres_salas = [
+    'sala4' => 'Sala 4 Años',
+    'sala5' => 'Sala 5 Años',
+    '1ro' => '1° Grado',
+    '2do' => '2° Grado',
+    '3ro' => '3° Grado',
+    '4to' => '4° Grado',
+    '5to' => '5° Grado',
+    '6to' => '6° Grado'
+];
+
+// Función para capitalizar nombres correctamente
+function capitalizarNombre($nombre) {
+    $nombre = trim($nombre);
+    if (empty($nombre)) return '';
+    // Dividir en palabras
+    $palabras = explode(' ', $nombre);
+    $palabras = array_map(function($palabra) {
+        // Palabras que no se capitalizan (conjunciones, preposiciones)
+        $excepciones = ['de', 'la', 'del', 'las', 'los', 'y', 'e', 'o', 'u', 'con', 'sin', 'por', 'para'];
+        $palabra_lower = strtolower($palabra);
+        if (in_array($palabra_lower, $excepciones)) {
+            return $palabra_lower;
+        }
+        return ucfirst(strtolower($palabra));
+    }, $palabras);
+    return implode(' ', $palabras);
+}
+
 if ($desde_historial) {
     // ========== CARGAR DATOS DESDE EL HISTORIAL ==========
     $id_resumen = (int)$_GET['id'];
@@ -39,8 +89,8 @@ if ($desde_historial) {
     
     // Decodificar JSONs
     $datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
-    $ingresos_display = json_decode($resumen['ingresos'], true);
-    $egresos_display = json_decode($resumen['egresos'], true);
+    $ingresos_display = json_decode($resumen['ingresos'], true) ?: [];
+    $egresos_display = json_decode($resumen['egresos'], true) ?: [];
     
     // Obtener nombre del docente
     $nombre_docente = 'No definido';
@@ -113,13 +163,6 @@ if ($desde_historial) {
     $porc_v = $total_asistencia > 0 ? (int)round(($total_v / $total_asistencia) * 100) : 0;
     $porc_h = $total_asistencia > 0 ? (int)round(($total_h / $total_asistencia) * 100) : 0;
     
-    // Ausencias
-    $capacidad_v = (int)($mat_v * $dias_habiles);
-    $capacidad_h = (int)($mat_h * $dias_habiles);
-    $ausencias_v = (int)($capacidad_v - $total_v);
-    $ausencias_h = (int)($capacidad_h - $total_h);
-    $ausencias_total = $ausencias_v + $ausencias_h;
-    
 } else {
     // ========== RECIBIR DATOS DESDE POST (FORMULARIO) ==========
     $periodo = $_POST['periodo'] ?? date('Y-m');
@@ -169,7 +212,8 @@ if ($desde_historial) {
     $ingresos_display = [];
     foreach ($ingreso_apellido as $idx => $apellido) {
         if (trim($apellido) === '') continue;
-        $nombre_completo = trim(($ingreso_nombre[$idx] ?? '') . ' ' . $apellido);
+        $nombre = $ingreso_nombre[$idx] ?? '';
+        $nombre_completo = trim($nombre . ' ' . $apellido);
         $ingresos_display[] = [
             'nombre' => $nombre_completo,
             'genero' => $ingreso_genero[$idx] ?? '',
@@ -181,7 +225,8 @@ if ($desde_historial) {
     $egresos_display = [];
     foreach ($egreso_apellido as $idx => $apellido) {
         if (trim($apellido) === '') continue;
-        $nombre_completo = trim(($egreso_nombre[$idx] ?? '') . ' ' . $apellido);
+        $nombre = $egreso_nombre[$idx] ?? '';
+        $nombre_completo = trim($nombre . ' ' . $apellido);
         $egresos_display[] = [
             'nombre' => $nombre_completo,
             'genero' => $egreso_genero[$idx] ?? '',
@@ -225,16 +270,10 @@ if ($desde_historial) {
     }
     
     // Recalcular porcentaje
+    $porcentaje_total = 0; // Inicializar
     if ($mat_total > 0 && $dias_habiles > 0) {
         $porcentaje_total = (int)round(($total_asistencia / ($mat_total * $dias_habiles)) * 100);
     }
-    
-    // Ausencias
-    $capacidad_v = (int)($mat_v * $dias_habiles);
-    $capacidad_h = (int)($mat_h * $dias_habiles);
-    $ausencias_v = (int)($capacidad_v - $total_v);
-    $ausencias_h = (int)($capacidad_h - $total_h);
-    $ausencias_total = $ausencias_v + $ausencias_h;
 }
 
 // ========== PERÍODO ESCOLAR ==========
@@ -269,6 +308,16 @@ function mostrarValor($v) {
     return $v;
 }
 
+function mostrarPorcentaje($v) {
+    if ($v === null || $v === '' || $v === 0) return '0%';
+    return $v . '%';
+}
+
+// Capitalizar nombres
+$nombre_docente_cap = capitalizarNombre($nombre_docente);
+$sala_nombre = isset($nombres_salas[$sala]) ? $nombres_salas[$sala] : $sala;
+$sala_nombre_cap = capitalizarNombre($sala_nombre);
+
 // ========== GENERAR HTML ==========
 ob_start();
 ?>
@@ -287,8 +336,6 @@ ob_start();
         .text-left { text-align: left; }
         .no-border td, .no-border { border: none !important; }
         .fin-semana { background-color: #e8f4ff; border-bottom: 2px solid #0080ff; }
-        .tabla-clasificacion td, .tabla-clasificacion th { font-size: 10px; }
-        .resumen-general td, .resumen-general th { font-size: 10px; padding: 2px; }
         .header-box { border: 1px solid #000; text-align: center; font-size: 11px; line-height: 1.3; height: auto; padding: 4px; }
         .header-right { font-size: 10px; line-height: 1.8; padding-left: 10px; }
         .titulo { text-align: center; font-weight: bold; font-size: 13px; border-top: 1px solid #000; border-bottom: 1px solid #000; margin: 5px 0; padding: 3px; }
@@ -311,16 +358,16 @@ ob_start();
         </td>
         <td style="width: 50%; border: none;">
             <div class="header-right">
-                Docente: <span class="line" style="min-width: 180px;"><?= htmlspecialchars($nombre_docente) ?></span><br>
-                Grado: <span class="line"><?= htmlspecialchars($sala) ?></span>
+                Docente: <span class="line" style="min-width: 180px;"><?= htmlspecialchars($nombre_docente_cap) ?></span><br>
+                Grado: <span class="line"><?= htmlspecialchars($sala_nombre_cap) ?></span>
                 Sección: <span class="line"><?= htmlspecialchars($seccion_id) ?></span><br>
                 Turno: <span class="line"><?= htmlspecialchars($turno) ?></span>
                 Días Hábiles: <span class="line"><?= $dias_habiles ?></span><br>
-                Promedio de Asistencia: <span class="line"><?= $porcentaje_total ?>%</span><br>
+                Promedio de Asistencia: <span class="line"><?= mostrarPorcentaje($porcentaje_total) ?></span><br>
                 Mes: <span class="line"><?= $nombre_mes_es ?></span><br>
-                Matrícula Inicial: V <span class="line"><?= $mat_v ?></span>
-                H <span class="line"><?= $mat_h ?></span>
-                Total <span class="line"><?= $mat_total ?></span>
+                Matrícula Inicial: V <span class="line"><?= mostrarValor($mat_v) ?></span>
+                H <span class="line"><?= mostrarValor($mat_h) ?></span>
+                Total <span class="line"><?= mostrarValor($mat_total) ?></span>
             </div>
         </td>
     </tr>
@@ -436,6 +483,10 @@ $letras_dias = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
             
             $ing = isset($ingresos_display[$i]) ? $ingresos_display[$i] : null;
             $eg = isset($egresos_display[$i]) ? $egresos_display[$i] : null;
+            
+            // Capitalizar nombres de ingreso/egreso
+            $ing_nombre = $ing ? capitalizarNombre($ing['nombre']) : '';
+            $eg_nombre = $eg ? capitalizarNombre($eg['nombre']) : '';
         ?>
         <tr>
             <td><?= $edad ?></td>
@@ -447,14 +498,14 @@ $letras_dias = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
             <td><?= mostrarValor($ext_h) ?></td>
             <td><?= mostrarValor($ext_total) ?></td>
 
-            <td class="text-left"><?= $ing ? htmlspecialchars($ing['nombre']) : '' ?></td>
+            <td class="text-left"><?= $ing_nombre ?></td>
             <td><?= $ing ? ($ing['genero'] == 'V' ? 'X' : '') : '' ?></td>
             <td><?= $ing ? ($ing['genero'] == 'H' ? 'X' : '') : '' ?></td>
             <td><?= $ing ? htmlspecialchars($ing['ci']) : '' ?></td>
             <td><?= $ing ? htmlspecialchars($ing['fn']) : '' ?></td>
             <td><?= $ing ? htmlspecialchars($ing['fi']) : '' ?></td>
 
-            <td class="text-left"><?= $eg ? htmlspecialchars($eg['nombre']) : '' ?></td>
+            <td class="text-left"><?= $eg_nombre ?></td>
             <td><?= $eg ? ($eg['genero'] == 'V' ? 'X' : '') : '' ?></td>
             <td><?= $eg ? ($eg['genero'] == 'H' ? 'X' : '') : '' ?></td>
             <td><?= $eg ? htmlspecialchars($eg['ci']) : '' ?></td>

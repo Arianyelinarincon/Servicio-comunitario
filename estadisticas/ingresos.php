@@ -4,6 +4,44 @@
 // ============================================================================
 require_once "config_db.php";
 
+// --- Funciones auxiliares (definidas aquí por si no existen en otro lado) ---
+function sanitizarEntrada($dato, $tipo = 'string') {
+    if (is_null($dato)) return '';
+    if ($tipo === 'int') return (int)$dato;
+    if ($tipo === 'float') return (float)$dato;
+    // Limpieza general para strings
+    $dato = trim($dato);
+    $dato = stripslashes($dato);
+    $dato = htmlspecialchars($dato, ENT_QUOTES, 'UTF-8');
+    return $dato;
+}
+
+function responderJSON($data, $status = 200) {
+    http_response_code($status);
+    header('Content-Type: application/json');
+    echo json_encode($data);
+    exit;
+}
+
+function logError($mensaje, $contexto = []) {
+    error_log("ERROR: $mensaje " . json_encode($contexto));
+}
+// ----------------------------------------------------------------------------
+
+// Autenticación
+if (session_status() === PHP_SESSION_NONE) session_start();
+$esAjax = isset($_GET['ajax']) && $_GET['ajax'] == '1';
+
+if (!isset($_SESSION['usuario'])) {
+    if ($esAjax) {
+        responderJSON(['success' => false, 'error' => 'No autenticado'], 401);
+    } else {
+        header('Location: /login.php');
+        exit;
+    }
+}
+
+// Prefill (para rellenar el formulario de inscripción)
 $prefill = $_GET['prefill'] ?? '';
 $prefill_data = [];
 if ($prefill === '1') {
@@ -18,52 +56,60 @@ if ($prefill === '1') {
     ];
 }
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('log_errors', 1);
-
-// Autenticación
-if (session_status() === PHP_SESSION_NONE) session_start();
-if (!isset($_SESSION['usuario'])) {
-    header('Location: /login.php');
-    exit;
-}
-
-// Funciones básicas (copiadas de index.php o incluidas desde un archivo común)
-function sanitizarEntrada($dato, $tipo = 'string') {
-    // ... misma función que ya usamos ...
-}
-function responderJSON($data, $status = 200) { /* ... */ }
-function logError($mensaje, $contexto = []) { /* ... */ }
-
 // ============================================================================
-// AJAX HANDLER – ELIMINAR INGRESO
+// AJAX HANDLER
 // ============================================================================
-$esAjax = isset($_GET['ajax']) && $_GET['ajax'] == '1';
 if ($esAjax) {
     $action = sanitizarEntrada($_POST['action'] ?? '');
     
     if ($action === 'eliminar_ingreso') {
         $id = filter_var($_POST['id'] ?? 0, FILTER_VALIDATE_INT);
-        if (!$id) responderJSON(['success' => false, 'error' => 'ID inválido'], 400);
+        if (!$id) {
+            responderJSON(['success' => false, 'error' => 'ID inválido'], 400);
+        }
         
         try {
             $stmt = $conexion->prepare("DELETE FROM ingresos WHERE id = ?");
+            if (!$stmt) {
+                throw new Exception("Error en la preparación: " . $conexion->error);
+            }
             $stmt->bind_param("i", $id);
             $stmt->execute();
-            responderJSON(['success' => true]);
+            
+            if ($stmt->affected_rows > 0) {
+                responderJSON(['success' => true]);
+            } else {
+                responderJSON(['success' => false, 'error' => 'No se encontró el registro o ya fue eliminado'], 404);
+            }
         } catch (Exception $e) {
-            responderJSON(['success' => false, 'error' => $e->getMessage()], 500);
+            logError("Error eliminando ingreso", ['id' => $id, 'error' => $e->getMessage()]);
+            responderJSON(['success' => false, 'error' => 'Error interno del servidor'], 500);
         }
         exit;
     }
     
-    if ($action === 'cargar_secciones') { /* igual que en egresados.php */ }
+    if ($action === 'cargar_secciones') {
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        if (!$sala) {
+            responderJSON(['secciones' => []]);
+        }
+        $stmt = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
+        $stmt->bind_param("s", $sala);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $secciones = [];
+        while ($row = $result->fetch_assoc()) {
+            $secciones[] = $row;
+        }
+        responderJSON(['secciones' => $secciones]);
+        exit;
+    }
+    
     responderJSON(['error' => 'Acción no válida'], 400);
 }
 
 // ============================================================================
-// FILTROS Y PAGINACIÓN
+// FILTROS Y PAGINACIÓN (para la vista HTML)
 // ============================================================================
 $filtro_sala = sanitizarEntrada($_GET['sala'] ?? '');
 $filtro_seccion = filter_var($_GET['seccion'] ?? 0, FILTER_VALIDATE_INT);
@@ -73,28 +119,29 @@ $pagina = max(1, filter_var($_GET['pagina'] ?? 1, FILTER_VALIDATE_INT));
 $por_pagina = 20;
 $offset = ($pagina - 1) * $por_pagina;
 
+// Construcción de WHERE con JOIN a estudiantes
 $where = [];
 $params = [];
 $tipos = '';
 
 if ($filtro_sala) {
-    $where[] = "sala = ?";
+    $where[] = "i.sala = ?";
     $params[] = $filtro_sala;
     $tipos .= 's';
 }
 if ($filtro_seccion) {
-    $where[] = "seccion_id = ?";
+    $where[] = "i.seccion_id = ?";
     $params[] = $filtro_seccion;
     $tipos .= 'i';
 }
 if ($filtro_periodo) {
-    $where[] = "periodo = ?";
+    $where[] = "i.periodo = ?";
     $params[] = $filtro_periodo;
     $tipos .= 's';
 }
 if ($filtro_busqueda) {
     $termino = "%$filtro_busqueda%";
-    $where[] = "(nombre LIKE ? OR apellido LIKE ? OR ci LIKE ? OR CONCAT(apellido, ' ', nombre) LIKE ?)";
+    $where[] = "(e.nombre LIKE ? OR e.apellido LIKE ? OR e.cedula LIKE ? OR CONCAT(e.apellido, ' ', e.nombre) LIKE ?)";
     $params[] = $termino;
     $params[] = $termino;
     $params[] = $termino;
@@ -104,16 +151,30 @@ if ($filtro_busqueda) {
 
 $whereSQL = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
-// Total
-$sql_count = "SELECT COUNT(*) as total FROM ingresos $whereSQL";
+// Total de registros (con JOIN)
+$sql_count = "SELECT COUNT(*) as total 
+              FROM ingresos i 
+              JOIN estudiantes e ON i.id = e.id 
+              $whereSQL";
 $stmt_count = $conexion->prepare($sql_count);
-if ($params) $stmt_count->bind_param($tipos, ...$params);
+if ($params) {
+    $stmt_count->bind_param($tipos, ...$params);
+}
 $stmt_count->execute();
 $total = $stmt_count->get_result()->fetch_assoc()['total'];
 $total_paginas = ceil($total / $por_pagina);
 
-// Consulta
-$sql = "SELECT * FROM ingresos $whereSQL ORDER BY created_at DESC LIMIT ? OFFSET ?";
+// Consulta de datos con paginación (seleccionar campos necesarios)
+$sql = "SELECT i.*, 
+               e.apellido, e.nombre, 
+               COALESCE(e.cedula, e.cedula_escolar, '') AS ci,
+               e.nacionalidad, 
+               e.fecha_nacimiento
+        FROM ingresos i
+        JOIN estudiantes e ON i.id = e.id
+        $whereSQL 
+        ORDER BY i.created_at DESC 
+        LIMIT ? OFFSET ?";
 $params_paginados = array_merge($params, [$por_pagina, $offset]);
 $tipos_paginados = $tipos . 'ii';
 $stmt = $conexion->prepare($sql);
@@ -155,6 +216,10 @@ include "../includes/header.php";
         .btn-terminar:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(0,45,84,0.3); }
         .btn-eliminar { background-color: #dc3545; border: none; color: white; }
         .btn-eliminar:hover { background-color: #bb2d3b; }
+        .btn-filtro { background: var(--primary-gradient); color: white; border: none; }
+        .btn-filtro:hover { background: #003f66; color: white; }
+        .btn-limpiar { background: #6c757d; color: white; border: none; }
+        .btn-limpiar:hover { background: #5a6268; color: white; }
     </style>
 </head>
 <body>
@@ -168,7 +233,7 @@ include "../includes/header.php";
         <a href="index.php" class="btn btn-light fw-bold"><i class="fas fa-arrow-left me-2"></i> Volver</a>
     </div>
 
-    <!-- Filtros (similar a egresados) -->
+    <!-- Filtros -->
     <div class="card">
         <div class="card-body p-4">
             <form method="GET" class="row g-3">
@@ -188,7 +253,7 @@ include "../includes/header.php";
                     <label class="small fw-bold text-muted">Sección</label>
                     <select name="seccion" id="filtro-seccion" class="form-select" <?= $filtro_sala ? '' : 'disabled' ?>>
                         <option value="">Todas</option>
-                        <!-- cargado dinámicamente -->
+                        <!-- se cargará dinámicamente con JavaScript -->
                     </select>
                 </div>
                 <div class="col-md-2">
@@ -210,7 +275,7 @@ include "../includes/header.php";
     <!-- Tabla -->
     <div class="card">
         <div class="card-header">
-            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i>Registros de ingreso <span class="badge bg-light text-dark ms-2"><?= $total ?></span></h6>
+            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i>Registros de ingreso <span class="badge bg-light text-dark ms-2" id="contador-total"><?= $total ?></span></h6>
         </div>
         <div class="card-body p-0">
             <?php if ($total > 0): ?>
@@ -221,7 +286,7 @@ include "../includes/header.php";
                             <th>#</th><th>Estudiante</th><th>CI</th><th>Género</th><th>Sala/Sección</th><th>Período</th><th>F. Ingreso</th><th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="tabla-ingresos-body">
                         <?php $cont = $offset + 1; while ($ing = $ingresos->fetch_assoc()): 
                             $nombre_sec = '';
                             $sec = $conexion->query("SELECT nombre FROM secciones WHERE id=".$ing['seccion_id'])->fetch_assoc();
@@ -249,13 +314,30 @@ include "../includes/header.php";
                     </tbody>
                 </table>
             </div>
-            <!-- Paginación igual que en egresados -->
+            <!-- Paginación -->
+            <div class="d-flex justify-content-between align-items-center p-3">
+                <div>Mostrando <?= ($offset + 1) ?> - <?= min($offset + $por_pagina, $total) ?> de <?= $total ?></div>
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+                        <?php for ($i = 1; $i <= $total_paginas; $i++): ?>
+                        <li class="page-item <?= ($i == $pagina) ? 'active' : '' ?>">
+                            <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['pagina' => $i])) ?>"><?= $i ?></a>
+                        </li>
+                        <?php endfor; ?>
+                    </ul>
+                </nav>
+            </div>
+            <?php else: ?>
+            <div class="text-center py-5">
+                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                <p class="text-muted">No hay registros de ingreso pendientes</p>
+            </div>
             <?php endif; ?>
         </div>
     </div>
 </div>
 
-<!-- Modal eliminar -->
+<!-- Modal Eliminar -->
 <div class="modal fade" id="modalEliminar" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -264,7 +346,8 @@ include "../includes/header.php";
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>¿Eliminar este ingreso permanentemente?</p>
+                <p>¿Está seguro de eliminar este ingreso permanentemente?</p>
+                <p class="text-danger small">Esta acción no se puede deshacer.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -276,30 +359,67 @@ include "../includes/header.php";
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// Variables globales
 let idEliminar = null;
 const modalEliminar = new bootstrap.Modal(document.getElementById('modalEliminar'));
 
+// Mostrar modal y guardar ID
 function eliminarIngreso(id) {
     idEliminar = id;
     modalEliminar.show();
 }
 
-document.getElementById('btn-confirmar-eliminar').addEventListener('click', () => {
+// Confirmar eliminación (evento)
+document.getElementById('btn-confirmar-eliminar').addEventListener('click', function() {
     if (!idEliminar) return;
+    
+    // Deshabilitar botón para evitar doble clic
+    this.disabled = true;
+    this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Eliminando...';
+    
     fetch('ingresos.php?ajax=1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'action=eliminar_ingreso&id=' + idEliminar
     })
-    .then(r => r.json())
-    .then(d => {
-        if (d.success) {
-            document.getElementById('fila-ingreso-' + idEliminar).remove();
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => { throw new Error(text || 'Error en la respuesta del servidor'); });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            const fila = document.getElementById('fila-ingreso-' + idEliminar);
+            if (fila) fila.remove();
+            
+            const contador = document.getElementById('contador-total');
+            if (contador) {
+                let actual = parseInt(contador.textContent);
+                contador.textContent = actual - 1;
+            }
+            
+            const tbody = document.getElementById('tabla-ingresos-body');
+            if (tbody && tbody.children.length === 0) {
+                location.reload();
+            }
+            
             modalEliminar.hide();
-        } else alert('Error al eliminar');
+        } else {
+            alert('Error al eliminar: ' + (data.error || 'No se pudo eliminar el registro'));
+        }
+    })
+    .catch(error => {
+        console.error('Error en la petición:', error);
+        alert('Ocurrió un error al comunicarse con el servidor. Por favor, intente nuevamente.');
+    })
+    .finally(() => {
+        this.disabled = false;
+        this.innerHTML = 'Eliminar';
     });
 });
 
+// Cargar secciones según la sala seleccionada
 function cargarSecciones() {
     const sala = document.getElementById('filtro-sala').value;
     const selectSec = document.getElementById('filtro-seccion');
@@ -308,34 +428,38 @@ function cargarSecciones() {
         selectSec.disabled = true;
         return;
     }
+    
     fetch('ingresos.php?ajax=1', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'action=cargar_secciones&sala=' + encodeURIComponent(sala)
     })
     .then(r => r.json())
-    .then(d => {
+    .then(data => {
         selectSec.innerHTML = '<option value="">Todas</option>';
-        if (d.secciones) {
-            d.secciones.forEach(s => selectSec.add(new Option(s.nombre, s.id)));
+        if (data.secciones && data.secciones.length > 0) {
+            data.secciones.forEach(s => {
+                const option = document.createElement('option');
+                option.value = s.id;
+                option.textContent = s.nombre;
+                selectSec.appendChild(option);
+            });
             selectSec.disabled = false;
+        } else {
+            selectSec.disabled = true;
         }
-    });
+        const valorActual = new URLSearchParams(window.location.search).get('seccion');
+        if (valorActual) {
+            selectSec.value = valorActual;
+        }
+    })
+    .catch(err => console.error('Error cargando secciones:', err));
 }
-cargarSecciones();
 
- <?php if (!empty($prefill_data)): ?>
-// Precargar datos del ingreso
+// Ejecutar al cargar la página para inicializar secciones
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelector('input[name="apellido"]').value = '<?= htmlspecialchars($prefill_data['apellido']) ?>';
-    document.querySelector('input[name="nombre"]').value = '<?= htmlspecialchars($prefill_data['nombre']) ?>';
-    document.querySelector('select[name="genero"]').value = '<?= $prefill_data['genero'] ?>';
-    document.querySelector('input[name="nacionalidad"]').value = '<?= htmlspecialchars($prefill_data['nacionalidad']) ?>';
-    document.querySelector('input[name="cedula_base"]').value = '<?= htmlspecialchars($prefill_data['ci']) ?>';
-    if ('<?= $prefill_data['fn'] ?>') document.querySelector('input[name="fecha_nacimiento"]').value = '<?= $prefill_data['fn'] ?>';
-    // La fecha de ingreso puede ir en el campo "Año Escolar" o similar, ajústalo según necesites.
+    cargarSecciones();
 });
-<?php endif; ?>
 </script>
 
 <?php include "../includes/footer.php"; ?>

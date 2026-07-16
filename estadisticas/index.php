@@ -80,7 +80,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     if ($action == 'buscar_estudiantes') {
         $termino = sanitizarEntrada($_POST['termino'] ?? '');
         $sala = sanitizarEntrada($_POST['sala'] ?? '');
-        $seccion = (int)($_POST['seccion'] ?? 0);
+        $seccion = (int)($_POST['seccion_id'] ?? 1);
         
         if (empty($termino) || empty($sala) || $seccion <= 0) {
             responderJSON(['estudiantes' => []]);
@@ -88,13 +88,16 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         
         $termino = "%$termino%";
         $stmt = $conexion->prepare("
-            SELECT id, nombre, apellido, cedula, genero, nacionalidad, fecha_nacimiento
-            FROM estudiantes
-            WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo'
-            AND (nombre LIKE ? OR apellido LIKE ? OR cedula LIKE ?)
-            ORDER BY apellido, nombre
-            LIMIT 15
-        ");
+    SELECT id, nombre, apellido, 
+           COALESCE(cedula, cedula_escolar) AS cedula,
+           genero, nacionalidad, fecha_nacimiento,
+           CONCAT(apellido, ' ', nombre) AS nombre_completo
+    FROM estudiantes
+    WHERE sala = ? AND seccion_id = ? AND estatus = 'Activo'
+    AND (nombre LIKE ? OR apellido LIKE ? OR COALESCE(cedula, cedula_escolar) LIKE ?)
+    ORDER BY apellido, nombre
+    LIMIT 15
+");
         $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -143,11 +146,13 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         $estudiante = $stmt->get_result()->fetch_assoc();
         $stmt->close();
         if (!$estudiante) responderJSON(['success' => false, 'error' => 'Estudiante no encontrado']);
-        
+
+        // Asegurar que el género tenga un valor por defecto
+        $genero_estudiante = $estudiante['genero'] ?? 'V';
         // Insertar egreso
         $fecha_egreso = date('Y-m-d');
         $stmt = $conexion->prepare("INSERT INTO egresos (estudiante_id, sala, seccion_id, periodo, fecha_egreso, motivo, genero) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isissss", $estudiante_id, $sala, $seccion, $periodo, $fecha_egreso, $motivo, $estudiante['genero']);
+        $stmt->bind_param("isissss", $estudiante_id, $sala, $seccion, $periodo, $fecha_egreso, $motivo, $genero_estudiante);
         $stmt->execute();
         $stmt->close();
         
@@ -169,6 +174,71 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         ]);
     }
 
+    // ========== NUEVA ACCIÓN PARA INGRESOS ==========
+    if ($action == 'confirmar_ingreso') {
+        if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
+            responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
+        }
+        
+        $apellido = sanitizarEntrada($_POST['apellido'] ?? '');
+        $nombre = sanitizarEntrada($_POST['nombre'] ?? '');
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion = (int)($_POST['seccion'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        $genero = sanitizarEntrada($_POST['genero'] ?? 'V');
+        $cedula = sanitizarEntrada($_POST['cedula'] ?? '');
+        $fecha_nacimiento = sanitizarEntrada($_POST['fecha_nacimiento'] ?? '');
+        $estudiante_id = (int)($_POST['estudiante_id'] ?? 0);
+
+        if (empty($apellido) || empty($nombre) || empty($sala) || $seccion <= 0 || empty($periodo)) {
+            responderJSON(['success' => false, 'error' => 'Datos incompletos']);
+        }
+        
+        // Si no viene estudiante_id, intentamos buscar por coincidencia exacta o insertar nuevo
+        if ($estudiante_id == 0) {
+            $stmt = $conexion->prepare("SELECT id FROM estudiantes WHERE apellido = ? AND nombre = ? AND sala = ? AND seccion_id = ?");
+            $stmt->bind_param("sssi", $apellido, $nombre, $sala, $seccion);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($row = $result->fetch_assoc()) {
+                $estudiante_id = $row['id'];
+            }
+            $stmt->close();
+        }
+        
+        // Si aún no existe, crear estudiante
+        if ($estudiante_id == 0) {
+            $stmt = $conexion->prepare("INSERT INTO estudiantes (apellido, nombre, genero, cedula, fecha_nacimiento, sala, seccion_id, estatus) VALUES (?, ?, ?, ?, ?, ?, ?, 'Activo')");
+            $stmt->bind_param("ssssssi", $apellido, $nombre, $genero, $cedula, $fecha_nacimiento, $sala, $seccion);
+            $stmt->execute();
+            $estudiante_id = $stmt->insert_id;
+            $stmt->close();
+        } else {
+            // Reactivar si estaba inactivo
+            $stmt = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
+            $stmt->bind_param("i", $estudiante_id);
+            $stmt->execute();
+            $stmt->close();
+        }
+        
+        // Verificar duplicado en ingresos
+        $stmt = $conexion->prepare("SELECT id FROM ingresos WHERE id = ? AND sala = ? AND seccion_id = ? AND periodo = ?");
+        $stmt->bind_param("isis", $estudiante_id, $sala, $seccion, $periodo);
+        $stmt->execute();
+        if ($stmt->get_result()->num_rows > 0) {
+            responderJSON(['success' => false, 'error' => 'Este estudiante ya fue ingresado en este período']);
+        }
+        $stmt->close();
+        
+        $fecha_ingreso = date('Y-m-d');
+        $stmt = $conexion->prepare("INSERT INTO ingresos (id, sala, seccion_id, periodo, fecha_ingreso, genero) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("isssss", $estudiante_id, $sala, $seccion, $periodo, $fecha_ingreso, $genero);
+        $stmt->execute();
+        $stmt->close();
+        
+        responderJSON(['success' => true]);
+    }
+
     if ($action == 'cargar_egresos_existentes') {
         $sala = sanitizarEntrada($_POST['sala'] ?? '');
         $seccion = (int)($_POST['seccion'] ?? 0);
@@ -179,12 +249,14 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         }
         
         $stmt = $conexion->prepare("
-            SELECT est.nombre, est.apellido, e.genero, est.cedula, est.fecha_nacimiento, e.fecha_egreso
-            FROM egresos e
-            JOIN estudiantes est ON e.estudiante_id = est.id
-            WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?
-            ORDER BY e.fecha_egreso DESC
-        ");
+    SELECT est.nombre, est.apellido, e.genero, 
+           COALESCE(est.cedula, est.cedula_escolar, '') AS ci,
+           est.fecha_nacimiento, e.fecha_egreso
+    FROM egresos e
+    JOIN estudiantes est ON e.estudiante_id = est.id
+    WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?
+    ORDER BY e.fecha_egreso DESC
+");
         $stmt->bind_param("sis", $sala, $seccion, $periodo);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -193,9 +265,9 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             $egresos[] = [
                 'nombre_completo' => $row['apellido'] . ' ' . $row['nombre'],
                 'genero' => $row['genero'],
-                'cedula' => $row['cedula'],
-                'fecha_nacimiento' => $row['fecha_nacimiento'],
-                'fecha_egreso' => $row['fecha_egreso']
+                'ci' => $row['ci'],
+                'fn' => $row['fecha_nacimiento'],
+                'fi' => $row['fecha_egreso']
             ];
         }
         responderJSON(['egresos' => $egresos]);
@@ -218,6 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_y_pdf'])) {
     $mes = date('m', strtotime($periodo));
     $dias_en_mes = cal_days_in_month(CAL_GREGORIAN, $mes, $anio);
     
+    // Guardar asistencia diaria
     for ($d = 1; $d <= $dias_en_mes; $d++) {
         $fecha = "$anio-$mes-" . str_pad($d, 2, '0', STR_PAD_LEFT);
         $v = (int)($asist_v[$d] ?? 0);
@@ -232,6 +305,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_y_pdf'])) {
         $stmt->execute();
         $stmt->close();
     }
+    
+   // ========== GUARDAR EGRESOS DEL FORMULARIO ==========
+if (isset($_POST['egreso_apellido']) && is_array($_POST['egreso_apellido'])) {
+    // Validar que la sala y sección sean válidas
+    if (empty($sala) || $seccion_id <= 0) {
+        // Si no hay datos válidos, mostramos mensaje pero continuamos
+        $mensaje = '⚠️ Advertencia: No se guardaron egresos por falta de sala/sección.';
+    } else {
+        $seccion_id_int = (int)$seccion_id;
+        $periodo_egreso = $periodo;
+        
+        for ($i = 0; $i < count($_POST['egreso_apellido']); $i++) {
+            $apellido = trim($_POST['egreso_apellido'][$i] ?? '');
+            $nombre = trim($_POST['egreso_nombre'][$i] ?? '');
+            if (empty($apellido) && empty($nombre)) continue;
+            
+            // Obtener valores con isset para evitar undefined index
+            $genero = isset($_POST['egreso_genero'][$i]) ? $_POST['egreso_genero'][$i] : 'V';
+            $ci = isset($_POST['egreso_ci'][$i]) ? $_POST['egreso_ci'][$i] : '';
+            $fn = isset($_POST['egreso_fn'][$i]) ? $_POST['egreso_fn'][$i] : '';
+            $fi = isset($_POST['egreso_fi'][$i]) ? $_POST['egreso_fi'][$i] : '';
+            
+            // Buscar estudiante existente
+            $stmt = $conexion->prepare("SELECT id FROM estudiantes WHERE apellido = ? AND nombre = ? AND sala = ? AND seccion_id = ?");
+            if ($stmt) {
+                $stmt->bind_param("sssi", $apellido, $nombre, $sala, $seccion_id_int);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $estudiante = $result->fetch_assoc();
+                $stmt->close();
+            } else {
+                continue;
+            }
+            
+            if ($estudiante) {
+                $estudiante_id = $estudiante['id'];
+                // Actualizar estatus a Inactivo
+                $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
+                if ($stmt_up) {
+                    $stmt_up->bind_param("i", $estudiante_id);
+                    $stmt_up->execute();
+                    $stmt_up->close();
+                }
+            } else {
+                // Insertar nuevo estudiante
+                $estatus = 'Inactivo';
+                // Validar que la cedula no sea null para bind_param
+                $ci_val = $ci ?? '';
+                $fn_val = $fn ?? '';
+                
+                $stmt_ins = $conexion->prepare("INSERT INTO estudiantes (apellido, nombre, genero, cedula, fecha_nacimiento, sala, seccion_id, estatus) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                if ($stmt_ins) {
+                    $stmt_ins->bind_param("ssssssis", $apellido, $nombre, $genero, $ci_val, $fn_val, $sala, $seccion_id_int, $estatus);
+                    $stmt_ins->execute();
+                    $estudiante_id = $stmt_ins->insert_id;
+                    $stmt_ins->close();
+                } else {
+                    continue;
+                }
+            }
+            
+            // Insertar egreso SOLO si tenemos estudiante_id válido
+            if (isset($estudiante_id) && $estudiante_id > 0) {
+                $fecha_egreso = !empty($fi) ? $fi : date('Y-m-d');
+                $motivo_egreso = 'Retiro';
+                
+                $stmt_eg = $conexion->prepare("INSERT INTO egresos (estudiante_id, sala, seccion_id, periodo, fecha_egreso, motivo, genero) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                if ($stmt_eg) {
+                    // PASO CLAVE: todas las variables deben estar definidas y ser del tipo correcto
+                    $stmt_eg->bind_param("iisssss", $estudiante_id, $sala, $seccion_id_int, $periodo_egreso, $fecha_egreso, $motivo_egreso, $genero);
+                    $stmt_eg->execute();
+                    $stmt_eg->close();
+                }
+            }
+        }
+    }
+}
     
     include "generar_pdf.php";
     exit;
@@ -353,24 +503,7 @@ $csrf_token = $_SESSION['csrf_token'];
         background-color: #218838;
         transform: scale(1.02);
     }
-    
-    /* Estilos para buscador de egresos (armonía con egresados.php) */
-    .buscador-egreso-container {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-    }
-    .buscador-egreso-container .list-group-item {
-        border-radius: 6px;
-        margin-bottom: 2px;
-        transition: background 0.15s;
-    }
-    .buscador-egreso-container .list-group-item:hover {
-        background: #e8f4f8;
-    }
+
     .campo-solo-lectura {
         background-color: #e9ecef !important;
         opacity: 1;
@@ -420,6 +553,28 @@ $csrf_token = $_SESSION['csrf_token'];
     }
     .card-body {
         overflow: visible !important;
+    }
+
+    /* Estilos para el dropdown de autocompletado */
+    .autocomplete-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        max-height: 200px;
+        overflow-y: auto;
+        background: white;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        z-index: 9999;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .autocomplete-dropdown .dropdown-item {
+        padding: 6px 12px;
+        cursor: pointer;
+    }
+    .autocomplete-dropdown .dropdown-item:hover {
+        background-color: #e8f4f8;
     }
 </style>
 
@@ -690,72 +845,19 @@ $csrf_token = $_SESSION['csrf_token'];
                             <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
                             <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
                             <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
-                            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-success confirmar-ingreso me-1" title="Confirmar ingreso">✓</button>
+                                <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
                 <button type="button" class="btn btn-sm btn-light mt-2" onclick="agregarFila('ingreso')">+ Agregar Ingreso</button>
             </div>
 
-            <!-- Egresos con buscador moderno -->
+            <!-- Egresos con autocompletado -->
             <div>
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="text-danger mb-0"><i class="fas fa-user-slash"></i> Egresos</h6>
-                    <button type="button" class="btn btn-buscar-egreso btn-sm" id="btn-abrir-buscador-egreso">
-                        <i class="fas fa-search me-1"></i> Buscar estudiante
-                    </button>
-                </div>
-
-                <!-- Contenedor del buscador (estilo armonioso) -->
-                <div id="buscador-egreso-container" class="buscador-egreso-container" style="display: none;">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold text-muted">Buscar por nombre, apellido o cédula</label>
-                            <input type="text" id="buscar-estudiante-egreso" class="form-control form-control-sm shadow-none" placeholder="Escriba para buscar..." autocomplete="off">
-                            <div id="resultados-busqueda-egreso" class="list-group mt-2" style="max-height: 200px; overflow-y: auto; display: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);"></div>
-                        </div>
-                        <div class="col-md-6 text-end">
-                            <button type="button" class="btn btn-sm btn-secondary" id="btn-cerrar-buscador">Cerrar buscador</button>
-                        </div>
-                    </div>
-
-                    <!-- Datos del estudiante seleccionado (solo lectura) -->
-                    <div id="estudiante-seleccionado-egreso" style="display: none; margin-top: 18px; border-top: 1px solid #dee2e6; padding-top: 18px;">
-                        <div class="row g-3">
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Nombre completo</label>
-                                <input type="text" id="est-nombre-egreso" class="form-control form-control-sm campo-solo-lectura" readonly>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small fw-bold text-muted">Género</label>
-                                <input type="text" id="est-genero-egreso" class="form-control form-control-sm campo-solo-lectura" readonly>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small fw-bold text-muted">Cédula</label>
-                                <input type="text" id="est-ci-egreso" class="form-control form-control-sm campo-solo-lectura" readonly>
-                            </div>
-                            <div class="col-md-2">
-                                <label class="form-label small fw-bold text-muted">Nacionalidad</label>
-                                <input type="text" id="est-nacionalidad-egreso" class="form-control form-control-sm campo-solo-lectura" readonly>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Fecha de nacimiento</label>
-                                <input type="text" id="est-fn-egreso" class="form-control form-control-sm campo-solo-lectura" readonly>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-muted">Motivo de egreso</label>
-                                <input type="text" id="motivo-egreso-input" class="form-control form-control-sm" value="Retiro" placeholder="Motivo">
-                            </div>
-                            <div class="col-md-3 d-flex align-items-end">
-                                <button type="button" id="btn-confirmar-egreso-nuevo" class="btn btn-danger w-100">
-                                    <i class="fas fa-user-slash me-2"></i> Confirmar Egreso
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tabla de egresos (dinámica) -->
+                <h6 class="text-danger mb-0"><i class="fas fa-user-slash"></i> Egresos</h6>
                 <table class="table table-sm table-bordered tabla-dinamica" id="tablaEgresos">
                     <colgroup>
                         <col class="col-nombre"><col class="col-genero"><col class="col-ci"><col class="col-fecha"><col class="col-fecha"><col class="col-accion">
@@ -796,7 +898,7 @@ $csrf_token = $_SESSION['csrf_token'];
 </div>
 
 <script>
-// ========== FUNCIONES EXISTENTES ==========
+// ========== FUNCIONES DE FILTROS ==========
 function setTipoReporte() {
     const sala = document.getElementById('select-grado').value;
     const tipo = (sala === 'sala4' || sala === 'sala5') ? 'inicial' : 'regular';
@@ -880,6 +982,13 @@ window.pasoDocente = function() {
     }
 };
 
+// ========== LIMPIAR CAMPOS ==========
+function limpiarCero(input) {
+    if (input.value === '0') {
+        input.value = '';
+    }
+}
+
 window.limpiarTodo = function() {
     const form = document.getElementById('filtroForm');
     if (form) form.reset();
@@ -895,20 +1004,35 @@ window.limpiarTodo = function() {
     }
 };
 
-function limpiarCero(input) {
-    if (input.value === '0') {
-        input.value = '';
+// ========== FUNCIÓN CALCULAR TOTAL FILA (para clasificación) ==========
+function calcularTotalFila(input, tipo) {
+    const fila = input.closest('tr');
+    if (!fila) return;
+    if (tipo === 'venezolano') {
+        const v = parseInt(fila.querySelector('.ven-v')?.value) || 0;
+        const h = parseInt(fila.querySelector('.ven-h')?.value) || 0;
+        const total = v + h;
+        const totalInput = fila.querySelector('.ven-total');
+        if (totalInput) totalInput.value = total > 0 ? total : '';
+    } else if (tipo === 'extranjero') {
+        const v = parseInt(fila.querySelector('.ext-v')?.value) || 0;
+        const h = parseInt(fila.querySelector('.ext-h')?.value) || 0;
+        const total = v + h;
+        const totalInput = fila.querySelector('.ext-total');
+        if (totalInput) totalInput.value = total > 0 ? total : '';
     }
 }
 
+// ========== RECÁLCULO DE ASISTENCIA Y PORCENTAJES ==========
 window.recalcular = function() {
     const diasHabilesEl = document.getElementById('dias_hab_val');
     const matVEl = document.getElementById('mat_v');
     const matHEl = document.getElementById('mat_h');
     
-    const diasHabilesVal = diasHabilesEl ? parseInt(diasHabilesEl.value) || 0 : 0;
-    let matVVal = matVEl ? (parseInt(matVEl.value) || 0) : 0;
-    let matHVal = matHEl ? (parseInt(matHEl.value) || 0) : 0;
+    const diasHabiles = diasHabilesEl ? parseInt(diasHabilesEl.value) || 0 : 0;
+    const matV = matVEl ? (parseInt(matVEl.value) || 0) : 0;
+    const matH = matHEl ? (parseInt(matHEl.value) || 0) : 0;
+    const matTotal = matV + matH;
     
     let totalV = 0, totalH = 0;
     const totalesDia = {};
@@ -929,55 +1053,60 @@ window.recalcular = function() {
         totalesDia[dia] = (totalesDia[dia] || 0) + val;
     });
     
-    document.getElementById('res_total_v').textContent = totalV;
-    document.getElementById('res_total_h').textContent = totalH;
-    document.getElementById('gran_total_asist').textContent = totalV + totalH;
-    
     const totalGeneral = totalV + totalH;
-    const porcV = totalGeneral ? Math.round((totalV / totalGeneral) * 100) : 0;
-    const porcH = totalGeneral ? Math.round((totalH / totalGeneral) * 100) : 0;
     
-    document.getElementById('res_porc_v').textContent = porcV + '%';
-    document.getElementById('res_porc_h').textContent = porcH + '%';
-    document.getElementById('gran_total_porc').textContent = '100%';
+    const capacidadV = matV * diasHabiles;
+    const capacidadH = matH * diasHabiles;
+    const capacidadTotal = matTotal * diasHabiles;
+    
+    const porcV = capacidadV > 0 ? Math.round((totalV / capacidadV) * 100) : 0;
+    const porcH = capacidadH > 0 ? Math.round((totalH / capacidadH) * 100) : 0;
+    const porcTotal = capacidadTotal > 0 ? Math.round((totalGeneral / capacidadTotal) * 100) : 0;
+    
+    document.getElementById('res_total_v').textContent = totalV > 0 ? totalV : '';
+    document.getElementById('res_total_h').textContent = totalH > 0 ? totalH : '';
+    document.getElementById('gran_total_asist').textContent = totalGeneral > 0 ? totalGeneral : '';
+    
+    document.getElementById('res_porc_v').textContent = porcV > 0 ? porcV + '%' : '';
+    document.getElementById('res_porc_h').textContent = porcH > 0 ? porcH + '%' : '';
+    document.getElementById('gran_total_porc').textContent = porcTotal > 0 ? porcTotal + '%' : '';
     
     document.getElementById('porcentaje_v').value = porcV;
     document.getElementById('porcentaje_h').value = porcH;
-    document.getElementById('porcentaje_total').value = 100;
+    document.getElementById('porcentaje_total').value = porcTotal;
     
-    const promedio = diasHabilesVal > 0 ? (totalGeneral / diasHabilesVal).toFixed(1) : '0.0';
+    const promedio = diasHabiles > 0 ? (totalGeneral / diasHabiles).toFixed(1) : '0.0';
     const promedioTotalEl = document.getElementById('promedio_total');
     if (promedioTotalEl) promedioTotalEl.textContent = promedio;
     
     for(let d = 1; d <= 31; d++) {
         const td = document.getElementById('total_dia_' + d);
-        if (td) td.textContent = (totalesDia[d] !== undefined) ? totalesDia[d] : '-';
+        if (td) {
+            const val = totalesDia[d] || 0;
+            td.textContent = val > 0 ? val : '-';
+        }
     }
+    
+    // Actualizar totales de clasificación
+    recalcularTotalesClasificacion();
 };
 
-window.calcularTotalFila = function(input, tipo) {
-    const fila = input.closest('tr');
-    if (tipo === 'venezolano') {
-        let v = parseInt(fila.querySelector('.ven-v')?.value);
-        let h = parseInt(fila.querySelector('.ven-h')?.value);
-        if (isNaN(v)) v = 0;
-        if (isNaN(h)) h = 0;
-        const total = v + h;
-        fila.querySelector('.ven-total').value = total;
-    } else if (tipo === 'extranjero') {
-        let v = parseInt(fila.querySelector('.ext-v')?.value);
-        let h = parseInt(fila.querySelector('.ext-h')?.value);
-        if (isNaN(v)) v = 0;
-        if (isNaN(h)) h = 0;
-        const total = v + h;
-        fila.querySelector('.ext-total').value = total;
-    }
-};
+// ========== RECÁLCULO DE TOTALES DE CLASIFICACIÓN ==========
+function recalcularTotalesClasificacion() {
+    document.querySelectorAll('.ven-v, .ven-h').forEach(inp => {
+        calcularTotalFila(inp, 'venezolano');
+    });
+    document.querySelectorAll('.ext-v, .ext-h').forEach(inp => {
+        calcularTotalFila(inp, 'extranjero');
+    });
+}
 
+// ========== AGREGAR FILAS DINÁMICAS (CON AUTOCOMPLETADO EN EGRESOS) ==========
 function agregarFila(tipo) {
     const tbody = document.querySelector(`#tabla${tipo === 'ingreso' ? 'Ingresos' : 'Egresos'} tbody`);
     const fila = document.createElement('tr');
     fila.className = `fila-${tipo}`;
+    
     if (tipo === 'ingreso') {
         fila.innerHTML = `
             <td>
@@ -999,195 +1128,251 @@ function agregarFila(tipo) {
             <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
             <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
             <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
-        `;
-    } else {
-        fila.innerHTML = `
             <td>
-                <input type="text" name="egreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
-                <input type="text" name="egreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
+                <button type="button" class="btn btn-sm btn-success confirmar-ingreso me-1" title="Confirmar ingreso">✓</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button>
+            </td>
+        `;
+    } else { // EGRESO con autocompletado
+        fila.innerHTML = `
+            <td style="position: relative;">
+                <input type="text" name="egreso_apellido[]" class="form-control form-control-sm egreso-apellido" placeholder="Apellido" autocomplete="off">
+                <input type="text" name="egreso_nombre[]" class="form-control form-control-sm mt-1 egreso-nombre" placeholder="Nombre" autocomplete="off">
+                <div class="autocomplete-dropdown" style="display:none;"></div>
             </td>
             <td>
-                <select name="egreso_genero[]" class="form-select form-select-sm">
+                <select name="egreso_genero[]" class="form-select form-select-sm egreso-genero">
                     <option value="V">Varón (V)</option>
                     <option value="H">Hembra (H)</option>
                 </select>
+                <input type="hidden" name="egreso_estudiante_id[]" class="egreso-id" value="">
             </td>
-            <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-            <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
-            <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
+            <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm egreso-ci" placeholder="Cédula" readonly></td>
+            <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm egreso-fn" placeholder="F.Nac." readonly></td>
+            <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="F.Ingreso" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+            <td>
+                <button type="button" class="btn btn-sm btn-success confirmar-egreso me-1" title="Confirmar egreso">✓</button>
+                <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">✖</button>
+            </td>
         `;
     }
+    
     tbody.appendChild(fila);
+    
+    // Si es egreso, activar autocompletado en los nuevos campos
+    if (tipo === 'egreso') {
+        inicializarAutocompletadoEgreso(fila);
+    }
 }
 
-// ========== NUEVO SISTEMA DE EGRESOS CON BUSCADOR MODERNO ==========
-let estudianteSeleccionadoEgreso = null;
-
-// Mostrar/ocultar buscador
-document.getElementById('btn-abrir-buscador-egreso')?.addEventListener('click', function() {
-    const container = document.getElementById('buscador-egreso-container');
-    if (container.style.display === 'none') {
-        container.style.display = 'block';
-        document.getElementById('buscar-estudiante-egreso').focus();
-    } else {
-        container.style.display = 'none';
-        limpiarSeleccionEgreso();
-    }
-});
-
-document.getElementById('btn-cerrar-buscador')?.addEventListener('click', function() {
-    document.getElementById('buscador-egreso-container').style.display = 'none';
-    limpiarSeleccionEgreso();
-});
-
-// Buscador en tiempo real
-document.getElementById('buscar-estudiante-egreso')?.addEventListener('input', function() {
-    const termino = this.value.trim();
-    const resultados = document.getElementById('resultados-busqueda-egreso');
-    if (termino.length < 2) {
-        resultados.style.display = 'none';
-        resultados.innerHTML = '';
-        return;
-    }
+// ========== AUTOCOMPLETADO PARA EGRESOS ==========
+function inicializarAutocompletadoEgreso(fila) {
+    const apellidoInput = fila.querySelector('.egreso-apellido');
+    const nombreInput = fila.querySelector('.egreso-nombre');
+    const dropdown = fila.querySelector('.autocomplete-dropdown');
+    let timeoutId;
     
-    const sala = document.getElementById('select-grado').value;
-    const seccion = document.getElementById('select-seccion').value;
-    if (!sala || !seccion) {
-        resultados.innerHTML = '<div class="list-group-item text-muted">Seleccione sala y sección primero</div>';
-        resultados.style.display = 'block';
-        return;
-    }
-    
-    const formData = new FormData();
-    formData.append('action', 'buscar_estudiantes');
-    formData.append('termino', termino);
-    formData.append('sala', sala);
-    formData.append('seccion', seccion);
-    
-    fetch('index.php?ajax=1', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-            resultados.innerHTML = '';
-            if (data.estudiantes && data.estudiantes.length > 0) {
-                data.estudiantes.forEach(est => {
-                    const item = document.createElement('a');
-                    item.href = '#';
-                    item.className = 'list-group-item list-group-item-action';
-                    item.innerHTML = `<strong>${est.nombre_completo}</strong> <span class="text-muted">- ${est.cedula}</span>`;
-                    item.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        seleccionarEstudianteEgreso(est);
-                        resultados.style.display = 'none';
-                        document.getElementById('buscar-estudiante-egreso').value = '';
-                    });
-                    resultados.appendChild(item);
+    const realizarBusqueda = () => {
+        clearTimeout(timeoutId);
+        const apellido = apellidoInput.value.trim();
+        const nombre = nombreInput.value.trim();
+        const termino = (apellido + ' ' + nombre).trim();
+        
+        if (termino.length < 2) {
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+            return;
+        }
+        
+        timeoutId = setTimeout(() => {
+            const sala = document.getElementById('select-grado').value;
+            const seccion = document.getElementById('select-seccion').value;
+            if (!sala || !seccion) {
+                dropdown.innerHTML = '<div class="p-2 text-muted small">Seleccione sala y sección primero</div>';
+                dropdown.style.display = 'block';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'buscar_estudiantes');
+            formData.append('termino', termino);
+            formData.append('sala', sala);
+            formData.append('seccion_id', seccion);
+            
+            fetch('index.php?ajax=1', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    dropdown.innerHTML = '';
+                    if (data.estudiantes && data.estudiantes.length > 0) {
+                        data.estudiantes.forEach(est => {
+                            const item = document.createElement('a');
+                            item.href = '#';
+                            item.className = 'dropdown-item small';
+                            item.innerHTML = `<strong>${est.nombre_completo}</strong> <span class="text-muted">- ${est.cedula}</span>`;
+                            item.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                seleccionarEstudianteEnFila(fila, est);
+                                dropdown.style.display = 'none';
+                            });
+                            dropdown.appendChild(item);
+                        });
+                        dropdown.style.display = 'block';
+                    } else {
+                        dropdown.innerHTML = '<div class="p-2 text-muted small">No se encontraron estudiantes</div>';
+                        dropdown.style.display = 'block';
+                    }
+                })
+                .catch(() => {
+                    dropdown.innerHTML = '<div class="p-2 text-danger small">Error de conexión</div>';
+                    dropdown.style.display = 'block';
                 });
-                resultados.style.display = 'block';
-            } else {
-                resultados.innerHTML = '<div class="list-group-item text-muted">No se encontraron estudiantes activos</div>';
-                resultados.style.display = 'block';
-            }
-        })
-        .catch(() => {
-            resultados.innerHTML = '<div class="list-group-item text-danger">Error de conexión</div>';
-            resultados.style.display = 'block';
-        });
-});
-
-function seleccionarEstudianteEgreso(est) {
-    estudianteSeleccionadoEgreso = est;
-    document.getElementById('est-nombre-egreso').value = est.nombre_completo;
-    document.getElementById('est-ci-egreso').value = est.cedula || 'N/A';
-    document.getElementById('est-genero-egreso').value = est.genero === 'V' ? 'Varón' : 'Hembra';
-    document.getElementById('est-nacionalidad-egreso').value = est.nacionalidad || 'Venezolana';
-    document.getElementById('est-fn-egreso').value = est.fecha_nacimiento || 'No registrada';
-    document.getElementById('estudiante-seleccionado-egreso').style.display = 'block';
-    document.getElementById('resultados-busqueda-egreso').style.display = 'none';
+        }, 300);
+    };
+    
+    apellidoInput.addEventListener('input', realizarBusqueda);
+    nombreInput.addEventListener('input', realizarBusqueda);
+    
+    // Ocultar dropdown al perder el foco (con pequeño retraso para permitir click en item)
+    apellidoInput.addEventListener('blur', () => {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+    });
+    nombreInput.addEventListener('blur', () => {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+    });
 }
 
-function limpiarSeleccionEgreso() {
-    estudianteSeleccionadoEgreso = null;
-    document.getElementById('estudiante-seleccionado-egreso').style.display = 'none';
-    document.getElementById('est-nombre-egreso').value = '';
-    document.getElementById('est-ci-egreso').value = '';
-    document.getElementById('est-genero-egreso').value = '';
-    document.getElementById('est-nacionalidad-egreso').value = '';
-    document.getElementById('est-fn-egreso').value = '';
-    document.getElementById('motivo-egreso-input').value = 'Retiro';
-}
-
-// Confirmar egreso
-document.getElementById('btn-confirmar-egreso-nuevo')?.addEventListener('click', function() {
-    if (!estudianteSeleccionadoEgreso) {
-        alert('Primero seleccione un estudiante de la lista.');
-        return;
-    }
-    const motivo = document.getElementById('motivo-egreso-input').value.trim() || 'Retiro';
-    const btn = this;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
-    
-    const formData = new FormData();
-    formData.append('action', 'confirmar_egreso');
-    formData.append('estudiante_id', estudianteSeleccionadoEgreso.id);
-    formData.append('sala', document.getElementById('select-grado').value);
-    formData.append('seccion', document.getElementById('select-seccion').value);
-    formData.append('periodo', document.getElementById('select-mes').value);
-    formData.append('motivo', motivo);
-    formData.append('csrf_token', '<?= $csrf_token ?>');
-    
-    fetch('index.php?ajax=1', { method: 'POST', body: formData })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                agregarFilaEgresoDesdeEstudiante(data.estudiante);
-                document.getElementById('buscador-egreso-container').style.display = 'none';
-                limpiarSeleccionEgreso();
-                alert('Egreso confirmado correctamente.');
-            } else {
-                alert('Error: ' + (data.error || 'No se pudo egresar'));
-            }
-        })
-        .catch(() => alert('Error de conexión'))
-        .finally(() => {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-user-slash me-2"></i> Confirmar Egreso';
-        });
-});
-
-function agregarFilaEgresoDesdeEstudiante(est) {
-    const tbody = document.querySelector('#tablaEgresos tbody');
-    // Si solo hay una fila vacía, eliminarla para evitar duplicados
-    if (tbody.children.length === 1 && tbody.children[0].classList.contains('fila-egreso') && 
-        !tbody.children[0].querySelector('input[name="egreso_apellido[]"]').value) {
-        tbody.innerHTML = '';
-    }
-    const fila = document.createElement('tr');
-    fila.className = 'fila-egreso';
-    const partes = est.nombre_completo.split(' ');
+// ========== SELECCIONAR ESTUDIANTE EN LA FILA ==========
+function seleccionarEstudianteEnFila(fila, estudiante) {
+    const partes = estudiante.nombre_completo.split(' ');
     const apellido = partes.slice(1).join(' ') || partes[0];
     const nombre = partes[0] || '';
-    fila.innerHTML = `
-        <td>
-            <input type="text" name="egreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido" value="${apellido}" readonly>
-            <input type="text" name="egreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre" value="${nombre}" readonly>
-        </td>
-        <td>
-            <select name="egreso_genero[]" class="form-select form-select-sm" disabled>
-                <option value="V" ${est.genero === 'V' ? 'selected' : ''}>Varón (V)</option>
-                <option value="H" ${est.genero === 'H' ? 'selected' : ''}>Hembra (H)</option>
-            </select>
-        </td>
-        <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" value="${est.ci || ''}" maxlength="11" readonly></td>
-        <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" value="${est.fn || ''}" readonly></td>
-        <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" value="${est.fi || ''}" readonly></td>
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
-    `;
-    tbody.appendChild(fila);
+    
+    fila.querySelector('.egreso-apellido').value = apellido;
+    fila.querySelector('.egreso-nombre').value = nombre;
+    fila.querySelector('.egreso-id').value = estudiante.id;
+    fila.querySelector('.egreso-genero').value = estudiante.genero || 'V';
+    fila.querySelector('.egreso-ci').value = estudiante.cedula || '';
+    fila.querySelector('.egreso-fn').value = estudiante.fecha_nacimiento || '';
+    // Fecha de egreso por defecto hoy
+    const fiInput = fila.querySelector('[name="egreso_fi[]"]');
+    if (!fiInput.value) {
+        const hoy = new Date().toISOString().split('T')[0];
+        fiInput.value = hoy;
+    }
 }
 
+// ========== EVENTOS PARA BOTONES CONFIRMAR ==========
+document.addEventListener('click', function(e) {
+    // Confirmar ingreso
+    if (e.target.classList.contains('confirmar-ingreso')) {
+        e.preventDefault();
+        const fila = e.target.closest('tr');
+        const apellido = fila.querySelector('[name="ingreso_apellido[]"]').value.trim();
+        const nombre = fila.querySelector('[name="ingreso_nombre[]"]').value.trim();
+        if (!apellido || !nombre) {
+            alert('Complete al menos apellido y nombre.');
+            return;
+        }
+        
+        const sala = document.getElementById('select-grado').value;
+        const seccion = document.getElementById('select-seccion').value;
+        const periodo = document.getElementById('select-mes').value;
+        
+        if (!sala || !seccion || !periodo) {
+            alert('Seleccione sala, sección y mes antes de confirmar.');
+            return;
+        }
+        
+        const btn = e.target;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        const formData = new FormData();
+        formData.append('action', 'confirmar_ingreso');
+        formData.append('apellido', apellido);
+        formData.append('nombre', nombre);
+        formData.append('genero', fila.querySelector('[name="ingreso_genero[]"]').value);
+        formData.append('cedula', fila.querySelector('[name="ingreso_ci[]"]').value);
+        formData.append('fecha_nacimiento', fila.querySelector('[name="ingreso_fn[]"]').value);
+        formData.append('sala', sala);
+        formData.append('seccion', seccion);
+        formData.append('periodo', periodo);
+        formData.append('csrf_token', '<?= $csrf_token ?>');
+        formData.append('estudiante_id', '0'); // Se buscará o creará en backend
+        
+        fetch('index.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = 'ingresos.php';
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo ingresar'));
+                }
+            })
+            .catch(() => alert('Error de conexión'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '✓';
+            });
+    }
+    
+    // Confirmar egreso
+    if (e.target.classList.contains('confirmar-egreso')) {
+        e.preventDefault();
+        const fila = e.target.closest('tr');
+        const idEstudiante = fila.querySelector('.egreso-id')?.value;
+        if (!idEstudiante) {
+            alert('Primero busque y seleccione un estudiante del autocompletado.');
+            return;
+        }
+        
+        const sala = document.getElementById('select-grado').value;
+        const seccion = document.getElementById('select-seccion').value;
+        const periodo = document.getElementById('select-mes').value;
+        const motivo = 'Retiro'; // Puedes añadir un campo de motivo si lo deseas
+        
+        if (!sala || !seccion || !periodo) {
+            alert('Seleccione sala, sección y mes antes de confirmar.');
+            return;
+        }
+        
+        const btn = e.target;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        const formData = new FormData();
+        formData.append('action', 'confirmar_egreso');
+        formData.append('estudiante_id', idEstudiante);
+        formData.append('sala', sala);
+        formData.append('seccion', seccion);
+        formData.append('periodo', periodo);
+        formData.append('motivo', motivo);
+        formData.append('csrf_token', '<?= $csrf_token ?>');
+        
+        fetch('index.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = 'egresados.php';
+                } else {
+                    alert('Error: ' + (data.error || 'No se pudo egresar'));
+                }
+            })
+            .catch(() => alert('Error de conexión'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '✓';
+            });
+    }
+    
+    // Eliminar fila (el botón de eliminar usa onclick directamente, pero también podemos capturarlo aquí)
+    if (e.target.classList.contains('eliminar-fila')) {
+        e.target.closest('tr').remove();
+        recalcularTotalesClasificacion();
+    }
+});
+
+// ========== CARGAR EGRESOS EXISTENTES ==========
 function cargarEgresosExistentes() {
     const sala = document.getElementById('select-grado').value;
     const seccion = document.getElementById('select-seccion').value;
@@ -1207,15 +1392,25 @@ function cargarEgresosExistentes() {
             tbody.innerHTML = '';
             if (data.egresos && data.egresos.length > 0) {
                 data.egresos.forEach(eg => {
-                    agregarFilaEgresoDesdeEstudiante({
-                        nombre_completo: eg.nombre_completo,
-                        genero: eg.genero,
-                        ci: eg.cedula,
-                        fn: eg.fecha_nacimiento,
-                        fi: eg.fecha_egreso
-                    });
+                    // Crear una fila con los datos de egreso (ya confirmados)
+                    const fila = document.createElement('tr');
+                    fila.className = 'fila-egreso';
+                    fila.innerHTML = `
+                        <td>
+                            <input type="text" class="form-control form-control-sm" value="${eg.nombre_completo || ''}" readonly>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm" value="${eg.genero === 'V' ? 'Varón' : 'Hembra'}" readonly>
+                        </td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.ci || ''}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.fn || ''}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.fi || ''}" readonly></td>
+                        <td></td>
+                    `;
+                    tbody.appendChild(fila);
                 });
             }
+            recalcularTotalesClasificacion();
         })
         .catch(err => console.error('Error cargando egresos:', err));
 }
@@ -1226,11 +1421,8 @@ document.getElementById('form-tabla')?.addEventListener('submit', setTipoReporte
 document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('form-tabla')) {
         window.recalcular();
-        document.querySelectorAll('.ven-v, .ven-h').forEach(inp => calcularTotalFila(inp, 'venezolano'));
-        document.querySelectorAll('.ext-v, .ext-h').forEach(inp => calcularTotalFila(inp, 'extranjero'));
     }
     
-    // Cargar egresos al cambiar docente o mes
     const docenteSelect = document.getElementById('select-docente');
     const mesInput = document.getElementById('select-mes');
     
@@ -1247,7 +1439,6 @@ document.addEventListener('DOMContentLoaded', function() {
         mesInput.addEventListener('change', triggerCargaEgresos);
     }
     
-    // Si ya hay selección al cargar, ejecutar
     if (docenteSelect && docenteSelect.value && mesInput && mesInput.value) {
         cargarEgresosExistentes();
     }
