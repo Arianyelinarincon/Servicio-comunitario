@@ -5,7 +5,7 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
     exit();
 }
 
-require_once '../../config/conexion.php';
+require_once '../config/conexion.php';
 
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if (!$id) {
