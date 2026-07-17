@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $nombre = trim($_POST['nombre']);
     $usuario = trim($_POST['usuario']);
     $password = trim($_POST['password']);
-    $rol = $_POST['rol'] ?? 'admin';
+    $rol = $_POST['rol'] ?? 'administrador';
     $telefono = trim($_POST['telefono'] ?? '');
     $email = trim($_POST['email'] ?? '');
     
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Editar secretaria (con restricción para directiva)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'editar') {
     $id = intval($_POST['id']);
-    $rol = $_POST['rol'] ?? 'admin';
+    $rol = $_POST['rol'] ?? 'administrador';
     $telefono = trim($_POST['telefono'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $estatus = $_POST['estatus'] ?? 'Activo';
@@ -337,7 +337,7 @@ include '../includes/header.php';
                         <div class="mb-2">
                             <label class="form-label">Rol</label>
                             <select name="rol" class="form-select">
-                                <option value="admin">Admin (Secretaria)</option>
+                                <option value="administrador">Admin (Secretaria)</option>
                                 <option value="super_admin">Super Admin (Directiva)</option>
                             </select>
                         </div>
@@ -494,7 +494,7 @@ function editarUsuario(id, esDirectiva) {
                     <div class="mb-2">
                         <label class="form-label">Rol</label>
                         <select name="rol" class="form-select">
-                            <option value="admin" ${data.rol === 'admin' ? 'selected' : ''}>Admin (Secretaria)</option>
+                            <option value="administrador" ${data.rol === 'admin' ? 'selected' : ''}>Admin (Secretaria)</option>
                             <option value="super_admin" ${data.rol === 'super_admin' ? 'selected' : ''}>Super Admin (Directiva)</option>
                         </select>
                     </div>

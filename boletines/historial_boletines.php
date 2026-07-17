@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
@@ -12,6 +12,7 @@ $buscar_estudiante = trim($_GET['estudiante'] ?? '');
 $periodo = trim($_GET['periodo'] ?? '');
 $tipo = trim($_GET['tipo'] ?? '');
 
+// ========== CONSULTA PRINCIPAL ==========
 $sql = "SELECT b.*, 
                CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante,
                e.cedula_escolar
@@ -106,6 +107,30 @@ while ($row = $res_periodos->fetch_assoc()) {
     }
     .badge-inicial { background-color: #cce5ff; color: #004085; }
     .badge-primaria { background-color: #d4edda; color: #155724; }
+    .btn-accion {
+        margin: 2px;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+        border-radius: 6px;
+    }
+    .pagination .page-link {
+        border-radius: 8px;
+        margin: 0 3px;
+        color: #002d54;
+        font-weight: 500;
+    }
+    .pagination .page-item.active .page-link {
+        background: var(--primary-gradient);
+        border-color: transparent;
+    }
+    /* Buscador en tiempo real */
+    #busquedaInput {
+        transition: all 0.3s ease;
+    }
+    #busquedaInput:focus {
+        border-color: #002d54;
+        box-shadow: 0 0 0 3px rgba(0,45,84,0.15);
+    }
 </style>
 
 <div class="container-fluid px-4">
@@ -121,7 +146,7 @@ while ($row = $res_periodos->fetch_assoc()) {
         </div>
     </div>
 
-    <!-- Filtros con buscador en tiempo real -->
+    <!-- Filtros con buscador en tiempo real (sin botones) -->
     <div class="card card-filtros">
         <div class="card-body p-4">
             <form method="GET" action="historial_boletines.php" id="filtroForm" autocomplete="off">
@@ -187,11 +212,11 @@ while ($row = $res_periodos->fetch_assoc()) {
                                 <td><span class="badge-tipo <?= $tipo_clase ?>"><?= $tipo_nombre ?></span></td>
                                 <td><?= date('d/m/Y H:i', strtotime($row['fecha_emision'])) ?></td>
                                 <td class="text-nowrap">
-                                    <a href="ver_boletin_guardado.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info" target="_blank" title="Ver boletín"><i class="fas fa-eye"></i></a>
+                                    <a href="ver_boletin_guardado.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info btn-accion" target="_blank" title="Ver boletín"><i class="fas fa-eye"></i></a>
                                     <?php if ($row['tipo_boletin'] == 'inicial'): ?>
-                                        <a href="panel_boletin_inicial.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning" title="Editar boletín"><i class="fas fa-edit"></i></a>
+                                        <a href="panel_boletin_inicial.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning btn-accion" title="Editar boletín"><i class="fas fa-edit"></i></a>
                                     <?php else: ?>
-                                        <a href="panel_boletin_primaria.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning" title="Editar boletín"><i class="fas fa-edit"></i></a>
+                                        <a href="panel_boletin_primaria.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning btn-accion" title="Editar boletín"><i class="fas fa-edit"></i></a>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -221,6 +246,8 @@ document.addEventListener('DOMContentLoaded', function() {
             timeoutId = setTimeout(() => {
                 document.getElementById('filtroForm').submit();
             }, 400);
+            // Mantener el foco
+            this.focus();
         });
 
         // Mantener el foco después de recargar

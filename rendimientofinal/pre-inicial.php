@@ -47,7 +47,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
 
 include "../includes/header.php";
 
-// ========== CORRECCIÓN: Año actual fijo 2025-2026 ==========
+// ========== GENERAR AÑOS ==========
 function generarOpcionesAnios() {
     $anio_actual = date('Y');
     $anio_inicio = $anio_actual - 5;
@@ -55,7 +55,6 @@ function generarOpcionesAnios() {
     $opciones = '';
     for ($i = $anio_inicio; $i <= $anio_fin; $i++) {
         $periodo = $i . '-' . ($i + 1);
-        // ========== CORRECCIÓN: Marcar 2025-2026 como seleccionado ==========
         $selected = ($periodo == '2025-2026') ? 'selected' : '';
         $opciones .= "<option value=\"$periodo\" $selected>$periodo</option>";
     }
@@ -77,17 +76,13 @@ function generarOpcionesAnios() {
         transition: background 0.3s;
         text-decoration: none;
     }
-    .btn-volver:hover {
-        background-color: #5a6268;
-        color: white;
-    }
+    .btn-volver:hover { background-color: #5a6268; color: white; }
 </style>
 
 <div class="container-fluid py-4">
     <div class="card mb-4">
         <div class="card-header bg-navy d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Generar Formulario de Rendimiento Final - Pre Inicial</h5>
-            <!-- ========== CORRECCIÓN: Botón VOLVER agregado ========== -->
+            <h5 class="mb-0">Generar Formulario de Rendimiento Final - Inicial</h5>
             <a href="rendimientofinalindex.php" class="btn-volver">
                 <i class="fas fa-arrow-left"></i> VOLVER
             </a>

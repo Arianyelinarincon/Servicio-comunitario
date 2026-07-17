@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
@@ -12,7 +12,6 @@ require_once '../config/conexion.php';
 if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
     $id_editar = intval($_GET['editar_id']);
     
-    // Verificar que el boletín existe y es de tipo primaria
     $stmt = $conexion->prepare("SELECT * FROM boletines WHERE id = ? AND tipo_boletin = 'primaria'");
     $stmt->bind_param("i", $id_editar);
     $stmt->execute();
@@ -20,7 +19,7 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
     $stmt->close();
     
     if ($boletin) {
-        // Obtener datos del estudiante asociado
+        // Obtener datos del estudiante
         $stmt_est = $conexion->prepare("SELECT e.nombre, e.apellido, e.cedula_escolar, e.sala, r.nombre_completo AS rep_nombre, p.nombre AS doc_nombre
                                         FROM estudiantes e
                                         LEFT JOIN representantes r ON e.representante_id = r.id
@@ -33,7 +32,7 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
         $stmt_est->close();
         
         if ($estudiante) {
-            // Cargar en sesión para que el panel los muestre
+            // Asignar sesión
             $_SESSION['estudiante'] = $estudiante['nombre'] . ' ' . $estudiante['apellido'];
             $_SESSION['ce'] = $estudiante['cedula_escolar'];
             $_SESSION['grado'] = $estudiante['sala'];
@@ -42,7 +41,7 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
             $_SESSION['representante'] = $estudiante['rep_nombre'] ?? 'No registrado';
             $_SESSION['estudiante_id'] = $boletin['estudiante_id'];
             
-            // Cargar datos del boletín (mapeo: m1_proyecto = l1_proyecto, etc.)
+            // Cargar datos del boletín (mapeo a variables de sesión)
             $_SESSION['observacion'] = $boletin['observacion'] ?? '';
             
             // Lapso 1
@@ -65,6 +64,55 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
             $_SESSION['literal_final'] = $boletin['literal_final'] ?? '';
         }
     }
+} else {
+    // ========== SI NO VIENE editar_id, CARGAR DESDE BD SI EXISTE, O LIMPIAR SESIÓN ==========
+    // Verificar que tenemos estudiante_id en sesión
+    if (isset($_SESSION['estudiante_id']) && isset($_SESSION['ano_escolar'])) {
+        $estudiante_id = $_SESSION['estudiante_id'];
+        $periodo = $_SESSION['ano_escolar'];
+        
+        // Buscar boletín de primaria para este estudiante y período
+        $stmt = $conexion->prepare("SELECT * FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = 'primaria'");
+        $stmt->bind_param("is", $estudiante_id, $periodo);
+        $stmt->execute();
+        $boletin = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        if ($boletin) {
+            // Si existe, cargar los datos en sesión (sobrescribiendo cualquier dato de inicial)
+            $_SESSION['observacion'] = $boletin['observacion'] ?? '';
+            
+            $_SESSION['l1_proyecto'] = $boletin['m1_proyecto'] ?? '';
+            $_SESSION['l1_analisis'] = $boletin['m1_formacion'] ?? '';
+            $_SESSION['l1_sugerencias'] = $boletin['m1_sugerencias'] ?? '';
+            
+            $_SESSION['l2_proyecto'] = $boletin['m2_proyecto'] ?? '';
+            $_SESSION['l2_analisis'] = $boletin['m2_formacion'] ?? '';
+            $_SESSION['l2_sugerencias'] = $boletin['m2_sugerencias'] ?? '';
+            
+            $_SESSION['l3_proyecto'] = $boletin['m3_proyecto'] ?? '';
+            $_SESSION['l3_analisis'] = $boletin['m3_formacion'] ?? '';
+            $_SESSION['l3_sugerencias'] = $boletin['m3_sugerencias'] ?? '';
+            
+            $_SESSION['resultado_final'] = $boletin['resultado_final'] ?? '';
+            $_SESSION['literal_final'] = $boletin['literal_final'] ?? '';
+        } else {
+            // ========== SI NO EXISTE, LIMPIAR TODAS LAS VARIABLES DE SESIÓN DE BOLETÍN ==========
+            // Esto evita que queden datos de inicial
+            unset($_SESSION['observacion']);
+            unset($_SESSION['l1_proyecto']);
+            unset($_SESSION['l1_analisis']);
+            unset($_SESSION['l1_sugerencias']);
+            unset($_SESSION['l2_proyecto']);
+            unset($_SESSION['l2_analisis']);
+            unset($_SESSION['l2_sugerencias']);
+            unset($_SESSION['l3_proyecto']);
+            unset($_SESSION['l3_analisis']);
+            unset($_SESSION['l3_sugerencias']);
+            unset($_SESSION['resultado_final']);
+            unset($_SESSION['literal_final']);
+        }
+    }
 }
 
 // ========== SI NO HAY ESTUDIANTE EN SESIÓN, REDIRIGIR ==========
@@ -74,13 +122,12 @@ if (!isset($_SESSION['estudiante'])) {
 }
 
 // ========== DEFINIR VARIABLES DE ESTADO ==========
-$obs_completada = !empty($_SESSION['observacion']);
+$obs_completada = isset($_SESSION['observacion']) && !empty($_SESSION['observacion']);
 $l1_completado = !empty($_SESSION['l1_proyecto']) && !empty($_SESSION['l1_analisis']);
 $l2_completado = !empty($_SESSION['l2_proyecto']) && !empty($_SESSION['l2_analisis']);
 $l3_completado = !empty($_SESSION['l3_proyecto']) && !empty($_SESSION['l3_analisis']) && !empty($_SESSION['resultado_final']);
 $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_completado;
 
-// ========== MODO EDICIÓN ==========
 $modo_edicion = isset($_GET['editar_id']) ? true : false;
 ?>
 
@@ -159,10 +206,6 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
             align-items: center;
             gap: 10px;
             margin: 0;
-        }
-
-        .panel-header h2 i {
-            color: var(--primary);
         }
 
         .panel-header .badge-tipo {
