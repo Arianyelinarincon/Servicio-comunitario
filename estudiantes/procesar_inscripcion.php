@@ -196,24 +196,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_ins->execute();
         }
         $stmt_ins->close();
+// ==================== 4. ACTUALIZAR SALA ACTUAL ====================
+if (count($grado_seccion_arr) > 0) {
+    $ultimo_grado = end($grado_seccion_arr);
+    $sala_actual = explode(' - ', $ultimo_grado)[0];
+    $stmt_upd = $conexion->prepare("UPDATE estudiantes SET sala = ? WHERE id = ?");
+    $stmt_upd->bind_param("si", $sala_actual, $estudiante_id);
+    $stmt_upd->execute();
+    $stmt_upd->close();
+}
 
-        // ==================== 4. ACTUALIZAR SALA ACTUAL ====================
-        if (count($grado_seccion_arr) > 0) {
-            $ultimo_grado = end($grado_seccion_arr);
-            $sala_actual = explode(' - ', $ultimo_grado)[0];
-            $stmt_upd = $conexion->prepare("UPDATE estudiantes SET sala = ? WHERE id = ?");
-            $stmt_upd->bind_param("si", $sala_actual, $estudiante_id);
-            $stmt_upd->execute();
-            $stmt_upd->close();
-        }
+// ==================== 4.5. MARCAR INSCRIPCIÓN COMPLETA ====================
+$stmt_completa = $conexion->prepare("UPDATE estudiantes SET inscripcion_completa = 1 WHERE id = ?");
+$stmt_completa->bind_param("i", $estudiante_id);
+$stmt_completa->execute();
+$stmt_completa->close();
 
-        // ==================== 5. AUDITORÍA ====================
-        $usuario_id = $_SESSION['usuario_id'] ?? 0;
-        if ($usuario_id > 0) {
-            $detalles = "Nuevo estudiante: $nombre $apellido (Cédula Escolar: $cedula_escolar, Sala: $sala_actual)";
-            registrarAuditoria($conexion, $usuario_id, 'INSCRIBIR_ESTUDIANTE', 'estudiantes', $estudiante_id, $detalles);
-        }
+// ==================== 5. AUDITORÍA ====================
+$usuario_id = $_SESSION['usuario_id'] ?? 0;
+if ($usuario_id > 0) {
+    $detalles = "Nuevo estudiante: $nombre $apellido (Cédula Escolar: $cedula_escolar, Sala: $sala_actual)";
+    registrarAuditoria($conexion, $usuario_id, 'INSCRIBIR_ESTUDIANTE', 'estudiantes', $estudiante_id, $detalles);
+}
 
+$conexion->commit();
         $conexion->commit();
         
         header("Location: inscripcion_exito.php?id=$estudiante_id");

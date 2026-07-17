@@ -10,9 +10,9 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Validación de sesión: SOLO administrador y super_admin
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) { 
-    header("Location: profesores/Login/login.php"); 
-    exit(); 
+if (!isset($_SESSION['usuario'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
 }   
 
 include('includes/header.php'); 

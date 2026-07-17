@@ -2,7 +2,7 @@
 require_once "../estadisticas/config_db.php";
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// ========== CORRECCIÓN: Validar y sanitizar parámetros GET ==========
+// ========== Validar y sanitizar parámetros GET ==========
 $salas_permitidas = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
 $sala_seleccionada = $_GET['sala'] ?? '';
 if (!in_array($sala_seleccionada, $salas_permitidas)) {
@@ -21,7 +21,6 @@ if(empty($sala_seleccionada) || empty($seccion_id)) {
     die("<div class='alert alert-danger'>Error: Faltan parámetros. Genere el formulario desde el panel principal.</div>");
 }
 
-// ========== OBTENER NOMBRE DEL PROFESOR ==========
 $nombre_profesor = 'No definido';
 $nombre_seccion = '';
 $stmt_prof = $conexion->prepare("SELECT nombre FROM profesores WHERE id = ?");
@@ -41,46 +40,36 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 $stmt_sec->close();
 
 // ========== CONSULTA CON LEFT JOIN A BOLETINES ==========
-$query_est = "SELECT 
-                e.id, 
-                e.cedula, 
-                e.cedula_escolar, 
-                e.nombre, 
-                e.apellido, 
-                e.genero, 
-                e.fecha_nacimiento, 
-                e.lugar_nacimiento,
-                b.resultado_final,
-                b.literal_final,
-                b.observacion AS observacion_boletin
-              FROM estudiantes e
-              LEFT JOIN boletines b ON e.id = b.estudiante_id 
-                  AND b.tipo_boletin = 'primaria' 
-                  AND b.periodo = ?
-              WHERE e.sala = ? AND e.seccion_id = ? AND e.estatus = 'Activo' 
-              ORDER BY e.nombre ASC, e.apellido ASC";
+// Mostramos TODOS los estudiantes activos, y si tienen boletín, traemos los datos
+$query_est = "
+    SELECT 
+        e.id, 
+        e.cedula, 
+        e.cedula_escolar, 
+        e.nombre, 
+        e.apellido, 
+        e.genero, 
+        e.fecha_nacimiento, 
+        e.lugar_nacimiento,
+        b.resultado_final,
+        b.literal_final,
+        b.observacion AS observacion_boletin
+    FROM estudiantes e
+    LEFT JOIN boletines b ON e.id = b.estudiante_id 
+        AND b.tipo_boletin = 'primaria' 
+        AND b.periodo = ?
+    WHERE e.sala = ? 
+        AND e.seccion_id = ? 
+        AND e.estatus = 'Activo'
+    ORDER BY e.nombre ASC, e.apellido ASC
+";
 
 $stmt_est = $conexion->prepare($query_est);
 $stmt_est->bind_param("ssi", $periodo, $sala_seleccionada, $seccion_id);
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
-$stmt_est->close();
 
-// ========== OBTENER RENDIMIENTOS GUARDADOS (para observaciones) ==========
-$rendimientos = [];
-if (!empty($periodo)) {
-    $stmt_rend = $conexion->prepare("SELECT estudiante_id, aprobado, observacion FROM rendimiento_estudiantil WHERE periodo = ?");
-    $stmt_rend->bind_param("s", $periodo);
-    $stmt_rend->execute();
-    $res_rend = $stmt_rend->get_result();
-    while($row = $res_rend->fetch_assoc()) {
-        $rendimientos[$row['estudiante_id']] = $row;
-    }
-    $stmt_rend->close();
-}
-
-// ========== CONTAR VARONES Y HEMBRAS ==========
 $varones = 0;
 $hembras = 0;
 foreach ($estudiantes as $est) {
@@ -137,17 +126,17 @@ include "../includes/header.php";
     }
     .text-left { text-align: left !important; }
 
-    /* ===== AJUSTE DE ANCHOS CON COLUMNAS NUEVAS ===== */
+    /* Ajuste de anchos de columnas con las nuevas columnas */
     .tabla-rendimiento th:nth-child(1), .tabla-rendimiento td:nth-child(1) { width: 4%; }
     .tabla-rendimiento th:nth-child(2), .tabla-rendimiento td:nth-child(2) { width: 10%; }
-    .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 22%; }
+    .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 20%; }
     .tabla-rendimiento th:nth-child(4), .tabla-rendimiento td:nth-child(4) { width: 5%; }
     .tabla-rendimiento th:nth-child(5), .tabla-rendimiento td:nth-child(5) { width: 8%; }
     .tabla-rendimiento th:nth-child(6), .tabla-rendimiento td:nth-child(6) { width: 8%; }
-    .tabla-rendimiento th:nth-child(7), .tabla-rendimiento td:nth-child(7) { width: 6%; }   <!-- APROBADO -->
-    .tabla-rendimiento th:nth-child(8), .tabla-rendimiento td:nth-child(8) { width: 6%; }   <!-- APLAZADO -->
-    .tabla-rendimiento th:nth-child(9), .tabla-rendimiento td:nth-child(9) { width: 6%; }   <!-- LITERAL -->
-    .tabla-rendimiento th:nth-child(10), .tabla-rendimiento td:nth-child(10) { width: 25%; } <!-- OBSERVACIÓN -->
+    .tabla-rendimiento th:nth-child(7), .tabla-rendimiento td:nth-child(7) { width: 6%; }
+    .tabla-rendimiento th:nth-child(8), .tabla-rendimiento td:nth-child(8) { width: 6%; }
+    .tabla-rendimiento th:nth-child(9), .tabla-rendimiento td:nth-child(9) { width: 6%; }
+    .tabla-rendimiento th:nth-child(10), .tabla-rendimiento td:nth-child(10) { width: 27%; }
 
     .input-print, .select-print {
         border: none;
@@ -204,9 +193,11 @@ include "../includes/header.php";
         flex: 1;
         min-width: 0;
     }
+
+    /* Estilo para la X en Aprobado/Aplazado */
     .x-mark {
         font-weight: bold;
-        font-size: 11pt;
+        font-size: 12pt;
         color: #000;
     }
 
@@ -290,18 +281,14 @@ include "../includes/header.php";
                         $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
                         $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
                         
-                        // ===== OBTENER DATOS DEL BOLETÍN =====
+                        // ===== DATOS DESDE BOLETINES (si existen) =====
                         $resultado_final = $est['resultado_final'] ?? '';
                         $literal_final = $est['literal_final'] ?? '';
-                        $observacion_boletin = $est['observacion_boletin'] ?? '';
+                        $observacion_boletin = htmlspecialchars($est['observacion_boletin'] ?? '', ENT_QUOTES, 'UTF-8');
                         
-                        // Lógica de Aprobado/Aplazado
+                        // Lógica de Aprobado/Aplazado (SOLO si tiene resultado_final)
                         $aprobado = ($resultado_final == 'Promovido') ? 'X' : '';
                         $aplazado = ($resultado_final == 'Aplazado') ? 'X' : '';
-                        
-                        // Observación de rendimiento (para editar)
-                        $aprobado_guardado = $rendimientos[$est['id']]['aprobado'] ?? 'SI';
-                        $observacion_guardada = htmlspecialchars($rendimientos[$est['id']]['observacion'] ?? '', ENT_QUOTES, 'UTF-8');
                     ?>
                     <tr>
                         <td><?= $index+1 ?></td>
@@ -310,14 +297,14 @@ include "../includes/header.php";
                         <td><?= $genero ?></td>
                         <td><?= $lugar_nac ?></td>
                         <td><?= $fecha_nac ?></td>
-                        <!-- ===== NUEVAS COLUMNAS ===== -->
-                        <td><span class="x-mark"><?= $aprobado ?></span></td>
-                        <td><span class="x-mark"><?= $aplazado ?></span></td>
-                        <td><span class="x-mark"><?= $literal_final ?></span></td>
+                        <!-- ===== DATOS DE RENDIMIENTO (desde boletines o vacíos) ===== -->
+                        <td class="text-center"><span class="x-mark"><?= $aprobado ?></span></td>
+                        <td class="text-center"><span class="x-mark"><?= $aplazado ?></span></td>
+                        <td class="text-center"><span class="x-mark"><?= $literal_final ?></span></td>
                         <td>
                             <div class="obs-cell">
-                                <input type="text" name="observacion[<?= $est['id'] ?>]" class="input-print obs-input" data-id="<?= $est['id'] ?>" value="<?= $observacion_guardada ?>">
-                                <button type="button" class="btn-edit-obs no-pdf" data-id="<?= $est['id'] ?>" data-nombre="<?= $nombre_completo ?>" data-obs="<?= $observacion_guardada ?>">
+                                <input type="text" name="observacion[<?= $est['id'] ?>]" class="input-print obs-input" data-id="<?= $est['id'] ?>" value="<?= $observacion_boletin ?>">
+                                <button type="button" class="btn-edit-obs no-pdf" data-id="<?= $est['id'] ?>" data-nombre="<?= $nombre_completo ?>" data-obs="<?= $observacion_boletin ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </div>
@@ -329,7 +316,6 @@ include "../includes/header.php";
             </table>
         </form>
 
-        <!-- Modal para editar observación (igual que antes) -->
         <div class="modal fade" id="modalObservacion" tabindex="-1" aria-labelledby="modalObservacionLabel" aria-hidden="true">
             <div class="modal-dialog">
                 <div class="modal-content">

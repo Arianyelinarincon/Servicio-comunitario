@@ -1,27 +1,11 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'admin', 'super_admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
-require_once '../config/conexion.php';
+require_once '../config/conexion.php'; // <- $conexion disponible
 
-// ========== FUNCIÓN DE AUDITORÍA (debe estar en conexion.php) ==========
-// Si no está definida, la definimos aquí por seguridad
-if (!function_exists('registrarAuditoria')) {
-    function registrarAuditoria($conexion, $usuario_id, $accion, $tabla, $registro_id, $detalles = null) {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-        $stmt = $conexion->prepare("INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, detalles, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt) {
-            $stmt->bind_param("ississ", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
-            $stmt->execute();
-            $stmt->close();
-        }
-    }
-}
-
-// CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -32,8 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         die("Error CSRF");
     }
     $id = intval($_POST['id']);
-    
-    // Obtener nombre del estudiante antes de eliminarlo (para auditoría)
+
     $stmt_nombre = $conexion->prepare("SELECT nombre, apellido FROM estudiantes WHERE id = ?");
     $stmt_nombre->bind_param("i", $id);
     $stmt_nombre->execute();
@@ -41,40 +24,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $estudiante = $result_nombre->fetch_assoc();
     $stmt_nombre->close();
     $nombre_estudiante = $estudiante ? $estudiante['nombre'] . ' ' . $estudiante['apellido'] : 'ID: ' . $id;
-    
+
     $stmt = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $stmt->close();
-    
-    // ========== AUDITORÍA ==========
+
+    // ========== AUDITORÍA (usando función centralizada) ==========
     $usuario_id = $_SESSION['usuario_id'] ?? 0;
     if ($usuario_id > 0) {
         registrarAuditoria($conexion, $usuario_id, 'ELIMINAR_ESTUDIANTE', 'estudiantes', $id, "Baja lógica (estatus -> Inactivo) del estudiante: $nombre_estudiante");
     }
-    
+
     header("Location: listado.php?msg=deleted");
     exit();
 }
 
-// Captura de filtros
+// ========== FILTROS Y PAGINACIÓN ==========
 $sala_filtro = isset($_GET['sala']) ? trim($_GET['sala']) : '';
 $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
 
-// Paginación
 $registros_por_pagina = 10;
 $pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
 $offset = ($pagina_actual - 1) * $registros_por_pagina;
 
-// Base de las consultas
-$sql_count = "SELECT COUNT(*) as total FROM estudiantes e WHERE e.estatus = 'Activo'";
-$sql = "SELECT e.*, r.nombre_completo AS rep_nombre,
-               (SELECT ano_escolar FROM inscripciones WHERE estudiante_id = e.id ORDER BY fecha_inscripcion DESC LIMIT 1) AS ano_escolar_actual
-        FROM estudiantes e
-        LEFT JOIN representantes r ON e.representante_id = r.id
-        WHERE e.estatus = 'Activo'";
+// Solo estudiantes que tienen inscripción completada
+$sql_count = "
+    SELECT COUNT(DISTINCT e.id) as total 
+    FROM estudiantes e
+    WHERE e.estatus = 'Activo'
+      AND EXISTS (SELECT 1 FROM inscripciones i WHERE i.estudiante_id = e.id)
+";
 
-// Aplicar filtros SQL
+$sql = "
+    SELECT DISTINCT e.*, r.nombre_completo AS rep_nombre,
+           (SELECT ano_escolar FROM inscripciones WHERE estudiante_id = e.id ORDER BY fecha_inscripcion DESC LIMIT 1) AS ano_escolar_actual
+    FROM estudiantes e
+    LEFT JOIN representantes r ON e.representante_id = r.id
+    WHERE e.estatus = 'Activo'
+      AND EXISTS (SELECT 1 FROM inscripciones i WHERE i.estudiante_id = e.id)
+";
+
 if ($sala_filtro) {
     $sala_esc = mysqli_real_escape_string($conexion, $sala_filtro);
     $sql_count .= " AND e.sala = '$sala_esc'";
@@ -88,7 +78,6 @@ if ($busqueda) {
     $sql .= $where_busqueda;
 }
 
-// Ejecutar conteo y consulta
 $total_registros = $conexion->query($sql_count)->fetch_assoc()['total'];
 $total_paginas = ceil($total_registros / $registros_por_pagina);
 
@@ -103,10 +92,10 @@ include '../includes/header.php';
     <div class="d-flex justify-content-between align-items-center mt-4 mb-4">
         <div>
             <h2 class="fw-bold mb-0">Listado de Estudiantes</h2>
-            <p class="text-muted">Panel de control para inscripciones y listado de alumnos</p>
+            <p class="text-muted">Solo estudiantes con inscripción completada</p>
         </div>
         <a href="index.php" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Volver a Gestión de Estudiantes
+            <i class="fas fa-arrow-left"></i> Volver
         </a>
     </div>
 
@@ -177,7 +166,7 @@ include '../includes/header.php';
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="6" class="text-center">No se encontraron estudiantes.</td></tr>
+                            <tr><td colspan="6" class="text-center">No se encontraron estudiantes inscritos.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>

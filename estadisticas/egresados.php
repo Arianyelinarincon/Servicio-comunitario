@@ -2,7 +2,7 @@
 // ============================================================================
 // CONFIGURACIÓN Y SEGURIDAD
 // ============================================================================
-require_once "../config/conexion.php"; // Cambio: usamos conexion.php que ya tiene auditoría
+require_once "../config/conexion.php";
 
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -18,7 +18,7 @@ function verificarAutenticacion($ajax = false) {
             echo json_encode(['error' => 'No autorizado']);
             exit;
         }
-        header('Location: /login.php');
+        header('Location: /servicio-comunitario/profesores/Login/login.php');
         exit;
     }
     return true;
@@ -79,17 +79,14 @@ if ($esAjax) {
         try {
             $conexion->begin_transaction();
             
-            // Obtener datos del egreso
             $stmt = $conexion->prepare("SELECT estudiante_id, sala, seccion_id, periodo FROM egresos WHERE id = ?");
             $stmt->bind_param("i", $egreso_id);
             $stmt->execute();
-            $result = $stmt->get_result();
-            $egreso = $result->fetch_assoc();
+            $egreso = $stmt->get_result()->fetch_assoc();
             if (!$egreso) throw new Exception("Egreso no encontrado");
             $estudiante_id = $egreso['estudiante_id'];
             $stmt->close();
             
-            // Obtener nombre del estudiante para auditoría
             $stmt_nom = $conexion->prepare("SELECT nombre, apellido FROM estudiantes WHERE id = ?");
             $stmt_nom->bind_param("i", $estudiante_id);
             $stmt_nom->execute();
@@ -97,19 +94,17 @@ if ($esAjax) {
             $stmt_nom->close();
             $nombre_estudiante = $est ? $est['nombre'] . ' ' . $est['apellido'] : 'ID: ' . $estudiante_id;
             
-            // Eliminar egreso
             $stmt_del = $conexion->prepare("DELETE FROM egresos WHERE id = ?");
             $stmt_del->bind_param("i", $egreso_id);
             $stmt_del->execute();
             $stmt_del->close();
             
-            // Reactivar estudiante
             $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
             $stmt_up->bind_param("i", $estudiante_id);
             $stmt_up->execute();
             $stmt_up->close();
             
-            // ========== AUDITORÍA ==========
+            // ========== AUDITORÍA (usando función de conexion.php) ==========
             $usuario_id = $_SESSION['usuario_id'] ?? 0;
             if ($usuario_id > 0) {
                 $detalles = "Egreso revertido. Estudiante: $nombre_estudiante (ID: $estudiante_id), Sala: {$egreso['sala']}, Sección: {$egreso['seccion_id']}, Período: {$egreso['periodo']}";
@@ -136,17 +131,14 @@ if ($esAjax) {
         try {
             $conexion->begin_transaction();
             
-            // Obtener datos del egreso
             $stmt = $conexion->prepare("SELECT estudiante_id, sala, seccion_id, periodo FROM egresos WHERE id = ?");
             $stmt->bind_param("i", $egreso_id);
             $stmt->execute();
-            $result = $stmt->get_result();
-            $egreso = $result->fetch_assoc();
+            $egreso = $stmt->get_result()->fetch_assoc();
             if (!$egreso) throw new Exception("Egreso no encontrado");
             $estudiante_id = $egreso['estudiante_id'];
             $stmt->close();
             
-            // Obtener nombre del estudiante para auditoría
             $stmt_nom = $conexion->prepare("SELECT nombre, apellido FROM estudiantes WHERE id = ?");
             $stmt_nom->bind_param("i", $estudiante_id);
             $stmt_nom->execute();
@@ -154,13 +146,11 @@ if ($esAjax) {
             $stmt_nom->close();
             $nombre_estudiante = $est ? $est['nombre'] . ' ' . $est['apellido'] : 'ID: ' . $estudiante_id;
             
-            // Eliminar egreso
             $stmt_del_egreso = $conexion->prepare("DELETE FROM egresos WHERE id = ?");
             $stmt_del_egreso->bind_param("i", $egreso_id);
             $stmt_del_egreso->execute();
             $stmt_del_egreso->close();
             
-            // Eliminar estudiante (borrado físico)
             $stmt_del_est = $conexion->prepare("DELETE FROM estudiantes WHERE id = ?");
             $stmt_del_est->bind_param("i", $estudiante_id);
             $stmt_del_est->execute();
@@ -240,6 +230,10 @@ if (!empty($filtro_busqueda)) {
     $params[] = $termino; $params[] = $termino; $params[] = $termino; $params[] = $termino;
     $tipos .= 'ssss';
 }
+
+// ========== FILTRO POR INSCRIPCIÓN COMPLETA (para mostrar solo egresos de estudiantes que estuvieron completos) ==========
+// Si deseas ver todos los egresos históricos, elimina la siguiente línea.
+$where[] = "est.inscripcion_completa = 1";
 
 $whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 

@@ -28,9 +28,10 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         exit;
     }
     
+    // ========== CORRECCIÓN: FILTRAR SOLO PROFESORES ACTIVOS ==========
     if ($action == 'cargar_docentes') {
         $seccion = (int)$_POST['seccion'];
-        $stmt = $conexion->prepare("SELECT id, nombre FROM profesores WHERE seccion = ? ORDER BY nombre ASC");
+        $stmt = $conexion->prepare("SELECT id, nombre FROM profesores WHERE seccion = ? AND estatus = 'Activo' ORDER BY nombre ASC");
         $stmt->bind_param("i", $seccion);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -47,7 +48,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
 
 include "../includes/header.php";
 
-// ========== CORRECCIÓN: Función para generar años con 2025-2026 seleccionado ==========
+// ========== Función para generar años ==========
 function generarOpcionesAnios() {
     $anio_actual = date('Y');
     $anio_inicio = $anio_actual - 5;
@@ -55,7 +56,6 @@ function generarOpcionesAnios() {
     $opciones = '';
     for ($i = $anio_inicio; $i <= $anio_fin; $i++) {
         $periodo = $i . '-' . ($i + 1);
-        // ========== CORRECCIÓN: Marcar 2025-2026 como seleccionado ==========
         $selected = ($periodo == '2025-2026') ? 'selected' : '';
         $opciones .= "<option value=\"$periodo\" $selected>$periodo</option>";
     }
@@ -123,7 +123,6 @@ function generarOpcionesAnios() {
                     </select>
                 </div>
 
-                <!-- ========== CORRECCIÓN: Selector de AÑO ESCOLAR (igual que pre-inicial) ========== -->
                 <div class="col-md-2" id="seccion-periodo" style="display:none;">
                     <label class="small fw-bold text-muted">AÑO ESCOLAR</label>
                     <select name="periodo" id="select-periodo" class="form-select shadow-none" required>
@@ -152,7 +151,6 @@ function pasoGrado() {
     docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
     docenteSelect.disabled = true;
     
-    // ========== CORRECCIÓN: Ocultar periodo y botón ==========
     document.getElementById('seccion-periodo').style.display = 'none';
     document.getElementById('seccion-boton').style.display = 'none';
 
@@ -184,7 +182,6 @@ function pasoSeccion() {
     docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
     docenteSelect.disabled = true;
     
-    // ========== CORRECCIÓN: Ocultar periodo y botón ==========
     document.getElementById('seccion-periodo').style.display = 'none';
     document.getElementById('seccion-boton').style.display = 'none';
 
