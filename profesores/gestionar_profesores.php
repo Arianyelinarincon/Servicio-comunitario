@@ -12,9 +12,49 @@ include('../includes/header.php');
 ?>
 
 <style>
-    .table-profesores { font-size: 0.9rem; }
-    .table-profesores th { background-color: #f8f9fa; color: #002d54; }
-    .btn-accion { margin: 2px; }
+    :root { --primary-gradient: linear-gradient(135deg, #002d54 0%, #004a7c 100%); }
+    .page-header {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 12px;
+        padding: 20px 28px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 20px rgba(0,45,84,0.2);
+    }
+    .card-filtros {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        margin-bottom: 24px;
+    }
+    .card-tabla {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    .card-tabla .card-header {
+        background: var(--primary-gradient) !important;
+        color: white;
+        border-radius: 12px 12px 0 0 !important;
+        padding: 14px 20px;
+        font-weight: 600;
+    }
+    .table-profesores {
+        font-size: 0.875rem;
+        vertical-align: middle;
+    }
+    .table-profesores thead th {
+        background-color: #f0f4f8;
+        color: #002d54;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #002d54;
+    }
+    .table-profesores tbody tr:hover {
+        background-color: #e8f4f8;
+    }
     .badge-estado {
         font-size: 0.75rem;
         padding: 5px 10px;
@@ -22,40 +62,38 @@ include('../includes/header.php');
     }
     .badge-activo { background-color: #28a745; color: white; }
     .badge-inactivo { background-color: #dc3545; color: white; }
-    .dashboard-card {
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border: none;
-        border-radius: 15px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+    .btn-accion {
+        font-size: 0.78rem;
+        padding: 4px 10px;
+        margin: 1px;
     }
-    .dashboard-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 15px 30px rgba(0,0,0,0.12);
+    .pagination .page-link {
+        border-radius: 8px;
+        margin: 0 3px;
+        color: #002d54;
+        font-weight: 500;
     }
-    .icon-box { font-size: 2rem; margin-bottom: 10px; }
-    .bg-navy { background-color: #002d54 !important; }
-    .btn-navy { background-color: #002d54; color: white; }
-    .btn-navy:hover { background-color: #004080; color: white; }
+    .pagination .page-item.active .page-link {
+        background: var(--primary-gradient);
+        border-color: transparent;
+    }
 </style>
 
-<div class="container-fluid mt-4">
-    <!-- ===== CABECERA ===== -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid px-4">
+    
+    <!-- Cabecera -->
+    <div class="page-header d-flex flex-wrap justify-content-between align-items-center">
         <div>
-            <h2 class="fw-bold"><i class="fas fa-users me-2"></i>Gestionar Profesores</h2>
-            <p class="text-muted">Listado completo de docentes (activos e inactivos)</p>
+            <h4 class="mb-1 fw-bold"><i class="fas fa-users me-2"></i> Gestionar Profesores</h4>
+            <small class="opacity-75"><i class="fas fa-user-tie me-1"></i> Listado completo de docentes (activos e inactivos)</small>
         </div>
-        <div>
-            <a href="agregar_profesor.php" class="btn btn-success">
-                <i class="fas fa-user-plus me-2"></i> Agregar Profesor
-            </a>
-            <a href="panel_profesor.php" class="btn btn-secondary">
-                <i class="fas fa-arrow-left me-2"></i> Volver
-            </a>
+        <div class="mt-2 mt-md-0">
+            <a href="agregar_profesor.php" class="btn btn-light fw-bold me-2"><i class="fas fa-user-plus me-2"></i> Agregar Profesor</a>
+            <a href="panel_profesor.php" class="btn btn-light fw-bold"><i class="fas fa-arrow-left me-2"></i> Volver</a>
         </div>
     </div>
 
-    <!-- ===== MENSAJES ===== -->
+    <!-- Mensajes -->
     <?php
     if (isset($_GET['msg'])) {
         $msg = $_GET['msg'];
@@ -66,55 +104,55 @@ include('../includes/header.php');
     }
     ?>
 
-    <!-- ===== TARJETA DE BÚSQUEDA (Opcional) ===== -->
-    <div class="card mb-4 shadow-sm">
-        <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">Buscar por nombre o cédula</label>
-                    <input type="text" name="buscar" class="form-control" placeholder="Nombre, apellido o cédula..." value="<?= htmlspecialchars($_GET['buscar'] ?? '') ?>">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Estado</label>
-                    <select name="estado" class="form-select">
-                        <option value="">Todos</option>
-                        <option value="Activo" <?= isset($_GET['estado']) && $_GET['estado'] === 'Activo' ? 'selected' : '' ?>>Activo</option>
-                        <option value="Inactivo" <?= isset($_GET['estado']) && $_GET['estado'] === 'Inactivo' ? 'selected' : '' ?>>Inactivo</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <button type="submit" class="btn btn-navy w-100"><i class="fas fa-search me-2"></i>Buscar</button>
-                </div>
-                <div class="col-md-3">
-                    <a href="gestionar_profesores.php" class="btn btn-secondary w-100"><i class="fas fa-undo me-2"></i>Limpiar</a>
+    <!-- Filtros con buscador en tiempo real -->
+    <div class="card card-filtros">
+        <div class="card-body p-4">
+            <form method="GET" action="gestionar_profesores.php" id="filtroForm" autocomplete="off">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="small fw-bold text-muted"><i class="fas fa-search me-1"></i> Buscar por nombre o cédula</label>
+                        <input type="text" name="buscar" id="busquedaInput" class="form-control shadow-none" placeholder="Nombre, apellido o cédula..." value="<?= htmlspecialchars($_GET['buscar'] ?? '') ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-muted"><i class="fas fa-filter me-1"></i> Estado</label>
+                        <select name="estado" class="form-select shadow-none" onchange="this.form.submit()">
+                            <option value="">Todos</option>
+                            <option value="Activo" <?= isset($_GET['estado']) && $_GET['estado'] === 'Activo' ? 'selected' : '' ?>>Activo</option>
+                            <option value="Inactivo" <?= isset($_GET['estado']) && $_GET['estado'] === 'Inactivo' ? 'selected' : '' ?>>Inactivo</option>
+                        </select>
+                    </div>
+                    <div class="col-md-5 text-end">
+                        <span class="text-muted small"><i class="fas fa-info-circle me-1"></i> La búsqueda es automática</span>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- ===== TABLA DE PROFESORES ===== -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-navy text-white">
-            <h5 class="mb-0"><i class="fas fa-list me-2"></i> Lista de Profesores</h5>
+    <!-- Tabla -->
+    <div class="card card-tabla">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i> Lista de Profesores <span class="badge bg-light text-dark ms-2" id="contador-total">0</span></h6>
+            <small class="opacity-75"><i class="fas fa-sync-alt me-1"></i> Actualizado automáticamente</small>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-bordered table-hover table-profesores mb-0">
+                <table class="table table-hover table-profesores mb-0">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Cédula</th>
-                            <th>Nombre</th>
-                            <th>Apellido</th>
-                            <th>Sala</th>
-                            <th>Sección</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
+                            <th style="width:5%">ID</th>
+                            <th style="width:10%">Cédula</th>
+                            <th style="width:18%">Nombre</th>
+                            <th style="width:18%">Apellido</th>
+                            <th style="width:10%">Sala</th>
+                            <th style="width:8%">Sección</th>
+                            <th style="width:12%">Estado</th>
+                            <th style="width:19%">Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="tabla-body">
                         <?php
-                        // ========== CONSULTA: TODOS LOS PROFESORES ==========
+                        // ========== CONSULTA CON FILTROS ==========
                         $sql = "SELECT p.*, s.nombre AS seccion_nombre 
                                 FROM profesores p
                                 LEFT JOIN secciones s ON p.seccion = s.id
@@ -155,8 +193,8 @@ include('../includes/header.php');
                                 $estado_clase = ($row['estatus'] === 'Activo') ? 'badge-activo' : 'badge-inactivo';
                         ?>
                         <tr>
-                            <td><?= $row['id'] ?></td>
-                            <td><?= htmlspecialchars($row['cedula'] ?? '-') ?></td>
+                            <td class="text-center fw-bold text-muted"><?= $row['id'] ?></td>
+                            <td><span class="font-monospace"><?= htmlspecialchars($row['cedula'] ?? '-') ?></span></td>
                             <td><strong><?= htmlspecialchars($row['nombre'] ?? '-') ?></strong></td>
                             <td><?= htmlspecialchars($row['apellido'] ?? '-') ?></td>
                             <td><?= htmlspecialchars($row['sala'] ?? '-') ?></td>
@@ -166,35 +204,24 @@ include('../includes/header.php');
                                 <?= $rol_label ?>
                             </td>
                             <td class="text-nowrap">
-                                <!-- Editar -->
-                                <a href="editar_profesor.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-primary btn-accion" title="Editar">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <!-- Ver Detalle -->
-                                <a href="detalle_profesor.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info btn-accion" title="Ver detalle">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                <!-- Ver Estudiantes (NUEVO) -->
-                                <a href="../estudiantes/listado.php?sala=<?= urlencode($row['sala']) ?>&seccion=<?= $row['seccion'] ?>" class="btn btn-sm btn-success btn-accion" title="Ver estudiantes asignados" target="_blank">
-                                    <i class="fas fa-user-graduate"></i>
-                                </a>
-                                <!-- Eliminar (Físico) -->
+                                <a href="editar_profesor.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-primary btn-accion" title="Editar datos del profesor"><i class="fas fa-edit"></i></a>
+                                <a href="detalle_profesor.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info btn-accion" title="Ver detalles completos del profesor"><i class="fas fa-eye"></i></a>
+                                <a href="../estudiantes/listado.php?sala=<?= urlencode($row['sala']) ?>&seccion=<?= $row['seccion'] ?>" class="btn btn-sm btn-success btn-accion" title="Ver estudiantes asignados" target="_blank"><i class="fas fa-user-graduate"></i></a>
                                 <?php if ($_SESSION['rol'] === 'super_admin' || $_SESSION['rol'] === 'administrador'): ?>
-                                <button class="btn btn-sm btn-danger btn-accion" onclick="eliminarProfesor(<?= $row['id'] ?>, '<?= addslashes($row['nombre'] . ' ' . $row['apellido']) ?>')" title="Eliminar permanentemente">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
+                                <button class="btn btn-sm btn-danger btn-accion" onclick="eliminarProfesor(<?= $row['id'] ?>, '<?= addslashes($row['nombre'] . ' ' . $row['apellido']) ?>')" title="Eliminar permanentemente"><i class="fas fa-trash-alt"></i></button>
                                 <?php endif; ?>
                             </td>
                         </tr>
                         <?php endwhile; else: ?>
-                        <tr><td colspan="8" class="text-center py-4">No hay profesores registrados.</td></tr>
+                        <tr><td colspan="8" class="text-center py-4"><i class="fas fa-inbox fa-2x text-muted mb-2 d-block"></i>No hay profesores registrados.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
         </div>
-        <div class="card-footer text-muted small">
-            <i class="fas fa-info-circle me-1"></i> Los profesores inactivos aparecen con fondo gris. Al eliminar, se borran permanentemente.
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+            <span class="text-muted small"><i class="fas fa-info-circle me-1"></i> Los profesores inactivos aparecen con fondo gris. Al eliminar, se borran permanentemente.</span>
+            <span class="text-muted small"><i class="fas fa-sync-alt me-1"></i> Filtro automático</span>
         </div>
     </div>
 </div>
@@ -225,14 +252,34 @@ include('../includes/header.php');
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// Función para eliminar profesor
 function eliminarProfesor(id, nombre) {
     document.getElementById('nombre-profesor-eliminar').textContent = nombre;
     document.getElementById('eliminar-id').value = id;
     new bootstrap.Modal(document.getElementById('modalEliminar')).show();
 }
-</script>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+// ===== BUSCADOR EN TIEMPO REAL (sin perder foco) =====
+document.addEventListener('DOMContentLoaded', function() {
+    const busquedaInput = document.getElementById('busquedaInput');
+    let timeoutId = null;
+
+    if (busquedaInput) {
+        busquedaInput.addEventListener('input', function() {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                document.getElementById('filtroForm').submit();
+            }, 400);
+        });
+
+        // Mantener el foco después de recargar
+        busquedaInput.focus();
+        const length = busquedaInput.value.length;
+        busquedaInput.setSelectionRange(length, length);
+    }
+});
+</script>
 
 <?php include('../includes/footer.php'); ?>

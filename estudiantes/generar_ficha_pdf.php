@@ -2,7 +2,13 @@
 session_start();
 require_once '../config/conexion.php';
 
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+// ========== INCLUIR DOMPDF ==========
+require_once '../estadisticas/dompdf/autoload.inc.php';
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
+// ========== VERIFICAR AUTENTICACIÓN ==========
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
@@ -12,6 +18,7 @@ if (!$id) {
     die("ID de estudiante no válido.");
 }
 
+// ========== OBTENER DATOS DEL ESTUDIANTE Y REPRESENTANTE ==========
 $stmt = $conexion->prepare("
     SELECT e.*, 
         r.nombre_completo AS rep_nombre, r.cedula AS rep_cedula, r.telefono AS rep_telefono,
@@ -33,247 +40,497 @@ if (!$estudiante) {
     die("Estudiante no encontrado.");
 }
 
+// ========== OBTENER HISTORIAL ESCOLAR ==========
 $stmt_ins = $conexion->prepare("SELECT * FROM inscripciones WHERE estudiante_id = ? ORDER BY ano_escolar DESC");
 $stmt_ins->bind_param("i", $id);
 $stmt_ins->execute();
 $inscripciones = $stmt_ins->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt_ins->close();
 
-function check_si_no($val, $option) {
-    return (strtolower($val ?? '') === strtolower($option)) ? '<b>[X]</b>' : '[&nbsp;&nbsp;]';
+// ========== DETECTAR MODO ==========
+$es_preview = isset($_GET['preview']) && $_GET['preview'] == '1';
+$es_download = isset($_GET['download']) && $_GET['download'] == '1';
+
+if (!$es_preview && !$es_download) {
+    $es_download = true;
 }
 
-$html = '
+// ========== FUNCIÓN CHECKMARK ==========
+function checkmark($valor) {
+    return ($valor === 'Si' || $valor === 'Sí') ? '&#10003;' : '';
+}
+
+// ========== FUNCIÓN DE LIMPIEZA Y FORMATO DE TEXTO ==========
+function formatearCaso($texto, $tipo = 'titulo') {
+    if (empty($texto)) return '';
+    $texto = trim($texto);
+    
+    if (!function_exists('mb_convert_case')) {
+        if ($tipo === 'oracion') {
+            return ucfirst(strtolower($texto));
+        }
+        return ucwords(strtolower($texto));
+    }
+    
+    if ($tipo === 'oracion') {
+        $minuscula = mb_strtolower($texto, "UTF-8");
+        return mb_strtoupper(mb_substr($minuscula, 0, 1, "UTF-8"), "UTF-8") . mb_substr($minuscula, 1, null, "UTF-8");
+    }
+    
+    return mb_convert_case($texto, MB_CASE_TITLE, "UTF-8");
+}
+
+// ========== INICIAR BUFFER ==========
+ob_start();
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ficha de Inscripción</title>
+    
     <style>
-        @page { size: letter; margin: 10mm 15mm; }
-        body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.15; color: #000; margin: 0; padding: 0; }
-        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
-        .header-table td { border: none; padding: 0; }
-        .titulo-principal { font-size: 15px; font-weight: bold; text-align: center; margin: 0; letter-spacing: 0.5px; }
-        .subtitulo { font-size: 9px; text-align: center; margin: 2px 0 0 0; color: #444; }
-        .foto-box { width: 62px; height: 75px; border: 1px solid #000; text-align: center; font-size: 7px; vertical-align: middle; display: inline-block; }
-        .seccion-titulo { font-weight: bold; font-size: 10px; text-transform: uppercase; margin-top: 8px; margin-bottom: 3px; border-bottom: 1px solid #000; padding-bottom: 2px; }
+        /* ===== CONFIGURACIÓN GLOBAL ===== */
+        *, *:before, *:after {
+            box-sizing: border-box !important;
+        }
+
+        /* ===== CONFIGURACIÓN DE PÁGINA RIGIDA (CARTA) ===== */
+        @page {
+            size: letter portrait;
+            margin: 0 !important; /* El margen físico lo maneja la hoja mediante padding */
+        }
         
-        /* Estructura en tablas para Dompdf */
-        .form-table { width: 100%; border-collapse: collapse; margin-bottom: 3px; }
-        .form-table td { padding: 3px 2px; font-size: 10px; vertical-align: bottom; }
-        .label { font-weight: normal; color: #000; white-space: nowrap; }
-        .val { font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #000; padding-left: 3px; }
-        
-        .tabla-historial { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 8px; }
-        .tabla-historial th, .tabla-historial td { border: 1px solid #000; padding: 3px 2px; text-align: center; }
-        .tabla-historial th { font-weight: bold; background-color: #f2f2f2; font-size: 8.5px; }
-        .tabla-historial td { font-weight: bold; }
-        .dato-line { display: inline-block; min-width: 15px; text-align: center; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: <?= $es_preview ? '#f4f6f9' : '#fff' ?>;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 10pt;
+            color: #000;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* Lienzo virtual exacto al de la impresora física */
+        .hoja {
+            background-color: #fff;
+            width: 21.59cm;
+            height: 27.94cm;
+            padding: 1.0cm 1.2cm;
+            margin: <?= $es_preview ? '20px auto' : '0 auto' ?>;
+            box-shadow: <?= $es_preview ? '0 0 10px rgba(0,0,0,0.1)' : 'none' ?>;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ===== CABECERA ===== */
+        .header-container {
+            position: relative;
+            height: 3.6cm;
+            margin-bottom: 0.3cm;
+        }
+        .fotos-container {
+            position: absolute;
+            top: 0;
+            right: 0;
+        }
+        .foto-box {
+            display: inline-block;
+            width: 2.5cm;  
+            height: 3.2cm; 
+            border: 1.5px solid #000;
+            background: transparent;
+            margin-left: 0.4cm;
+        }
+        .header-title {
+            position: absolute;
+            top: 1.3cm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 16pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* ===== SECCIONES ===== */
+        .seccion-titulo {
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 0.45cm;    
+            margin-bottom: 0.2cm;   
+            font-size: 10.5pt;
+            clear: both;
+        }
+        .fila-dato {
+            display: table;
+            width: 100%;
+            margin-bottom: 0.18cm;  
+            table-layout: fixed !important;
+        }
+        .celda-dato {
+            display: table-cell;
+            vertical-align: bottom;
+            font-size: 10pt;
+            word-wrap: break-word; 
+            overflow: hidden;
+        }
+        .celda-dato label {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #000;
+            margin-right: 0.1cm;
+            display: inline;
+            white-space: nowrap; 
+        }
+        .valor-dato {
+            font-size: 10pt;
+            font-weight: normal;
+            color: #000;
+            display: inline;
+            word-wrap: break-word; 
+        }
+        .opcion-group {
+            display: inline-block;
+            margin-right: 0.25cm;
+            vertical-align: bottom;
+            font-weight: bold;
+        }
+        .check-mark {
+            font-family: "DejaVu Sans", "Arial Unicode MS", sans-serif !important;
+            display: inline-block;
+            font-weight: bold;
+            font-size: 11pt;
+            color: #000;
+            width: 0.45cm;
+            text-align: center;
+            border-bottom: 1px solid #000;
+            margin-left: 0.05cm;
+            min-height: 15px;
+        }
+
+        /* ===== TABLA DE HISTORIAL ===== */
+        .tabla-historial {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.5cm;
+            font-size: 8.5pt;
+            text-align: center;
+            table-layout: fixed !important;
+        }
+        .tabla-historial th,
+        .tabla-historial td {
+            border: 1px solid #000;
+            padding: 5px 2px;
+            vertical-align: middle;
+            word-wrap: break-word;
+            overflow: hidden;
+            white-space: normal !important;
+        }
+        .tabla-historial th {
+            font-weight: bold;
+            font-size: 7.5pt;
+            background: transparent;
+        }
+        .tabla-historial td {
+            font-size: 8.5pt;
+            height: 0.75cm; 
+        }
+
+        /* ===== BOTONES DE NAVEGACIÓN (SIN BOOTSTRAP) ===== */
+        .btn-accion {
+            display: <?= $es_preview ? 'block' : 'none' ?>;
+            text-align: center;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 13px;
+            transition: background 0.2s;
+            margin: 0 4px;
+        }
+        .btn-info { background: #17a2b8; color: white; }
+        .btn-info:hover { background: #138496; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn svg {
+            margin-right: 6px;
+            fill: currentColor;
+        }
+
+        /* ===== CORRECCIONES ESTRICTAS PARA NAVEGADOR AL IMPRIMIR ===== */
+        @media print {
+            body {
+                background-color: #fff !important;
+            }
+            .btn-accion {
+                display: none !important;
+            }
+            .hoja {
+                margin: 0 !important;
+                box-shadow: none !important;
+                page-break-inside: avoid;
+                page-break-after: avoid;
+                width: 21.59cm !important;
+                height: 27.94cm !important;
+            }
+        }
     </style>
 </head>
 <body>
 
-    <table class="header-table">
-        <tr>
-            <td style="width: 80%; vertical-align: middle;">
-                <h3 class="titulo-principal">FICHA DE INSCRIPCIÓN</h3>
-                <p class="subtitulo"><b>E.B.N. "Juan Pablo Pérez Alfonzo"</b></p>
-                <p class="subtitulo" style="font-weight: bold;">Año Escolar: ' . date('Y') . '-' . (date('Y') + 1) . '</p>
-            </td>
-            <td style="width: 20%; text-align: right; vertical-align: top;">
-                <div class="foto-box" style="margin-right: 4px;"><br><br><br>FOTO 3x4</div>
-                <div class="foto-box"><br><br><br>HUELLA</div>
-            </td>
-        </tr>
-    </table>
+<?php if ($es_preview): ?>
+<div class="btn-accion">
+    <button onclick="window.print()" class="btn btn-info">
+        <svg width="14" height="14" viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg> Imprimir
+    </button>
+    <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn btn-success">
+        <svg width="14" height="14" viewBox="0 0 24 24"><path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4.5-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 10h1V8.5H9V10zm5.5 2H15V8.5h-.5v3.5zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6z"/></svg> Descargar PDF
+    </a>
+    <a href="ver_ficha.php?id=<?= $id ?>" class="btn btn-secondary">
+        <svg width="14" height="14" viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg> Volver
+    </a>
+</div>
+<?php endif; ?>
 
+<div class="hoja">
+
+    <!-- ===== CABECERA ===== -->
+    <div class="header-container">
+        <div class="fotos-container">
+            <span class="foto-box"></span>
+            <span class="foto-box"></span>
+        </div>
+        <div class="header-title">FICHA DE INSCRIPCIÓN</div>
+    </div>
+
+    <!-- ===== DATOS DEL ALUMNO ===== -->
     <div class="seccion-titulo">DATOS DEL ALUMNO</div>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 15%;">Nombres y Apellidos:</td>
-            <td class="val" style="width: 45%;">' . htmlspecialchars($estudiante['nombre'] . ' ' . $estudiante['apellido']) . '</td>
-            <td class="label" style="width: 15%; text-align: right;">Fecha Nac.:</td>
-            <td class="val" style="width: 15%; text-align: center;">' . (!empty($estudiante['fecha_nacimiento']) ? date('d/m/Y', strtotime($estudiante['fecha_nacimiento'])) : '') . '</td>
-            <td class="label" style="width: 5%; text-align: right;">Sexo:</td>
-            <td class="val" style="width: 5%; text-align: center;">' . htmlspecialchars($estudiante['genero'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 12%;">Cedula Escolar:</td>
-            <td class="val" style="width: 23%;">' . htmlspecialchars($estudiante['cedula_escolar'] ?? '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Nacionalidad:</td>
-            <td class="val" style="width: 20%;">' . htmlspecialchars($estudiante['nacionalidad'] ?? 'VENEZOLANA') . '</td>
-            <td class="label" style="width: 15%; text-align: right;">Pais Nacimiento:</td>
-            <td class="val" style="width: 20%;">' . htmlspecialchars($estudiante['pais_nacimiento'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 15%;">Estado de Nacimiento:</td>
-            <td class="val" style="width: 25%;">' . htmlspecialchars($estudiante['estado_nacimiento'] ?? '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Dirección:</td>
-            <td class="val" style="width: 50%;">' . htmlspecialchars($estudiante['direccion'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 15%;">Estado Residencia:</td>
-            <td class="val" style="width: 15%;">' . htmlspecialchars($estudiante['estado_residencia'] ?? '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Municipio:</td>
-            <td class="val" style="width: 20%;">' . htmlspecialchars($estudiante['municipio'] ?? '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Parroquia:</td>
-            <td class="val" style="width: 15%;">' . htmlspecialchars($estudiante['parroquia'] ?? '') . '</td>
-            <td class="label" style="width: 5%; text-align: right;">Ciudad:</td>
-            <td class="val" style="width: 10%;">' . htmlspecialchars($estudiante['ciudad'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 18%;">Sufre Alguna Enfermedad:</td>
-            <td style="width: 15%; font-weight: bold;">
-                Si ' . check_si_no($estudiante['enfermedad'], 'Si') . ' &nbsp; No ' . check_si_no($estudiante['enfermedad'], 'No') . '
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:55%;"><label>Nombres y Apellidos.</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['apellido'] . ' ' . $estudiante['nombre'])) ?></span></div>
+        <div class="celda-dato" style="width:30%;"><label>Fecha Nacimiento:</label> <span class="valor-dato"><?= !empty($estudiante['fecha_nacimiento']) ? date('d/m/Y', strtotime($estudiante['fecha_nacimiento'])) : '' ?></span></div>
+        <div class="celda-dato" style="width:15%;"><label>Sexo</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['genero'] ?? '')) ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:32%;"><label>Cedula Escolar/</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['cedula_escolar'] ?? '') ?></span></div>
+        <div class="celda-dato" style="width:33%;"><label>Nacionalidad</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['nacionalidad'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:35%;"><label>Pais de Nacimiento</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['pais_nacimiento'] ?? '')) ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:35%;"><label>Estado de Nacimiento</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['estado_nacimiento'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:65%;"><label>Dirección:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['direccion'] ?? '', 'oracion')) ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:30%;"><label>Estado de Residencia</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['estado_residencia'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:26%;"><label>Municipio</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['municipio'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:24%;"><label>Parroquia:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['parroquia'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:20%;"><label>Ciudad</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['ciudad'] ?? '')) ?></span></div>
+    </div>
+
+    <!-- ==========================================
+         TABLA INVISIBLE DE CONTROL MÉDICO
+         ========================================== -->
+    <table style="width: 100%; border-collapse: collapse; margin-top: 0.18cm; margin-bottom: 0.35cm; table-layout: fixed !important;">
+        <!-- Fila: Enfermedad -->
+        <tr style="vertical-align: top;">
+            <td style="width: 38%; padding: 4px 0;">
+                <label style="font-weight: bold; font-size: 10pt;">Sufre alguna enfermedad:</label>
             </td>
-            <td class="label" style="width: 5%; text-align: right;">Cual:</td>
-            <td class="val" style="width: 22%;">' . htmlspecialchars($estudiante['enfermedad_cual'] ?? '') . '</td>
-            <td class="label" style="width: 22%; text-align: right;">Realiza Educ. Física:</td>
-            <td style="width: 18%; font-weight: bold;">
-                Si ' . check_si_no($estudiante['educacion_fisica'], 'Si') . ' &nbsp; No ' . check_si_no($estudiante['educacion_fisica'], 'No') . '
+            <td style="width: 20%; padding: 4px 0; white-space: nowrap;">
+                <span class="opcion-group">Si <span class="check-mark"><?= checkmark($estudiante['enfermedad'] ?? '') ?></span></span>
+                <span class="opcion-group">No <span class="check-mark"><?= ($estudiante['enfermedad'] ?? '') == 'No' ? '&#10003;' : '' ?></span></span>
+            </td>
+            <td style="width: 42%; padding: 4px 0; word-wrap: break-word;">
+                <label style="font-weight: bold; font-size: 10pt;">Cuál:</label> 
+                <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['enfermedad_cual'] ?? '', 'oracion')) ?></span>
+            </td>
+        </tr>
+        <!-- Fila: Educación Física -->
+        <tr style="vertical-align: top;">
+            <td style="width: 38%; padding: 4px 0;">
+                <label style="font-weight: bold; font-size: 10pt;">Puede realizar Ed. Física:</label>
+            </td>
+            <td style="width: 20%; padding: 4px 0; white-space: nowrap;">
+                <span class="opcion-group">Si <span class="check-mark"><?= checkmark($estudiante['educacion_fisica'] ?? '') ?></span></span>
+                <span class="opcion-group">No <span class="check-mark"><?= ($estudiante['educacion_fisica'] ?? '') == 'No' ? '&#10003;' : '' ?></span></span>
+            </td>
+            <td style="width: 42%; padding: 4px 0; word-wrap: break-word;">
+                <label style="font-weight: bold; font-size: 10pt;">Por qué:</label> 
+                <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['educacion_fisica_porque'] ?? '', 'oracion')) ?></span>
+            </td>
+        </tr>
+        <!-- Fila: Alergia -->
+        <tr style="vertical-align: top;">
+            <td style="width: 38%; padding: 4px 0;">
+                <label style="font-weight: bold; font-size: 10pt;">Alergico a medicamento:</label>
+            </td>
+            <td style="width: 20%; padding: 4px 0; white-space: nowrap;">
+                <span class="opcion-group">Si <span class="check-mark"><?= checkmark($estudiante['alergia'] ?? '') ?></span></span>
+                <span class="opcion-group">No <span class="check-mark"><?= ($estudiante['alergia'] ?? '') == 'No' ? '&#10003;' : '' ?></span></span>
+            </td>
+            <td style="width: 42%; padding: 4px 0; word-wrap: break-word;">
+                <label style="font-weight: bold; font-size: 10pt;">Cuál:</label> 
+                <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['alergia_cual'] ?? '', 'oracion')) ?></span>
             </td>
         </tr>
     </table>
 
+    <!-- ===== DATOS DEL REPRESENTANTE ===== -->
     <div class="seccion-titulo">DATOS DEL REPRESENTANTE</div>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 15%;">Cédula de Identidad:</td>
-            <td class="val" style="width: 25%;">' . htmlspecialchars($estudiante['rep_cedula'] ?? '') . '</td>
-            <td class="label" style="width: 15%; text-align: right;">Nombres y Apellidos:</td>
-            <td class="val" style="width: 45%;">' . htmlspecialchars($estudiante['rep_nombre'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 12%;">Fecha Nacimiento:</td>
-            <td class="val" style="width: 18%; text-align: center;">' . (!empty($estudiante['rep_fecha_nac']) ? date('d/m/Y', strtotime($estudiante['rep_fecha_nac'])) : '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Estado Civil:</td>
-            <td class="val" style="width: 15%;">' . htmlspecialchars($estudiante['rep_estado_civil'] ?? '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Afinidad:</td>
-            <td class="val" style="width: 15%;">' . htmlspecialchars($estudiante['afinidad'] ?? '') . '</td>
-            <td class="label" style="width: 8%; text-align: right;">Teléfono:</td>
-            <td class="val" style="width: 12%;">' . htmlspecialchars($estudiante['rep_telefono'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 8%;">Direccion:</td>
-            <td class="val" style="width: 42%;">' . htmlspecialchars($estudiante['rep_direccion'] ?? '') . '</td>
-            <td class="label" style="width: 18%; text-align: right;">Estado de Residencia:</td>
-            <td class="val" style="width: 12%;">' . htmlspecialchars($estudiante['rep_estado_res'] ?? '') . '</td>
-            <td class="label" style="width: 10%; text-align: right;">Municipio:</td>
-            <td class="val" style="width: 10%;">' . htmlspecialchars($estudiante['rep_municipio'] ?? '') . '</td>
-        </tr>
-    </table>
 
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:35%;"><label>Cédula de Identidad:</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['rep_cedula'] ?? '') ?></span></div>
+        <div class="celda-dato" style="width:65%;"><label>Nombres y Apellidos:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_nombre'] ?? '')) ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:25%;"><label>Fecha Nacimiento</label> <span class="valor-dato"><?= !empty($estudiante['rep_fecha_nac']) ? date('d/m/Y', strtotime($estudiante['rep_fecha_nac'])) : '' ?></span></div>
+        <div class="celda-dato" style="width:23%;"><label>Estado Civil.</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_estado_civil'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:22%;"><label>Afinidad:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['afinidad'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:30%;"><label>Teléfono:</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['rep_telefono'] ?? '') ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:12%;"><label>Sexo</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_sexo'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:28%;"><label>Pais de Nacimiento</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_pais_nac'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:30%;"><label>Estado de Nacimiento:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_estado_nac'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:30%;"><label>Nacionalidad:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_nacionalidad'] ?? '')) ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:40%;"><label>Direccion</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_direccion'] ?? '', 'oracion')) ?></span></div>
+        <div class="celda-dato" style="width:32%;"><label>Estado de Residencia.</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_estado_res'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:28%;"><label>Municipio</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_municipio'] ?? '')) ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:50%;"><label>Parroquia</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_parroquia'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:50%;"><label>Ciudad</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['rep_ciudad'] ?? '')) ?></span></div>
+    </div>
+
+    <!-- ===== DATOS DE LOS PADRES ===== -->
     <div class="seccion-titulo">DATOS DE LOS PADRES</div>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 20%;">Nombres y Apellidos Madre:</td>
-            <td class="val" style="width: 40%;">' . htmlspecialchars($estudiante['madre_nombre'] ?? '') . '</td>
-            <td class="label" style="width: 8%; text-align: right;">Cédula:</td>
-            <td class="val" style="width: 14%;">' . htmlspecialchars($estudiante['madre_cedula'] ?? '') . '</td>
-            <td class="label" style="width: 8%; text-align: right;">Teléfono:</td>
-            <td class="val" style="width: 10%;">' . htmlspecialchars($estudiante['madre_telefono'] ?? '') . '</td>
-        </tr>
-    </table>
-    <table class="form-table">
-        <tr>
-            <td class="label" style="width: 20%;">Nombre y Apellido Padre:</td>
-            <td class="val" style="width: 40%;">' . htmlspecialchars($estudiante['padre_nombre'] ?? '') . '</td>
-            <td class="label" style="width: 8%; text-align: right;">Cédula:</td>
-            <td class="val" style="width: 14%;">' . htmlspecialchars($estudiante['padre_cedula'] ?? '') . '</td>
-            <td class="label" style="width: 8%; text-align: right;">Teléfono:</td>
-            <td class="val" style="width: 10%;">' . htmlspecialchars($estudiante['padre_telefono'] ?? '') . '</td>
-        </tr>
-    </table>
 
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:55%;"><label>Nombres y Apellidos de la Madre</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['madre_nombre'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:20%;"><label>Cédula</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['madre_cedula'] ?? '') ?></span></div>
+        <div class="celda-dato" style="width:25%;"><label>Teléfono</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['madre_telefono'] ?? '') ?></span></div>
+    </div>
+
+    <div class="fila-dato">
+        <div class="celda-dato" style="width:55%;"><label>Nombre y Apellido del Padre</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['padre_nombre'] ?? '')) ?></span></div>
+        <div class="celda-dato" style="width:20%;"><label>Cédula</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['padre_cedula'] ?? '') ?></span></div>
+        <div class="celda-dato" style="width:25%;"><label>Teléfono</label> <span class="valor-dato"><?= htmlspecialchars($estudiante['padre_telefono'] ?? '') ?></span></div>
+    </div>
+
+    <!-- ===== HISTORIAL ESCOLAR ===== -->
     <table class="tabla-historial">
         <thead>
             <tr>
                 <th style="width: 12%;">Año Escolar</th>
-                <th style="width: 20%;">Grado y Sección</th>
+                <th style="width: 13%;">Grado y<br>Sección</th>
                 <th style="width: 5%;">Reg.</th>
                 <th style="width: 5%;">Rep</th>
-                <th style="width: 4%;">C</th>
-                <th style="width: 4%;">F</th>
-                <th style="width: 4%;">P</th>
-                <th style="width: 8%;">Peso</th>
-                <th style="width: 8%;">Talla</th>
-                <th style="width: 12%;">Firma Rep.</th>
-                <th style="width: 11%;">Fecha Insc.</th>
+                <th style="width: 5%;">C</th>
+                <th style="width: 5%;">F</th>
+                <th style="width: 5%;">P</th>
+                <th style="width: 6%;">Peso</th>
+                <th style="width: 6%;">Talla</th>
+                <th style="width: 16%;">Firma<br>Representa-<br>nte</th>
+                <th style="width: 11%;">Fecha<br>Inscripción</th>
                 <th style="width: 11%;">Funcionario</th>
             </tr>
         </thead>
-        <tbody>';
-
-        for ($i = 0; $i < 8; $i++) {
-            $ins = $inscripciones[$i] ?? null;
-            if ($ins) {
-                $anos = explode('-', $ins['ano_escolar']);
-                $ano1 = isset($anos[0]) ? substr(trim($anos[0]), -2) : '';
-                $ano2 = isset($anos[1]) ? substr(trim($anos[1]), -2) : '';
-                
-                $html .= '
+        <tbody>
+            <?php for($i = 0; $i < 8; $i++): ?>
+                <?php 
+                $ins = isset($inscripciones[$i]) ? $inscripciones[$i] : null; 
+                if ($ins):
+                    $anos = explode('-', $ins['ano_escolar']);
+                    $ano1 = isset($anos[0]) ? substr(trim($anos[0]), -2) : '';
+                    $ano2 = isset($anos[1]) ? substr(trim($anos[1]), -2) : '';
+                    $peso = isset($ins['peso']) && is_numeric($ins['peso']) ? round($ins['peso']) : '';
+                    $talla = isset($ins['talla']) && is_numeric($ins['talla']) ? round($ins['talla']) : '';
+                    if ($peso == 0) $peso = '';
+                    if ($talla == 0) $talla = '';
+                ?>
                 <tr>
-                    <td>20<span class="dato-line">' . $ano1 . '</span> - 20<span class="dato-line">' . $ano2 . '</span></td>
-                    <td>' . htmlspecialchars($ins['grado_seccion'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['registro'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['repite'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['c'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['f'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['p'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['peso'] ?? '') . '</td>
-                    <td>' . htmlspecialchars($ins['talla'] ?? '') . '</td>
-                    <td></td> 
-                    <td>' . (!empty($ins['fecha_inscripcion']) ? date('d/m/Y', strtotime($ins['fecha_inscripcion'])) : '') . '</td>
-                    <td>' . htmlspecialchars($ins['funcionario'] ?? '') . '</td>
-                </tr>';
-            } else {
-                $html .= '
+                    <td>20<?= htmlspecialchars($ano1) ?> -<br>20<?= htmlspecialchars($ano2) ?></td>
+                    <td><?= htmlspecialchars(formatearCaso($ins['grado_seccion'] ?? '')) ?></td>
+                    <td><?= htmlspecialchars(formatearCaso($ins['registro'] ?? '')) ?></td>
+                    <td><?= htmlspecialchars(formatearCaso($ins['repite'] ?? '')) ?></td>
+                    <td><?= htmlspecialchars($ins['c'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($ins['f'] ?? '') ?></td>
+                    <td><?= htmlspecialchars($ins['p'] ?? '') ?></td>
+                    <td><?= $peso ?></td>
+                    <td><?= $talla ?></td>
+                    <td></td>
+                    <td><?= !empty($ins['fecha_inscripcion']) ? date('d/m/Y', strtotime($ins['fecha_inscripcion'])) : '' ?></td>
+                    <td></td>
+                </tr>
+                <?php else: ?>
                 <tr>
-                    <td>20<span class="dato-line"></span> - 20<span class="dato-line"></span></td>
-                    <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-                </tr>';
-            }
-        }
-
-$html .= '
+                    <td>20__ -<br>20__</td>
+                    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                </tr>
+                <?php endif; ?>
+            <?php endfor; ?>
         </tbody>
     </table>
-</body>
-</html>';
 
-if (file_exists(__DIR__ . '/../estadisticas/dompdf/autoload.inc.php')) {
-    require_once __DIR__ . '/../estadisticas/dompdf/autoload.inc.php';
-} else {
-    require_once __DIR__ . '/../vendor/autoload.php';
+</div>
+
+</body>
+</html>
+<?php
+$html = ob_get_clean();
+
+// ========== SI ES PREVIEW, MOSTRAR EN PANTALLA ==========
+if ($es_preview) {
+    header('Cache-Control: no-cache, must-revalidate');
+    header('Pragma: no-cache');
+    echo $html;
+    exit;
 }
 
-use Dompdf\Dompdf;
-use Dompdf\Options;
+// ========== SI ES DESCARGA, GENERAR PDF ==========
+try {
+    $options = new Options();
+    $options->set('isHtml5ParserEnabled', true);
+    $options->set('isRemoteEnabled', true);
+    $options->set('defaultFont', 'Arial');
+    $options->set('encoding', 'UTF-8');
 
-$options = new Options();
-$options->set('defaultFont', 'Arial');
-$options->set('isHtml5ParserEnabled', true);
-$options->set('isRemoteEnabled', false);
+    $dompdf = new Dompdf($options);
+    $dompdf->setPaper('letter', 'portrait');
+    $dompdf->loadHtml($html);
+    $dompdf->render();
 
-$dompdf = new Dompdf($options);
-$dompdf->loadHtml($html);
-$dompdf->setPaper('letter', 'portrait');
-$dompdf->render();
+    // ========== NOMBRE DEL ARCHIVO ==========
+    $nombre_limpio = preg_replace('/[^a-zA-Z0-9_]/', '_', $estudiante['apellido'] . '_' . $estudiante['nombre']);
+    $cedula_escolar = $estudiante['cedula_escolar'] ?? 'sin_cedula';
+    $nombre_archivo = "ficha_inscripcion_" . $nombre_limpio . "_" . $cedula_escolar . ".pdf";
 
-$nombre_base = 'ficha_' . $estudiante['apellido'] . '_' . $estudiante['nombre'];
-$nombre_archivo = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $nombre_base) . '.pdf';
-
-$dompdf->stream($nombre_archivo, array('Attachment' => 1));
+    $dompdf->stream($nombre_archivo, array('Attachment' => 1));
+} catch (Exception $e) {
+    die("Error al generar el PDF: " . $e->getMessage());
+}
+exit;
 ?>

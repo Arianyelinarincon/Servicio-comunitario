@@ -1,14 +1,13 @@
 <?php
 session_start();
-require_once __DIR__ . '/../config/conexion.php'; // <- $conexion disponible globalmente
+require_once __DIR__ . '/../config/conexion.php';
 
 // ========== VERIFICAR AUTENTICACIÓN ==========
-if (!isset($_SESSION['rol']) || ($_SESSION['rol'] !== 'profesor' && $_SESSION['rol'] !== 'administrador' && $_SESSION['rol'] !== 'super_admin' && $_SESSION['rol'] !== 'admin')) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['profesor', 'administrador', 'super_admin', 'admin', 'directiva'])) {
     header("Location: /Servicio-comunitario/profesores/Login/login.php");
     exit();
 }
 
-// ========== CORRECCIÓN: Cambiar id_usuario por usuario_id ==========
 $id_usuario = $_SESSION['usuario_id'] ?? 0;
 
 // ========== Verificar si el usuario existe en profesores ==========

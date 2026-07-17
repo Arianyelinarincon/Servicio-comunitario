@@ -1,51 +1,13 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
 include '../includes/header.php';
 require_once '../config/conexion.php';
 
-$mensaje_alerta = "";
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['modificar_boletin'])) {
-    $id_boletin = intval($_POST['id_boletin']);
-    $momento_elegido = $_POST['momento_elegido'];
-    
-    $query_update = "UPDATE boletines SET observacion = ?";
-    $params_update = [$_POST['observacion'] ?? ''];
-    $types_update = "s";
-    
-    if ($momento_elegido === '1' || $momento_elegido === 'todos') {
-        $query_update .= ", m1_proyecto=?, m1_formacion=?, m1_relacion=?, m1_sugerencias=?";
-        array_push($params_update, $_POST['m1_proyecto'] ?? '', $_POST['m1_formacion'] ?? '', $_POST['m1_relacion'] ?? '', $_POST['m1_sugerencias'] ?? '');
-        $types_update .= "ssss";
-    }
-    if ($momento_elegido === '2' || $momento_elegido === 'todos') {
-        $query_update .= ", m2_proyecto=?, m2_formacion=?, m2_relacion=?, m2_sugerencias=?";
-        array_push($params_update, $_POST['m2_proyecto'] ?? '', $_POST['m2_formacion'] ?? '', $_POST['m2_relacion'] ?? '', $_POST['m2_sugerencias'] ?? '');
-        $types_update .= "ssss";
-    }
-    if ($momento_elegido === '3' || $momento_elegido === 'todos') {
-        $query_update .= ", m3_proyecto=?, m3_formacion=?, m3_relacion=?, m3_sugerencias=?";
-        array_push($params_update, $_POST['m3_proyecto'] ?? '', $_POST['m3_formacion'] ?? '', $_POST['m3_relacion'] ?? '', $_POST['m3_sugerencias'] ?? '');
-        $types_update .= "ssss";
-    }
-    
-    $query_update .= " WHERE id = ?";
-    $params_update[] = $id_boletin;
-    $types_update .= "i";
-    
-    $stmt_upd = $conexion->prepare($query_update);
-    $stmt_upd->bind_param($types_update, ...$params_update);
-    if ($stmt_upd->execute()) {
-        $mensaje_alerta = "<div class='alert alert-success mt-3'><b>¡Éxito!</b> El boletín fue modificado correctamente.</div>";
-    } else {
-        $mensaje_alerta = "<div class='alert alert-danger mt-3'><b>Error al modificar:</b> " . $conexion->error . "</div>";
-    }
-    $stmt_upd->close();
-}
-
+// ========== FILTROS CON BUSCADOR EN TIEMPO REAL ==========
 $buscar_estudiante = trim($_GET['estudiante'] ?? '');
 $periodo = trim($_GET['periodo'] ?? '');
 $tipo = trim($_GET['tipo'] ?? '');
@@ -83,173 +45,190 @@ if ($types) {
 }
 $stmt->execute();
 $result = $stmt->get_result();
+
+// ========== OBTENER PERÍODOS DISPONIBLES PARA FILTRO ==========
+$periodos_disponibles = [];
+$res_periodos = $conexion->query("SELECT DISTINCT periodo FROM boletines ORDER BY periodo DESC");
+while ($row = $res_periodos->fetch_assoc()) {
+    $periodos_disponibles[] = $row['periodo'];
+}
 ?>
 
-<div class="container-fluid mt-4">
-    <h2 class="mb-4"><i class="fas fa-history"></i> Historial de Boletines</h2>
+<style>
+    :root { --primary-gradient: linear-gradient(135deg, #002d54 0%, #004a7c 100%); }
+    .page-header {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 12px;
+        padding: 20px 28px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 20px rgba(0,45,84,0.2);
+    }
+    .card-filtros {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        margin-bottom: 24px;
+    }
+    .card-tabla {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    .card-tabla .card-header {
+        background: var(--primary-gradient) !important;
+        color: white;
+        border-radius: 12px 12px 0 0 !important;
+        padding: 14px 20px;
+        font-weight: 600;
+    }
+    .table-boletines {
+        font-size: 0.875rem;
+        vertical-align: middle;
+    }
+    .table-boletines thead th {
+        background-color: #f0f4f8;
+        color: #002d54;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #002d54;
+    }
+    .table-boletines tbody tr:hover {
+        background-color: #e8f4f8;
+    }
+    .badge-tipo {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .badge-inicial { background-color: #cce5ff; color: #004085; }
+    .badge-primaria { background-color: #d4edda; color: #155724; }
+</style>
+
+<div class="container-fluid px-4">
     
-    <?= $mensaje_alerta ?>
-
-    <?php if (isset($_GET['editar_id'])): 
-        $id_editar = intval($_GET['editar_id']);
-        $stmt_ed = $conexion->prepare("SELECT b.*, CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante FROM boletines b JOIN estudiantes e ON b.estudiante_id = e.id WHERE b.id = ?");
-        $stmt_ed->bind_param("i", $id_editar);
-        $stmt_ed->execute();
-        $bol_editar = $stmt_ed->get_result()->fetch_assoc();
-        $stmt_ed->close();
-        if ($bol_editar):
-    ?>
-        <div class="card mb-4 border-primary shadow-sm">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0"><i class="fas fa-edit"></i> Modificar Boletín - <?= htmlspecialchars($bol_editar['nombre_estudiante']) ?></h4>
-            </div>
-            <div class="card-body">
-                <form action="historial_boletines.php" method="POST">
-                    <input type="hidden" name="id_boletin" value="<?= $bol_editar['id'] ?>">
-                    <input type="hidden" name="modificar_boletin" value="1">
-                    
-                    <div class="mb-4 p-3 bg-light border border-info rounded">
-                        <label class="form-label fw-bold text-primary">Seleccione el Momento Académico a modificar:</label>
-                        <select name="momento_elegido" id="momento_elegido" class="form-select border-primary" onchange="seleccionarMomento(this.value)">
-                            <option value="todos">Modificar Todos los Momentos</option>
-                            <option value="1">Solo 1er Momento</option>
-                            <option value="2">Solo 2do Momento</option>
-                            <option value="3">Solo 3er Momento</option>
-                        </select>
-                        <small class="text-muted d-block mt-2"><b>Nota:</b> Los datos de los momentos que queden ocultos no se alterarán al guardar.</small>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="fw-bold">Observación General:</label>
-                        <textarea name="observacion" rows="3" class="form-control"><?= htmlspecialchars($bol_editar['observacion'] ?? '') ?></textarea>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-4" id="bloque_m1">
-                            <div class="border p-3 rounded mb-3 bg-white shadow-sm h-100">
-                                <h5 class="text-primary border-bottom pb-2">Primer Momento</h5>
-                                <label class="fw-bold mt-2">Proyecto de Aprendizaje:</label>
-                                <input type="text" name="m1_proyecto" class="form-control mb-2" value="<?= htmlspecialchars($bol_editar['m1_proyecto'] ?? '') ?>">
-                                <label class="fw-bold mt-2">Formación personal, social y comunicación:</label>
-                                <textarea name="m1_formacion" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m1_formacion'] ?? '') ?></textarea>
-                                <label class="fw-bold mt-2">Relación entre los Componentes del Ambiente:</label>
-                                <textarea name="m1_relacion" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m1_relacion'] ?? '') ?></textarea>
-                                <label class="fw-bold mt-2">Sugerencias:</label>
-                                <textarea name="m1_sugerencias" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m1_sugerencias'] ?? '') ?></textarea>
-                            </div>
-                        </div>
-
-                        <div class="col-md-4" id="bloque_m2">
-                            <div class="border p-3 rounded mb-3 bg-white shadow-sm h-100">
-                                <h5 class="text-primary border-bottom pb-2">Segundo Momento</h5>
-                                <label class="fw-bold mt-2">Proyecto de Aprendizaje:</label>
-                                <input type="text" name="m2_proyecto" class="form-control mb-2" value="<?= htmlspecialchars($bol_editar['m2_proyecto'] ?? '') ?>">
-                                <label class="fw-bold mt-2">Formación personal, social y comunicación:</label>
-                                <textarea name="m2_formacion" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m2_formacion'] ?? '') ?></textarea>
-                                <label class="fw-bold mt-2">Relación entre los Componentes del Ambiente:</label>
-                                <textarea name="m2_relacion" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m2_relacion'] ?? '') ?></textarea>
-                                <label class="fw-bold mt-2">Sugerencias:</label>
-                                <textarea name="m2_sugerencias" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m2_sugerencias'] ?? '') ?></textarea>
-                            </div>
-                        </div>
-
-                        <div class="col-md-4" id="bloque_m3">
-                            <div class="border p-3 rounded mb-3 bg-white shadow-sm h-100">
-                                <h5 class="text-primary border-bottom pb-2">Tercer Momento</h5>
-                                <label class="fw-bold mt-2">Proyecto de Aprendizaje:</label>
-                                <input type="text" name="m3_proyecto" class="form-control mb-2" value="<?= htmlspecialchars($bol_editar['m3_proyecto'] ?? '') ?>">
-                                <label class="fw-bold mt-2">Formación personal, social y comunicación:</label>
-                                <textarea name="m3_formacion" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m3_formacion'] ?? '') ?></textarea>
-                                <label class="fw-bold mt-2">Relación entre los Componentes del Ambiente:</label>
-                                <textarea name="m3_relacion" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m3_relacion'] ?? '') ?></textarea>
-                                <label class="fw-bold mt-2">Sugerencias:</label>
-                                <textarea name="m3_sugerencias" rows="3" class="form-control mb-2"><?= htmlspecialchars($bol_editar['m3_sugerencias'] ?? '') ?></textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 text-center">
-                        <button type="submit" class="btn btn-success px-4 py-2 fw-bold"><i class="fas fa-save"></i> Guardar Cambios</button>
-                        <a href="historial_boletines.php" class="btn btn-secondary px-4 py-2 fw-bold">Cancelar / Volver</a>
-                    </div>
-                </form>
-            </div>
+    <!-- Cabecera -->
+    <div class="page-header d-flex flex-wrap justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold"><i class="fas fa-history me-2"></i> Historial de Boletines</h4>
+            <small class="opacity-75"><i class="fas fa-file-alt me-1"></i> Consulta y administra los boletines generados</small>
         </div>
+        <div class="mt-2 mt-md-0">
+            <a href="index.php" class="btn btn-light fw-bold"><i class="fas fa-arrow-left me-2"></i> Volver</a>
+        </div>
+    </div>
 
-        <script>
-        function seleccionarMomento(val) {
-            document.getElementById('bloque_m1').style.display = (val === '1' || val === 'todos') ? 'block' : 'none';
-            document.getElementById('bloque_m2').style.display = (val === '2' || val === 'todos') ? 'block' : 'none';
-            document.getElementById('bloque_m3').style.display = (val === '3' || val === 'todos') ? 'block' : 'none';
-        }
-        seleccionarMomento(document.getElementById('momento_elegido').value);
-        </script>
-    <?php endif; endif; ?>
-
-    <div class="card shadow-sm">
-        <div class="card-body">
-            
-            <form method="GET" class="row mb-4">
-                <div class="col-md-4">
-                    <label>Buscar Estudiante / C.E</label>
-                    <input type="text" name="estudiante" class="form-control" value="<?= htmlspecialchars($buscar_estudiante) ?>" placeholder="Nombre o cédula escolar...">
-                </div>
-                <div class="col-md-3">
-                    <label>Período Escolar</label>
-                    <select name="periodo" class="form-select">
-                        <option value="">Todos</option>
-                        <option value="2025 / 2026" <?= $periodo === '2025 / 2026' ? 'selected' : '' ?>>2025 / 2026</option>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label>Tipo de Boletín</label>
-                    <select name="tipo" class="form-select">
-                        <option value="">Todos</option>
-                        <option value="inicial" <?= $tipo === 'inicial' ? 'selected' : '' ?>>Inicial</option>
-                        <option value="primaria" <?= $tipo === 'primaria' ? 'selected' : '' ?>>Primaria</option>
-                    </select>
-                </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Buscar</button>
+    <!-- Filtros con buscador en tiempo real -->
+    <div class="card card-filtros">
+        <div class="card-body p-4">
+            <form method="GET" action="historial_boletines.php" id="filtroForm" autocomplete="off">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="small fw-bold text-muted"><i class="fas fa-user-graduate me-1"></i> Buscar estudiante / C.E</label>
+                        <input type="text" name="estudiante" id="busquedaInput" class="form-control shadow-none" placeholder="Nombre, apellido o cédula escolar..." value="<?= htmlspecialchars($buscar_estudiante) ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-muted"><i class="fas fa-calendar-alt me-1"></i> Período Escolar</label>
+                        <select name="periodo" class="form-select shadow-none" onchange="this.form.submit()">
+                            <option value="">Todos</option>
+                            <?php foreach ($periodos_disponibles as $p): ?>
+                                <option value="<?= htmlspecialchars($p) ?>" <?= ($periodo == $p) ? 'selected' : '' ?>><?= htmlspecialchars($p) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-muted"><i class="fas fa-tag me-1"></i> Tipo de Boletín</label>
+                        <select name="tipo" class="form-select shadow-none" onchange="this.form.submit()">
+                            <option value="">Todos</option>
+                            <option value="inicial" <?= ($tipo == 'inicial') ? 'selected' : '' ?>>Inicial</option>
+                            <option value="primaria" <?= ($tipo == 'primaria') ? 'selected' : '' ?>>Primaria</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <span class="text-muted small"><i class="fas fa-info-circle me-1"></i> Filtro automático</span>
+                    </div>
                 </div>
             </form>
+        </div>
+    </div>
 
+    <!-- Tabla de boletines -->
+    <div class="card card-tabla">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i> Registro de Boletines <span class="badge bg-light text-dark ms-2"><?= $result->num_rows ?> boletín(es)</span></h6>
+            <small class="opacity-75"><i class="fas fa-clock me-1"></i> Filtro automático</small>
+        </div>
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-bordered table-striped table-hover">
-                    <thead class="table-dark">
+                <table class="table table-hover table-boletines mb-0">
+                    <thead>
                         <tr>
-                            <th>Estudiante</th>
-                            <th>C.E. Escolar</th>
-                            <th>Año Escolar</th>
-                            <th>Tipo</th>
-                            <th>Fecha Emisión</th>
-                            <th>Acciones</th>
+                            <th style="width:20%">Estudiante</th>
+                            <th style="width:12%">C.E. Escolar</th>
+                            <th style="width:12%">Año Escolar</th>
+                            <th style="width:10%">Tipo</th>
+                            <th style="width:15%">Fecha Emisión</th>
+                            <th style="width:15%">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($result->num_rows > 0): ?>
-                            <?php while ($row = $result->fetch_assoc()): ?>
+                            <?php while ($row = $result->fetch_assoc()): 
+                                $tipo_clase = ($row['tipo_boletin'] == 'inicial') ? 'badge-inicial' : 'badge-primaria';
+                                $tipo_nombre = ($row['tipo_boletin'] == 'inicial') ? 'Inicial' : 'Primaria';
+                            ?>
                             <tr>
-                                <td><?= htmlspecialchars($row['nombre_estudiante']) ?></td>
-                                <td><?= htmlspecialchars($row['cedula_escolar'] ?? '') ?></td>
+                                <td><strong><?= htmlspecialchars($row['nombre_estudiante']) ?></strong></td>
+                                <td><span class="font-monospace"><?= htmlspecialchars($row['cedula_escolar'] ?? '') ?></span></td>
                                 <td><?= htmlspecialchars($row['periodo']) ?></td>
-                                <td><?= ucfirst($row['tipo_boletin']) ?></td>
+                                <td><span class="badge-tipo <?= $tipo_clase ?>"><?= $tipo_nombre ?></span></td>
                                 <td><?= date('d/m/Y H:i', strtotime($row['fecha_emision'])) ?></td>
-                                <td>
-                                    <a href="ver_boletin_guardado.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info text-white" target="_blank" style="margin-right: 5px;"><i class="fas fa-eye"></i> Ver Boletín</a>
-                                    
-                                    <a href="historial_boletines.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> Editar</a>
+                                <td class="text-nowrap">
+                                    <a href="ver_boletin_guardado.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info" target="_blank" title="Ver boletín"><i class="fas fa-eye"></i></a>
+                                    <?php if ($row['tipo_boletin'] == 'inicial'): ?>
+                                        <a href="panel_boletin_inicial.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning" title="Editar boletín"><i class="fas fa-edit"></i></a>
+                                    <?php else: ?>
+                                        <a href="panel_boletin_primaria.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning" title="Editar boletín"><i class="fas fa-edit"></i></a>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="6" class="text-center text-muted">No hay boletines guardados.</td></tr>
+                            <tr><td colspan="6" class="text-center py-4"><i class="fas fa-inbox fa-2x text-muted mb-2 d-block"></i>No hay boletines guardados.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
             </div>
         </div>
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
+            <span class="text-muted small"><i class="fas fa-database me-1"></i> Total: <?= $result->num_rows ?> boletines</span>
+            <span class="text-muted small"><i class="fas fa-sync-alt me-1"></i> Filtro automático</span>
+        </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const busquedaInput = document.getElementById('busquedaInput');
+    let timeoutId = null;
+
+    if (busquedaInput) {
+        busquedaInput.addEventListener('input', function() {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                document.getElementById('filtroForm').submit();
+            }, 400);
+        });
+
+        // Mantener el foco después de recargar
+        busquedaInput.focus();
+        const length = busquedaInput.value.length;
+        busquedaInput.setSelectionRange(length, length);
+    }
+});
+</script>
 
 <?php include '../includes/footer.php'; ?>

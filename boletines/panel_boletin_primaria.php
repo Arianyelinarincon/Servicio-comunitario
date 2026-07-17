@@ -1,54 +1,89 @@
 <?php
 session_start();
-if (!isset($_SESSION['estudiante'])) {
-    header('Location: paso1_portada_primaria.php?tipo=primaria');
-    exit;
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
 }
 
 include '../includes/header.php';
 require_once '../config/conexion.php';
 
-$estudiante_id = $_SESSION['estudiante_id'];
-$periodo = $_SESSION['ano_escolar'] ?? '2025 / 2026';
-
-// Verificar si ya existen datos guardados
-$stmt = $conexion->prepare("SELECT * FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = 'primaria'");
-$stmt->bind_param("is", $estudiante_id, $periodo);
-$stmt->execute();
-$boletin_existente = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-// Cargar datos a la sesión si existen
-if ($boletin_existente) {
-    $_SESSION['observacion'] = $boletin_existente['observacion'] ?? '';
+// ========== SI VIENE CON editar_id, CARGAR DATOS DESDE LA BD ==========
+if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
+    $id_editar = intval($_GET['editar_id']);
     
-    // Lapso 1
-    $_SESSION['l1_proyecto'] = $boletin_existente['m1_proyecto'] ?? '';
-    $_SESSION['l1_analisis'] = $boletin_existente['m1_formacion'] ?? '';
-    $_SESSION['l1_sugerencias'] = $boletin_existente['m1_sugerencias'] ?? '';
+    // Verificar que el boletín existe y es de tipo primaria
+    $stmt = $conexion->prepare("SELECT * FROM boletines WHERE id = ? AND tipo_boletin = 'primaria'");
+    $stmt->bind_param("i", $id_editar);
+    $stmt->execute();
+    $boletin = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
     
-    // Lapso 2
-    $_SESSION['l2_proyecto'] = $boletin_existente['m2_proyecto'] ?? '';
-    $_SESSION['l2_analisis'] = $boletin_existente['m2_formacion'] ?? '';
-    $_SESSION['l2_sugerencias'] = $boletin_existente['m2_sugerencias'] ?? '';
-    
-    // Lapso 3
-    $_SESSION['l3_proyecto'] = $boletin_existente['m3_proyecto'] ?? '';
-    $_SESSION['l3_analisis'] = $boletin_existente['m3_formacion'] ?? '';
-    $_SESSION['l3_sugerencias'] = $boletin_existente['m3_sugerencias'] ?? '';
-    
-    // Resultado Final
-    $_SESSION['resultado_final'] = $boletin_existente['resultado_final'] ?? '';
-    $_SESSION['literal_final'] = $boletin_existente['literal_final'] ?? '';
+    if ($boletin) {
+        // Obtener datos del estudiante asociado
+        $stmt_est = $conexion->prepare("SELECT e.nombre, e.apellido, e.cedula_escolar, e.sala, r.nombre_completo AS rep_nombre, p.nombre AS doc_nombre
+                                        FROM estudiantes e
+                                        LEFT JOIN representantes r ON e.representante_id = r.id
+                                        LEFT JOIN secciones s ON e.seccion_id = s.id
+                                        LEFT JOIN profesores p ON p.seccion = s.id
+                                        WHERE e.id = ?");
+        $stmt_est->bind_param("i", $boletin['estudiante_id']);
+        $stmt_est->execute();
+        $estudiante = $stmt_est->get_result()->fetch_assoc();
+        $stmt_est->close();
+        
+        if ($estudiante) {
+            // Cargar en sesión para que el panel los muestre
+            $_SESSION['estudiante'] = $estudiante['nombre'] . ' ' . $estudiante['apellido'];
+            $_SESSION['ce'] = $estudiante['cedula_escolar'];
+            $_SESSION['grado'] = $estudiante['sala'];
+            $_SESSION['ano_escolar'] = $boletin['periodo'];
+            $_SESSION['docente'] = $estudiante['doc_nombre'] ?? 'No asignado';
+            $_SESSION['representante'] = $estudiante['rep_nombre'] ?? 'No registrado';
+            $_SESSION['estudiante_id'] = $boletin['estudiante_id'];
+            
+            // Cargar datos del boletín (mapeo: m1_proyecto = l1_proyecto, etc.)
+            $_SESSION['observacion'] = $boletin['observacion'] ?? '';
+            
+            // Lapso 1
+            $_SESSION['l1_proyecto'] = $boletin['m1_proyecto'] ?? '';
+            $_SESSION['l1_analisis'] = $boletin['m1_formacion'] ?? '';
+            $_SESSION['l1_sugerencias'] = $boletin['m1_sugerencias'] ?? '';
+            
+            // Lapso 2
+            $_SESSION['l2_proyecto'] = $boletin['m2_proyecto'] ?? '';
+            $_SESSION['l2_analisis'] = $boletin['m2_formacion'] ?? '';
+            $_SESSION['l2_sugerencias'] = $boletin['m2_sugerencias'] ?? '';
+            
+            // Lapso 3
+            $_SESSION['l3_proyecto'] = $boletin['m3_proyecto'] ?? '';
+            $_SESSION['l3_analisis'] = $boletin['m3_formacion'] ?? '';
+            $_SESSION['l3_sugerencias'] = $boletin['m3_sugerencias'] ?? '';
+            
+            // Resultado Final
+            $_SESSION['resultado_final'] = $boletin['resultado_final'] ?? '';
+            $_SESSION['literal_final'] = $boletin['literal_final'] ?? '';
+        }
+    }
 }
 
-// Definir variables de estado
+// ========== SI NO HAY ESTUDIANTE EN SESIÓN, REDIRIGIR ==========
+if (!isset($_SESSION['estudiante'])) {
+    header('Location: paso1_portada_primaria.php');
+    exit;
+}
+
+// ========== DEFINIR VARIABLES DE ESTADO ==========
 $obs_completada = !empty($_SESSION['observacion']);
 $l1_completado = !empty($_SESSION['l1_proyecto']) && !empty($_SESSION['l1_analisis']);
 $l2_completado = !empty($_SESSION['l2_proyecto']) && !empty($_SESSION['l2_analisis']);
 $l3_completado = !empty($_SESSION['l3_proyecto']) && !empty($_SESSION['l3_analisis']) && !empty($_SESSION['resultado_final']);
 $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_completado;
+
+// ========== MODO EDICIÓN ==========
+$modo_edicion = isset($_GET['editar_id']) ? true : false;
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -126,9 +161,22 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
             margin: 0;
         }
 
+        .panel-header h2 i {
+            color: var(--primary);
+        }
+
         .panel-header .badge-tipo {
             background: var(--primary-light);
             color: var(--primary);
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .panel-header .badge-edicion {
+            background: var(--warning-light);
+            color: #856404;
             padding: 6px 18px;
             border-radius: 20px;
             font-size: 13px;
@@ -235,22 +283,39 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
             color: #856404;
         }
 
-        .preview-texto {
-            font-size: 13px;
-            color: var(--gray-700);
-            margin: 6px 0 12px;
-            padding: 8px 12px;
+        .lapso-preview {
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 4px 0 10px 0;
+            padding: 6px 10px;
             background: var(--gray-100);
             border-radius: var(--radius-sm);
-            min-height: 38px;
-            word-break: break-word;
             border: 1px solid var(--gray-200);
-            line-height: 1.5;
+            min-height: 40px;
         }
 
-        .preview-texto .vacio {
+        .lapso-preview .label {
+            font-weight: 600;
+            color: var(--gray-700);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .lapso-preview .texto {
+            color: var(--gray-800);
+            margin-top: 2px;
+            word-break: break-word;
+        }
+
+        .lapso-preview .vacio {
             color: var(--gray-500);
             font-style: italic;
+        }
+
+        .lapso-preview .separador {
+            border-top: 0.5px solid var(--gray-300);
+            margin: 4px 0;
         }
 
         .btn {
@@ -276,6 +341,10 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: var(--shadow-sm);
+        }
+
+        .btn:active {
+            transform: translateY(0);
         }
 
         .btn-primary { background: var(--primary); color: #fff; }
@@ -324,38 +393,6 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
 
         .alerta-pendiente .faltantes {
             font-size: 13px;
-        }
-
-        /* ======== ESTILOS PARA EL PREVIEW DE LAPSO ======== */
-        .lapso-preview {
-            font-size: 12px;
-            line-height: 1.4;
-            margin: 4px 0 10px 0;
-            padding: 6px 10px;
-            background: var(--gray-100);
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--gray-200);
-            min-height: 40px;
-        }
-        .lapso-preview .label {
-            font-weight: 600;
-            color: var(--gray-700);
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .lapso-preview .texto {
-            color: var(--gray-800);
-            margin-top: 2px;
-            word-break: break-word;
-        }
-        .lapso-preview .vacio {
-            color: var(--gray-500);
-            font-style: italic;
-        }
-        .lapso-preview .separador {
-            border-top: 0.5px solid var(--gray-300);
-            margin: 4px 0;
         }
 
         @keyframes fadeInUp {
@@ -417,12 +454,15 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                 <h2>
                     <i class="fas fa-clipboard-list"></i>
                     Panel de Control - Boletín Primaria
+                    <?php if ($modo_edicion): ?>
+                        <span class="badge-edicion"><i class="fas fa-edit"></i> Modo Edición</span>
+                    <?php endif; ?>
                 </h2>
                 <span class="badge-tipo">
                     <i class="fas fa-child"></i> Primaria
                 </span>
             </div>
-            
+
             <div class="estudiante-info">
                 <div><i class="fas fa-user"></i> <strong>Estudiante:</strong> <?php echo htmlspecialchars($_SESSION['estudiante']); ?></div>
                 <div><i class="fas fa-id-card"></i> <strong>C.E:</strong> <?php echo htmlspecialchars($_SESSION['ce']); ?></div>
@@ -431,7 +471,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                 <div><i class="fas fa-chalkboard-teacher"></i> <strong>Docente:</strong> <?php echo htmlspecialchars($_SESSION['docente']); ?></div>
                 <div><i class="fas fa-user-tie"></i> <strong>Representante:</strong> <?php echo htmlspecialchars($_SESSION['representante']); ?></div>
             </div>
-            
+
             <div class="grid-cards">
                 <!-- OBSERVACIÓN GENERAL -->
                 <div class="card-item" style="--card-color: var(--primary);">
@@ -442,7 +482,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                     <span class="estado-badge <?php echo $obs_completada ? 'estado-completado' : 'estado-pendiente'; ?>">
                         <?php echo $obs_completada ? 'Completada' : 'Pendiente'; ?>
                     </span>
-                    <div class="preview-texto">
+                    <div class="lapso-preview">
                         <?php if ($obs_completada): ?>
                             <?php echo substr(htmlspecialchars($_SESSION['observacion']), 0, 80) . (strlen($_SESSION['observacion']) > 80 ? '...' : ''); ?>
                         <?php else: ?>
@@ -453,7 +493,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                         <?php echo $obs_completada ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
                 </div>
-                
+
                 <!-- LAPSO 1 -->
                 <div class="card-item" style="--card-color: var(--success);">
                     <div class="card-header">
@@ -466,14 +506,10 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                     <div class="lapso-preview">
                         <div class="label">PROYECTOS DE APRENDIZAJES</div>
                         <div class="texto"><?php echo !empty($_SESSION['l1_proyecto']) ? htmlspecialchars($_SESSION['l1_proyecto']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">ANÁLISIS CUALITATIVO</div>
                         <div class="texto"><?php echo !empty($_SESSION['l1_analisis']) ? htmlspecialchars($_SESSION['l1_analisis']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">SUGERENCIAS</div>
                         <div class="texto"><?php echo !empty($_SESSION['l1_sugerencias']) ? htmlspecialchars($_SESSION['l1_sugerencias']) : '<span class="vacio">Sin datos</span>'; ?></div>
                     </div>
@@ -481,7 +517,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                         <?php echo $l1_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
                 </div>
-                
+
                 <!-- LAPSO 2 -->
                 <div class="card-item" style="--card-color: var(--info);">
                     <div class="card-header">
@@ -494,14 +530,10 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                     <div class="lapso-preview">
                         <div class="label">PROYECTOS DE APRENDIZAJES</div>
                         <div class="texto"><?php echo !empty($_SESSION['l2_proyecto']) ? htmlspecialchars($_SESSION['l2_proyecto']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">ANÁLISIS CUALITATIVO</div>
                         <div class="texto"><?php echo !empty($_SESSION['l2_analisis']) ? htmlspecialchars($_SESSION['l2_analisis']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">SUGERENCIAS</div>
                         <div class="texto"><?php echo !empty($_SESSION['l2_sugerencias']) ? htmlspecialchars($_SESSION['l2_sugerencias']) : '<span class="vacio">Sin datos</span>'; ?></div>
                     </div>
@@ -509,7 +541,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                         <?php echo $l2_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
                 </div>
-                
+
                 <!-- LAPSO 3 + RESULTADO -->
                 <div class="card-item" style="--card-color: var(--warning);">
                     <div class="card-header">
@@ -522,19 +554,13 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                     <div class="lapso-preview">
                         <div class="label">PROYECTOS DE APRENDIZAJES</div>
                         <div class="texto"><?php echo !empty($_SESSION['l3_proyecto']) ? htmlspecialchars($_SESSION['l3_proyecto']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">ANÁLISIS CUALITATIVO</div>
                         <div class="texto"><?php echo !empty($_SESSION['l3_analisis']) ? htmlspecialchars($_SESSION['l3_analisis']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">SUGERENCIAS</div>
                         <div class="texto"><?php echo !empty($_SESSION['l3_sugerencias']) ? htmlspecialchars($_SESSION['l3_sugerencias']) : '<span class="vacio">Sin datos</span>'; ?></div>
-                        
                         <div class="separador"></div>
-                        
                         <div class="label">RESULTADO FINAL</div>
                         <div class="texto">
                             <?php if (!empty($_SESSION['resultado_final'])): ?>
@@ -549,7 +575,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                     </a>
                 </div>
             </div>
-            
+
             <div class="acciones-generales">
                 <?php if ($todo_completo): ?>
                     <a href="generar_pdf_boletin_primaria.php" target="_blank" class="btn btn-success btn-lg">
@@ -567,7 +593,7 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                         <span class="faltantes">Faltan: <?php echo implode(', ', $faltantes); ?></span>
                     </div>
                 <?php endif; ?>
-                
+
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
                     <a href="index.php" class="btn btn-secondary btn-lg">
                         <i class="fas fa-arrow-left"></i> Volver al Inicio
@@ -575,11 +601,14 @@ $todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_comp
                     <a href="historial_boletines.php" class="btn btn-info btn-lg">
                         <i class="fas fa-history"></i> Ver Historial
                     </a>
+                    <?php if ($modo_edicion): ?>
+                        <a href="historial_boletines.php" class="btn btn-danger btn-lg">
+                            <i class="fas fa-times"></i> Cancelar Edición
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
     </div>
 
 <?php include '../includes/footer.php'; ?>
-</body>
-</html>

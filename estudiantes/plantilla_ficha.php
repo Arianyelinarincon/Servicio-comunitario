@@ -16,6 +16,12 @@ if (!function_exists('checkbox')) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ficha de Inscripción - <?= htmlspecialchars($estudiante['nombre'] . ' ' . $estudiante['apellido']) ?></title>
     
+    <?php if ($es_preview): ?>
+    <!-- Cargar Bootstrap y FontAwesome solo en preview -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <?php endif; ?>
+
     <style>
         /* ===== ESTILOS PARA PANTALLA Y PDF ===== */
         * {
@@ -198,51 +204,15 @@ if (!function_exists('checkbox')) {
 <body>
 
 <?php if ($es_preview): ?>
-<!-- Integración de FontAwesome y los estilos exactos de tus botones -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-<style>
-    .botones-accion {
-        text-align: center;
-        margin-top: 10px;
-        margin-bottom: 20px;
-    }
-    .btn-volver, .btn-descargar, .btn-imprimir {
-        color: white !important;
-        border: none;
-        padding: 7px 20px;
-        border-radius: 5px;
-        font-weight: bold;
-        transition: background 0.3s;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 14px;
-        cursor: pointer;
-        font-family: Arial, sans-serif;
-    }
-    .btn-volver { background-color: #6c757d; }
-    .btn-volver:hover { background-color: #5a6268; }
-    
-    .btn-descargar { background-color: #28a745; }
-    .btn-descargar:hover { background-color: #218838; }
-    
-    .btn-imprimir { background-color: #17a2b8; }
-    .btn-imprimir:hover { background-color: #138496; }
-    
-    .me-2 { margin-right: 8px; }
-    
-    @media print {
-        .d-print-none { display: none !important; }
-    }
-</style>
-
-<div class="botones-accion d-print-none">
-    <button onclick="window.print()" class="btn-imprimir me-2">
+<!-- Botones de acción alineados al diseño solicitado -->
+<div class="mt-2 mb-4 d-print-none text-center">
+    <button onclick="window.print()" class="btn btn-info text-white me-2">
         <i class="fas fa-print me-2"></i> Imprimir
     </button>
-    <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn-descargar me-2">
+    <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn btn-success me-2">
         <i class="fas fa-file-pdf me-2"></i> Descargar PDF
     </a>
-    <a href="ver_ficha.php?id=<?= $id ?>" class="btn-volver">
+    <a href="ver_ficha.php?id=<?= $id ?>" class="btn btn-secondary">
         <i class="fas fa-arrow-left me-2"></i> Volver
     </a>
 </div>

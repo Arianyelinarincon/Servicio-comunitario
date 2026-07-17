@@ -137,7 +137,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         exit;
     }
 
-    // ========== BUSCAR ESTUDIANTES (para egresos - SOLO INSCRITOS COMPLETOS) ==========
+    // ========== BUSCAR ESTUDIANTES (para egresos e ingresos) ==========
     if ($action == 'buscar_estudiantes') {
         $termino = sanitizarEntrada($_POST['termino'] ?? '');
         $sala = sanitizarEntrada($_POST['sala'] ?? '');
@@ -150,36 +150,46 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         }
 
         $termino = "%$termino%";
-        $anio = date('Y', strtotime($periodo . '-01'));
-        $mes = date('m', strtotime($periodo . '-01'));
-
-        // ========== FILTRO POR inscripcion_completa = 1 ==========
+        
+        // ========== CONSULTA BASE ==========
         $sql = "
             SELECT id, nombre, apellido, 
                    COALESCE(cedula, cedula_escolar) AS cedula,
                    genero, nacionalidad, fecha_nacimiento,
-                   CONCAT(apellido, ' ', nombre) AS nombre_completo
+                   CONCAT(apellido, ' ', nombre) AS nombre_completo,
+                   inscripcion_completa
             FROM estudiantes
             WHERE sala = ? AND seccion_id = ? 
               AND estatus = 'Activo'
-              AND inscripcion_completa = 1   -- SOLO INSCRITOS AL 100%
               AND (nombre LIKE ? OR apellido LIKE ? OR COALESCE(cedula, cedula_escolar) LIKE ?)
         ";
 
+        // ========== FILTRO SEGÚN TIPO ==========
         if ($tipo === 'egreso') {
-            // Excluir a los que ya fueron egresados en este período
-            $sql .= " AND id NOT IN (
-                          SELECT estudiante_id FROM egresos 
-                          WHERE sala = ? AND seccion_id = ? AND periodo = ?
-                      )";
-        }
-
-        $sql .= " ORDER BY apellido, nombre LIMIT 15";
-
-        $stmt = $conexion->prepare($sql);
-        if ($tipo === 'egreso') {
+            // Para egresos: SOLO estudiantes con inscripción completa Y que NO tengan egreso en el período
+            $sql .= " AND inscripcion_completa = 1
+                       AND id NOT IN (
+                           SELECT estudiante_id FROM egresos 
+                           WHERE sala = ? AND seccion_id = ? AND periodo = ?
+                       )";
+            $sql .= " ORDER BY apellido, nombre LIMIT 15";
+            $stmt = $conexion->prepare($sql);
+            $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
+            
+        } elseif ($tipo === 'ingreso') {
+            // Para ingresos: SOLO estudiantes SIN inscripción completa (inscripcion_completa = 0)
+            $sql .= " AND inscripcion_completa = 0
+                       AND id NOT IN (
+                           SELECT estudiante_id FROM egresos 
+                           WHERE sala = ? AND seccion_id = ? AND periodo = ?
+                       )";
+            $sql .= " ORDER BY apellido, nombre LIMIT 15";
+            $stmt = $conexion->prepare($sql);
             $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
         } else {
+            // Por defecto (sin filtro específico)
+            $sql .= " ORDER BY apellido, nombre LIMIT 15";
+            $stmt = $conexion->prepare($sql);
             $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
         }
 
@@ -193,13 +203,14 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                 'cedula' => htmlspecialchars($row['cedula']),
                 'genero' => $row['genero'],
                 'nacionalidad' => $row['nacionalidad'] ?? 'Venezolana',
-                'fecha_nacimiento' => $row['fecha_nacimiento']
+                'fecha_nacimiento' => $row['fecha_nacimiento'],
+                'inscripcion_completa' => (int)$row['inscripcion_completa']
             ];
         }
         responderJSON(['estudiantes' => $estudiantes]);
     }
 
-    // ========== CONFIRMAR EGRESO (SIN REDIRECCIÓN) ==========
+    // ========== CONFIRMAR EGRESO ==========
     if ($action == 'confirmar_egreso') {
         if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
             responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
@@ -215,15 +226,20 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             responderJSON(['success' => false, 'error' => 'Datos incompletos']);
         }
         
-        // Verificar que el estudiante esté inscrito completo (seguridad)
-        $stmt = $conexion->prepare("SELECT inscripcion_completa FROM estudiantes WHERE id = ?");
+        // Verificar que el estudiante esté inscrito completo
+        $stmt = $conexion->prepare("SELECT inscripcion_completa, nombre, apellido, genero, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
         $stmt->bind_param("i", $estudiante_id);
         $stmt->execute();
-        $res = $stmt->get_result()->fetch_assoc();
-        if (!$res || $res['inscripcion_completa'] != 1) {
+        $estudiante = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        if (!$estudiante) {
+            responderJSON(['success' => false, 'error' => 'Estudiante no encontrado']);
+        }
+        
+        if ($estudiante['inscripcion_completa'] != 1) {
             responderJSON(['success' => false, 'error' => 'El estudiante no tiene inscripción completa']);
         }
-        $stmt->close();
 
         // Verificar duplicado
         $stmt = $conexion->prepare("SELECT id FROM egresos WHERE estudiante_id = ? AND sala = ? AND seccion_id = ? AND periodo = ?");
@@ -234,14 +250,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         }
         $stmt->close();
         
-        // Obtener datos del estudiante
-        $stmt = $conexion->prepare("SELECT nombre, apellido, genero, nacionalidad, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
-        $stmt->bind_param("i", $estudiante_id);
-        $stmt->execute();
-        $estudiante = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-        if (!$estudiante) responderJSON(['success' => false, 'error' => 'Estudiante no encontrado']);
-
+        // Insertar egreso
         $genero_estudiante = $estudiante['genero'] ?? 'V';
         $fecha_egreso = date('Y-m-d');
         $stmt = $conexion->prepare("INSERT INTO egresos (estudiante_id, sala, seccion_id, periodo, fecha_egreso, motivo, genero) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -249,7 +258,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         $stmt->execute();
         $stmt->close();
         
-        // Actualizar estatus del estudiante a Inactivo
+        // Actualizar estatus a Inactivo
         $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
         $stmt_up->bind_param("i", $estudiante_id);
         $stmt_up->execute();
@@ -278,7 +287,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             responderJSON(['success' => false, 'error' => 'ID inválido']);
         }
         
-        // Obtener estudiante_id del egreso
         $stmt = $conexion->prepare("SELECT estudiante_id FROM egresos WHERE id = ?");
         $stmt->bind_param("i", $egreso_id);
         $stmt->execute();
@@ -290,13 +298,11 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         }
         $estudiante_id = $egreso['estudiante_id'];
         
-        // Eliminar egreso
         $stmt = $conexion->prepare("DELETE FROM egresos WHERE id = ?");
         $stmt->bind_param("i", $egreso_id);
         $stmt->execute();
         $stmt->close();
         
-        // Reactivar estudiante
         $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
         $stmt_up->bind_param("i", $estudiante_id);
         $stmt_up->execute();
@@ -305,14 +311,14 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         responderJSON(['success' => true, 'mensaje' => 'Egreso eliminado y estudiante reactivado']);
     }
 
-    // ========== CONFIRMAR INGRESO (con inscripcion_completa = 0) ==========
+    // ========== CONFIRMAR INGRESO ==========
     if ($action == 'confirmar_ingreso') {
         if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
             responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
         }
         
-        $apellido = sanitizarEntrada($_POST['apellido'] ?? '');
-        $nombre = sanitizarEntrada($_POST['nombre'] ?? '');
+        $apellido = strtoupper(sanitizarEntrada($_POST['apellido'] ?? ''));
+        $nombre = strtoupper(sanitizarEntrada($_POST['nombre'] ?? ''));
         $sala = sanitizarEntrada($_POST['sala'] ?? '');
         $seccion = (int)($_POST['seccion'] ?? 0);
         $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
@@ -325,30 +331,33 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             responderJSON(['success' => false, 'error' => 'Datos incompletos']);
         }
         
-        // Buscar o crear estudiante
-        if ($estudiante_id == 0) {
-            $stmt = $conexion->prepare("SELECT id FROM estudiantes WHERE apellido = ? AND nombre = ? AND sala = ? AND seccion_id = ?");
-            $stmt->bind_param("sssi", $apellido, $nombre, $sala, $seccion);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            if ($row = $result->fetch_assoc()) {
-                $estudiante_id = $row['id'];
-            }
-            $stmt->close();
-        }
+        // ========== BUSCAR ESTUDIANTE EXISTENTE ==========
+        $stmt = $conexion->prepare("SELECT id, inscripcion_completa, estatus FROM estudiantes WHERE apellido = ? AND nombre = ? AND sala = ? AND seccion_id = ?");
+        $stmt->bind_param("sssi", $apellido, $nombre, $sala, $seccion);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $existente = $result->fetch_assoc();
+        $stmt->close();
         
-        if ($estudiante_id == 0) {
-            // Crear estudiante con inscripcion_completa = 0
+        if ($existente) {
+            // Si el estudiante ya está inscrito (completo), no permitir nuevo ingreso
+            if ($existente['inscripcion_completa'] == 1) {
+                responderJSON(['success' => false, 'error' => 'Este estudiante ya está inscrito (inscripción completa). No se puede registrar como ingreso.']);
+            }
+            // Si está inactivo, reactivar
+            if ($existente['estatus'] != 'Activo') {
+                $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
+                $stmt_up->bind_param("i", $existente['id']);
+                $stmt_up->execute();
+                $stmt_up->close();
+            }
+            $estudiante_id = $existente['id'];
+        } else {
+            // Crear nuevo estudiante con inscripcion_completa = 0
             $stmt = $conexion->prepare("INSERT INTO estudiantes (apellido, nombre, genero, cedula, fecha_nacimiento, sala, seccion_id, estatus, inscripcion_completa) VALUES (?, ?, ?, ?, ?, ?, ?, 'Activo', 0)");
             $stmt->bind_param("ssssssi", $apellido, $nombre, $genero, $cedula, $fecha_nacimiento, $sala, $seccion);
             $stmt->execute();
             $estudiante_id = $stmt->insert_id;
-            $stmt->close();
-        } else {
-            // Reactivar si estaba inactivo, pero mantener inscripcion_completa como estaba
-            $stmt = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
-            $stmt->bind_param("i", $estudiante_id);
-            $stmt->execute();
             $stmt->close();
         }
         
@@ -451,9 +460,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar_y_pdf'])) {
         $stmt->execute();
         $stmt->close();
     }
-    
-    // Guardar egresos e ingresos del formulario (ya se manejan por AJAX, pero si se envían por POST adicional, se pueden procesar aquí)
-    // (el código existente puede mantenerse)
     
     include "generar_pdf.php";
     exit;
@@ -1359,7 +1365,6 @@ function inicializarAutocompletadoEgreso(fila) {
         setTimeout(() => { dropdown.style.display = 'none'; }, 200);
     });
 
-    // Clic fuera para cerrar
     document.addEventListener('click', function(e) {
         if (!fila.contains(e.target)) {
             dropdown.style.display = 'none';
@@ -1492,7 +1497,7 @@ document.addEventListener('click', function(e) {
             .catch(() => mostrarNotificacion('Error de conexión', 'danger'));
     }
     
-    // ===== CONFIRMAR EGRESO (SIN REDIRECCIÓN) =====
+    // ===== CONFIRMAR EGRESO =====
     if (e.target.classList.contains('confirmar-egreso')) {
         e.preventDefault();
         const fila = e.target.closest('tr');
@@ -1530,9 +1535,7 @@ document.addEventListener('click', function(e) {
             .then(data => {
                 if (data.success) {
                     mostrarNotificacion('✅ Egreso registrado correctamente', 'success');
-                    // Eliminar la fila actual
                     fila.remove();
-                    // Recargar egresos existentes
                     cargarEgresosExistentes();
                 } else {
                     mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');
@@ -1562,7 +1565,6 @@ document.addEventListener('click', function(e) {
             .then(data => {
                 if (data.success) {
                     mostrarNotificacion('✅ Egreso eliminado y estudiante reactivado', 'success');
-                    // Recargar egresos
                     cargarEgresosExistentes();
                 } else {
                     mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');

@@ -13,13 +13,25 @@ if (!isset($_SESSION['usuario'])) {
     exit();
 }
 
+// ========== NORMALIZAR ROL ==========
 $rol_raw = $_SESSION['rol'] ?? '';
 $rol_normalizado = trim(preg_replace('/[^a-zA-Z_]/', '', $rol_raw));
 $rol_normalizado = strtolower($rol_normalizado);
 
+// ========== DEFINIR ROLES PERMITIDOS PARA VER EL MENÚ COMPLETO ==========
+$roles_admin = ['administrador', 'admin', 'super_admin', 'directiva', 'superadmin'];
+$es_admin = in_array($rol_normalizado, $roles_admin);
+
+// ========== SIDEBAR COLLAPSIBLE ==========
 $sidebar_class = '';
 if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') {
     $sidebar_class = 'active';
+}
+
+// ========== DETERMINAR TÍTULO DE LA BARRA SUPERIOR ==========
+$panel_titulo = 'PANEL DE SECRETARÍA';
+if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $rol_normalizado === 'directiva') {
+    $panel_titulo = 'PANEL DE DIRECTIVA';
 }
 ?>
 <!DOCTYPE html>
@@ -43,10 +55,12 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
         </div>
         
         <ul class="list-unstyled components mt-2">
-            <?php if ($rol_normalizado === 'administrador' || $rol_normalizado === 'admin' || $rol_normalizado === 'super_admin'): ?>
+            <?php if ($es_admin): ?>
+                <!-- INICIO -->
                 <li><a href="/servicio-comunitario/index.php"><i class="fas fa-home me-2"></i> Inicio</a></li>
                 
-                <?php if ($rol_normalizado === 'super_admin'): ?>
+                <!-- PANEL DIRECTIVA (para super_admin y directiva) -->
+                <?php if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $rol_normalizado === 'directiva'): ?>
                     <li class="bg-primary bg-opacity-10">
                         <a href="/servicio-comunitario/profesores/panel_super_admin.php" class="text-primary fw-bold">
                             <i class="fas fa-user-cog me-2"></i> Panel Directiva
@@ -54,17 +68,32 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
                     </li>
                 <?php endif; ?>
                 
+                <!-- ESTUDIANTES -->
                 <li><a href="/servicio-comunitario/estudiantes/index.php"><i class="fas fa-user-plus me-2"></i> Estudiantes</a></li>
+                
+                <!-- ASISTENCIA GLOBAL -->
                 <li><a href="/servicio-comunitario/estadisticas/index.php"><i class="fas fa-calendar-check me-2"></i> Asistencia Global</a></li>
+                
+                <!-- BOLETINES -->
                 <li><a href="/servicio-comunitario/boletines/index.php"><i class="fas fa-file-alt me-2"></i> Boletines</a></li>
+                
+                <!-- RENDIMIENTO FINAL -->
                 <li><a href="/servicio-comunitario/rendimientofinal/rendimientofinalindex.php"><i class="fas fa-chart-line me-2"></i> Rendimiento Final</a></li>
+                
+                <!-- PROFESORES -->
                 <li><a href="/servicio-comunitario/profesores/panel_profesor.php"><i class="fas fa-users me-2"></i> Profesores</a></li>
                 
-                <?php if ($rol_normalizado === 'super_admin'): ?>
+                <!-- SEGURIDAD (para super_admin y directiva) -->
+                <?php if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $rol_normalizado === 'directiva'): ?>
                     <li><a href="/servicio-comunitario/profesores/gestionar_permisos.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
                 <?php endif; ?>
                 
+            <?php else: ?>
+                <!-- Si no es admin, mostrar solo lo básico (opcional) -->
+                <li><a href="/servicio-comunitario/index.php"><i class="fas fa-home me-2"></i> Inicio</a></li>
             <?php endif; ?>
+            
+            <!-- CERRAR SESIÓN (siempre visible) -->
             <li class="mt-4"><a href="/servicio-comunitario/logout.php" class="text-danger"><i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión</a></li>
         </ul>
     </nav>
@@ -76,7 +105,7 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
                 <i class="fas fa-align-left"></i>
             </button>
             <div class="ms-3 fw-bold text-muted">
-                <?php echo ($rol_normalizado === 'super_admin') ? 'PANEL DE DIRECTIVA' : 'PANEL DE SECRETARÍA'; ?>
+                <?php echo $panel_titulo; ?>
             </div>
         </nav>
         

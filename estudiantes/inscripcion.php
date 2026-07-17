@@ -356,73 +356,74 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-         <!-- STEP 4 -->
-<div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-    <h5 class="border-start border-4 border-navy ps-3 mb-4">GRADO Y SECCIÓN</h5>
-    <div class="table-responsive">
-        <table class="table table-bordered table-sm">
-            <thead>
-                <tr>
-                    <th>Año Escolar</th>
-                    <th>Reg.</th>
-                    <th>Rep</th>
-                    <th>C</th>
-                    <th>F</th>
-                    <th>P</th>
-                    <th>Peso</th>
-                    <th>Talla</th>
-                    <th>Fecha Inscripción</th>
-                    <th>Funcionario</th>
-                    <th style="width:50px;">Acción</th>
-                </tr>
-            </thead>
-            <tbody id="historial-body">
-                <tr class="fila-historial">
-                    <td>
-                        <select name="ano_escolar[]" class="form-select form-select-sm" required>
-                            <option value="">Seleccione</option>
-                            <?php 
-                            $ano_actual = date('Y');
-                            for ($a = $ano_actual - 1; $a >= 2015; $a--): 
-                                $periodo = $a . '-' . ($a + 1);
-                            ?>
-                                <option value="<?= htmlspecialchars($periodo) ?>"><?= htmlspecialchars($periodo) ?></option>
-                            <?php endfor; ?>
-                        </select>
-                    </td>
-                    <td><input type="text" name="registro[]" class="form-control form-control-sm" placeholder="Reg."></td>
-                    <td>
-                        <select name="repite[]" class="form-select form-select-sm">
-                            <option value="No">No</option>
-                            <option value="Si">Sí</option>
-                        </select>
-                    </td>
-                    <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
-                    <td><input type="text" name="f[]" class="form-control form-control-sm" placeholder="F"></td>
-                    <td><input type="text" name="p[]" class="form-control form-control-sm" placeholder="P"></td>
-                    <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm" placeholder="Peso"></td>
-                    <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm" placeholder="Talla"></td>
-                    <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
-                    <td><input type="text" name="funcionario[]" class="form-control form-control-sm" placeholder="Funcionario"></td>
-                    <td class="text-center">
-                        <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="agregarFila">
-        <i class="fas fa-plus me-1"></i> Agregar fila
-    </button>
-    <div class="text-end mt-4">
-        <button type="button" class="btn btn-secondary px-4 prev-step"><i class="fas fa-arrow-left me-1"></i> Anterior</button>
-        <button type="submit" class="btn btn-success px-4"><i class="fas fa-save me-1"></i> Guardar Inscripción</button>
+                <!-- STEP 4: HISTORIAL ESCOLAR (SIN columna "Funcionario") -->
+                <div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">GRADO Y SECCIÓN</h5>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Año Escolar</th>
+                                    <th>Reg.</th>
+                                    <th>Rep</th>
+                                    <th>C</th>
+                                    <th>F</th>
+                                    <th>P</th>
+                                    <th>Peso</th>
+                                    <th>Talla</th>
+                                    <th>Fecha Inscripción</th>
+                                    <th style="width:50px;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historial-body">
+                                <tr class="fila-historial">
+                                    <td>
+                                        <select name="ano_escolar[]" class="form-select form-select-sm" required>
+                                            <option value="">Seleccione</option>
+                                            <?php 
+                                            $ano_actual = date('Y');
+                                            for ($a = $ano_actual - 1; $a >= 2015; $a--): 
+                                                $periodo = $a . '-' . ($a + 1);
+                                            ?>
+                                                <option value="<?= htmlspecialchars($periodo) ?>"><?= htmlspecialchars($periodo) ?></option>
+                                            <?php endfor; ?>
+                                        </select>
+                                    </td>
+                                    <td><input type="text" name="registro[]" class="form-control form-control-sm" placeholder="Reg."></td>
+                                    <td>
+                                        <select name="repite[]" class="form-select form-select-sm">
+                                            <option value="No">No</option>
+                                            <option value="Si">Sí</option>
+                                        </select>
+                                    </td>
+                                    <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
+                                    <td><input type="text" name="f[]" class="form-control form-control-sm" placeholder="F"></td>
+                                    <td><input type="text" name="p[]" class="form-control form-control-sm" placeholder="P"></td>
+                                    <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm" placeholder="Peso"></td>
+                                    <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm" placeholder="Talla"></td>
+                                    <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="agregarFila">
+                        <i class="fas fa-plus me-1"></i> Agregar fila
+                    </button>
+                    <div class="text-end mt-4">
+                        <button type="button" class="btn btn-secondary px-4 prev-step"><i class="fas fa-arrow-left me-1"></i> Anterior</button>
+                        <button type="submit" class="btn btn-success px-4"><i class="fas fa-save me-1"></i> Guardar Inscripción</button>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
-<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -594,7 +595,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Tabla dinámica
+    // Tabla dinámica (sin campo "Funcionario")
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
     function agregarFilaHistorial() {

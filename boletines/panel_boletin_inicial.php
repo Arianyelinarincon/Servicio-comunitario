@@ -1,47 +1,82 @@
 <?php
 session_start();
-if (!isset($_SESSION['estudiante'])) {
-    header('Location: paso1_portada.php?tipo=inicial');
-    exit;
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
 }
 
 include '../includes/header.php';
 require_once '../config/conexion.php';
 
-$estudiante_id = $_SESSION['estudiante_id'];
-$periodo = $_SESSION['ano_escolar'] ?? '2025 / 2026';
-
-// Verificar si ya existen datos guardados en la BD para este estudiante y período
-$stmt = $conexion->prepare("SELECT * FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = 'inicial'");
-$stmt->bind_param("is", $estudiante_id, $periodo);
-$stmt->execute();
-$boletin_existente = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-// Si existe, cargar datos a la sesión
-if ($boletin_existente) {
-    $_SESSION['observacion'] = $boletin_existente['observacion'] ?? '';
-    $_SESSION['m1_proyecto'] = $boletin_existente['m1_proyecto'] ?? '';
-    $_SESSION['m1_formacion'] = $boletin_existente['m1_formacion'] ?? '';
-    $_SESSION['m1_relacion'] = $boletin_existente['m1_relacion'] ?? '';
-    $_SESSION['m1_sugerencias'] = $boletin_existente['m1_sugerencias'] ?? '';
-    $_SESSION['m2_proyecto'] = $boletin_existente['m2_proyecto'] ?? '';
-    $_SESSION['m2_formacion'] = $boletin_existente['m2_formacion'] ?? '';
-    $_SESSION['m2_relacion'] = $boletin_existente['m2_relacion'] ?? '';
-    $_SESSION['m2_sugerencias'] = $boletin_existente['m2_sugerencias'] ?? '';
-    $_SESSION['m3_proyecto'] = $boletin_existente['m3_proyecto'] ?? '';
-    $_SESSION['m3_formacion'] = $boletin_existente['m3_formacion'] ?? '';
-    $_SESSION['m3_relacion'] = $boletin_existente['m3_relacion'] ?? '';
-    $_SESSION['m3_sugerencias'] = $boletin_existente['m3_sugerencias'] ?? '';
+// ========== SI VIENE CON editar_id, CARGAR DATOS DESDE LA BD ==========
+if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
+    $id_editar = intval($_GET['editar_id']);
+    
+    // Verificar que el boletín existe y es de tipo inicial
+    $stmt = $conexion->prepare("SELECT * FROM boletines WHERE id = ? AND tipo_boletin = 'inicial'");
+    $stmt->bind_param("i", $id_editar);
+    $stmt->execute();
+    $boletin = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    
+    if ($boletin) {
+        // Obtener datos del estudiante asociado
+        $stmt_est = $conexion->prepare("SELECT e.nombre, e.apellido, e.cedula_escolar, e.sala, r.nombre_completo AS rep_nombre, p.nombre AS doc_nombre
+                                        FROM estudiantes e
+                                        LEFT JOIN representantes r ON e.representante_id = r.id
+                                        LEFT JOIN secciones s ON e.seccion_id = s.id
+                                        LEFT JOIN profesores p ON p.seccion = s.id
+                                        WHERE e.id = ?");
+        $stmt_est->bind_param("i", $boletin['estudiante_id']);
+        $stmt_est->execute();
+        $estudiante = $stmt_est->get_result()->fetch_assoc();
+        $stmt_est->close();
+        
+        if ($estudiante) {
+            // Cargar en sesión para que el panel los muestre
+            $_SESSION['estudiante'] = $estudiante['nombre'] . ' ' . $estudiante['apellido'];
+            $_SESSION['ce'] = $estudiante['cedula_escolar'];
+            $_SESSION['grupo'] = $estudiante['sala'];
+            $_SESSION['ano_escolar'] = $boletin['periodo'];
+            $_SESSION['docente'] = $estudiante['doc_nombre'] ?? 'No asignado';
+            $_SESSION['representante'] = $estudiante['rep_nombre'] ?? 'No registrado';
+            $_SESSION['estudiante_id'] = $boletin['estudiante_id'];
+            
+            // Cargar datos del boletín
+            $_SESSION['observacion'] = $boletin['observacion'] ?? '';
+            $_SESSION['m1_proyecto'] = $boletin['m1_proyecto'] ?? '';
+            $_SESSION['m1_formacion'] = $boletin['m1_formacion'] ?? '';
+            $_SESSION['m1_relacion'] = $boletin['m1_relacion'] ?? '';
+            $_SESSION['m1_sugerencias'] = $boletin['m1_sugerencias'] ?? '';
+            $_SESSION['m2_proyecto'] = $boletin['m2_proyecto'] ?? '';
+            $_SESSION['m2_formacion'] = $boletin['m2_formacion'] ?? '';
+            $_SESSION['m2_relacion'] = $boletin['m2_relacion'] ?? '';
+            $_SESSION['m2_sugerencias'] = $boletin['m2_sugerencias'] ?? '';
+            $_SESSION['m3_proyecto'] = $boletin['m3_proyecto'] ?? '';
+            $_SESSION['m3_formacion'] = $boletin['m3_formacion'] ?? '';
+            $_SESSION['m3_relacion'] = $boletin['m3_relacion'] ?? '';
+            $_SESSION['m3_sugerencias'] = $boletin['m3_sugerencias'] ?? '';
+        }
+    }
 }
 
-// Definir variables de estado
+// ========== SI NO HAY ESTUDIANTE EN SESIÓN, REDIRIGIR ==========
+if (!isset($_SESSION['estudiante'])) {
+    header('Location: paso1_portada.php?tipo=inicial');
+    exit;
+}
+
+// ========== DEFINIR VARIABLES DE ESTADO ==========
 $obs_completada = !empty($_SESSION['observacion']);
 $m1_completado = !empty($_SESSION['m1_proyecto']) && !empty($_SESSION['m1_formacion']);
 $m2_completado = !empty($_SESSION['m2_proyecto']) && !empty($_SESSION['m2_formacion']);
 $m3_completado = !empty($_SESSION['m3_proyecto']) && !empty($_SESSION['m3_formacion']);
 $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_completado;
+
+// ========== MODO EDICIÓN ==========
+$modo_edicion = isset($_GET['editar_id']) ? true : false;
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -82,14 +117,12 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* ===== CONTENEDOR PRINCIPAL ===== */
         .panel-container {
             padding: 20px 25px;
             max-width: 1400px;
             margin: 0 auto;
         }
 
-        /* ===== TARJETA PRINCIPAL ===== */
         .panel-card {
             background: #ffffff;
             border-radius: var(--radius);
@@ -104,7 +137,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             box-shadow: var(--shadow-lg);
         }
 
-        /* ===== HEADER DE LA TARJETA ===== */
         .panel-header {
             display: flex;
             align-items: center;
@@ -139,7 +171,15 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             font-weight: 600;
         }
 
-        /* ===== INFO DEL ESTUDIANTE ===== */
+        .panel-header .badge-edicion {
+            background: var(--warning-light);
+            color: #856404;
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
         .estudiante-info {
             background: var(--primary-light);
             padding: 16px 20px;
@@ -165,7 +205,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             text-align: center;
         }
 
-        /* ===== GRID DE TARJETAS ===== */
         .grid-cards {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
@@ -173,7 +212,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             margin-bottom: 25px;
         }
 
-        /* ===== TARJETA INDIVIDUAL ===== */
         .card-item {
             background: #ffffff;
             border-radius: var(--radius);
@@ -223,7 +261,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             margin: 0;
         }
 
-        /* ===== ESTADOS ===== */
         .estado-badge {
             display: inline-block;
             padding: 3px 14px;
@@ -243,7 +280,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             color: #856404;
         }
 
-        /* ===== PREVIEW DEL TEXTO ===== */
         .preview-texto {
             font-size: 13px;
             color: var(--gray-700);
@@ -262,7 +298,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             font-style: italic;
         }
 
-        /* ===== BOTONES ===== */
         .btn {
             display: inline-flex;
             align-items: center;
@@ -313,7 +348,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
         .btn-sm { padding: 5px 14px; font-size: 11px; }
         .btn-lg { padding: 12px 32px; font-size: 15px; }
 
-        /* ===== ACCIONES GENERALES ===== */
         .acciones-generales {
             border-top: 2px solid var(--gray-200);
             padding-top: 22px;
@@ -325,7 +359,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             align-items: center;
         }
 
-        /* ===== ALERTA DE PENDIENTE ===== */
         .alerta-pendiente {
             background: var(--warning-light);
             padding: 12px 20px;
@@ -345,16 +378,9 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
             font-size: 13px;
         }
 
-        /* ===== ANIMACIONES ===== */
         @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .card-item {
@@ -366,7 +392,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
         .card-item:nth-child(3) { animation-delay: 0.15s; }
         .card-item:nth-child(4) { animation-delay: 0.2s; }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 1200px) {
             .grid-cards {
                 grid-template-columns: repeat(2, 1fr);
@@ -412,8 +437,6 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
     </style>
 </head>
 <body>
-    <!-- ===== HEADER INCLUIDO ===== -->
-    
     <div class="panel-container">
         <div class="panel-card">
             <!-- ===== HEADER ===== -->
@@ -421,12 +444,15 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                 <h2>
                     <i class="fas fa-clipboard-list"></i>
                     Panel de Control - Boletín Inicial
+                    <?php if ($modo_edicion): ?>
+                        <span class="badge-edicion"><i class="fas fa-edit"></i> Modo Edición</span>
+                    <?php endif; ?>
                 </h2>
                 <span class="badge-tipo">
                     <i class="fas fa-baby"></i> Inicial
                 </span>
             </div>
-            
+
             <!-- ===== INFO ESTUDIANTE ===== -->
             <div class="estudiante-info">
                 <div><i class="fas fa-user"></i> <strong>Estudiante:</strong> <?php echo htmlspecialchars($_SESSION['estudiante']); ?></div>
@@ -436,7 +462,7 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                 <div><i class="fas fa-chalkboard-teacher"></i> <strong>Docente:</strong> <?php echo htmlspecialchars($_SESSION['docente']); ?></div>
                 <div><i class="fas fa-user-tie"></i> <strong>Representante:</strong> <?php echo htmlspecialchars($_SESSION['representante']); ?></div>
             </div>
-            
+
             <!-- ===== GRID DE CARDS ===== -->
             <div class="grid-cards">
                 <!-- OBSERVACIÓN GENERAL -->
@@ -459,7 +485,7 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                         <?php echo $obs_completada ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
                 </div>
-                
+
                 <!-- MOMENTO 1 -->
                 <div class="card-item" style="--card-color: var(--success);">
                     <div class="card-header">
@@ -480,7 +506,7 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                         <?php echo $m1_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
                 </div>
-                
+
                 <!-- MOMENTO 2 -->
                 <div class="card-item" style="--card-color: var(--info);">
                     <div class="card-header">
@@ -501,7 +527,7 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                         <?php echo $m2_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
                 </div>
-                
+
                 <!-- MOMENTO 3 -->
                 <div class="card-item" style="--card-color: var(--warning);">
                     <div class="card-header">
@@ -523,7 +549,7 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                     </a>
                 </div>
             </div>
-            
+
             <!-- ===== ACCIONES GENERALES ===== -->
             <div class="acciones-generales">
                 <?php if ($todo_completo): ?>
@@ -542,7 +568,7 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                         <span class="faltantes">Faltan: <?php echo implode(', ', $faltantes); ?></span>
                     </div>
                 <?php endif; ?>
-                
+
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
                     <a href="index.php" class="btn btn-secondary btn-lg">
                         <i class="fas fa-arrow-left"></i> Volver al Inicio
@@ -550,11 +576,14 @@ $todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_comp
                     <a href="historial_boletines.php" class="btn btn-info btn-lg">
                         <i class="fas fa-history"></i> Ver Historial
                     </a>
+                    <?php if ($modo_edicion): ?>
+                        <a href="historial_boletines.php" class="btn btn-danger btn-lg">
+                            <i class="fas fa-times"></i> Cancelar Edición
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
     </div>
 
 <?php include '../includes/footer.php'; ?>
-</body>
-</html>
