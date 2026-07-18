@@ -2,7 +2,7 @@
 session_start();
 require_once('../config/conexion.php');
 
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
     header("Location: ../profesores/Login/login.php");
     exit();
 }
@@ -45,7 +45,7 @@ $stmt_ins->close();
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $conexion->begin_transaction();
     try {
-        // 1. Actualizar datos del estudiante
+        // ========== DATOS DEL ESTUDIANTE ==========
         $nombre = strtoupper(trim($_POST['nombre']));
         $apellido = strtoupper(trim($_POST['apellido']));
         $fecha_nac = $_POST['fecha_nacimiento'];
@@ -71,31 +71,42 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $padre_nombre = $_POST['padre_nombre'];
         $padre_cedula = $_POST['padre_cedula'];
         $padre_telefono = $_POST['padre_telefono'];
-        $sala = $_POST['sala'];
+        $seccion_id = intval($_POST['sala']); // Ahora recibimos el ID de la sección
 
+        // ========== OBTENER NOMBRE DE LA SALA DESDE EL ID DE SECCIÓN ==========
+        $stmt_sec = $conexion->prepare("SELECT sala FROM secciones WHERE id = ?");
+        $stmt_sec->bind_param("i", $seccion_id);
+        $stmt_sec->execute();
+        $result_sec = $stmt_sec->get_result();
+        $row_sec = $result_sec->fetch_assoc();
+        $sala_nombre = $row_sec['sala'] ?? '';
+        $stmt_sec->close();
+
+        // ========== ACTUALIZAR ESTUDIANTE (incluyendo sala y seccion_id) ==========
         $stmt_upd = $conexion->prepare("UPDATE estudiantes SET 
             nombre=?, apellido=?, fecha_nacimiento=?, genero=?, orden_nacimiento=?,
             nacionalidad=?, pais_nacimiento=?, estado_nacimiento=?, direccion=?,
             estado_residencia=?, municipio=?, parroquia=?, ciudad=?,
             enfermedad=?, enfermedad_cual=?, educacion_fisica=?, educacion_fisica_porque=?,
             alergia=?, alergia_cual=?, madre_nombre=?, madre_cedula=?, madre_telefono=?,
-            padre_nombre=?, padre_cedula=?, padre_telefono=?, sala=?
+            padre_nombre=?, padre_cedula=?, padre_telefono=?,
+            sala=?, seccion_id=?
             WHERE id=?");
 
-        // ✅ CORRECCIÓN: Generamos la cadena de tipos dinámicamente (27 variables: 25 strings + 2 ints)
-        // Los primeros 4 son strings, luego 1 int, luego 21 strings, luego 1 int
-        $types = str_repeat('s', 4) . 'i' . str_repeat('s', 21) . 'i';
+        // 26 strings + 2 ints
+        $types = str_repeat('s', 26) . 'ii';
         $stmt_upd->bind_param($types,
             $nombre, $apellido, $fecha_nac, $genero, $orden_nacimiento,
             $nacionalidad, $pais_nac, $estado_nac, $direccion,
             $estado_res, $municipio, $parroquia, $ciudad,
             $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
             $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
-            $padre_nombre, $padre_cedula, $padre_telefono, $sala, $id);
+            $padre_nombre, $padre_cedula, $padre_telefono,
+            $sala_nombre, $seccion_id, $id);
         $stmt_upd->execute();
         $stmt_upd->close();
 
-        // 2. Actualizar datos del representante
+        // ========== ACTUALIZAR REPRESENTANTE ==========
         $rep_id = $estudiante['rep_id'];
         $rep_nombre = $_POST['rep_nombre'];
         $rep_cedula = $_POST['rep_cedula'];
@@ -126,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt_rep->execute();
         $stmt_rep->close();
 
-        // 3. Actualizar inscripciones (historial escolar)
+        // ========== ACTUALIZAR INSCRIPCIONES (historial escolar) ==========
         $stmt_del = $conexion->prepare("DELETE FROM inscripciones WHERE estudiante_id = ?");
         $stmt_del->bind_param("i", $id);
         $stmt_del->execute();
@@ -171,12 +182,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 include('../includes/header.php'); 
 
-// Obtener lista de secciones para el select
+// ========== OBTENER LISTA DE SECCIONES PARA EL SELECT (CON ID) ==========
 $secciones = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 $opciones_secciones = '<option value="">Seleccione</option>';
 while($sec = $secciones->fetch_assoc()) {
-    $selected = ($estudiante['sala'] == $sec['sala'] . ' - Sección ' . $sec['nombre']) ? 'selected' : '';
-    $opciones_secciones .= '<option value="' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '" ' . $selected . '>' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '</option>';
+    // Ahora el valor es el ID de la sección, y se compara con el seccion_id del estudiante
+    $selected = ($estudiante['seccion_id'] == $sec['id']) ? 'selected' : '';
+    $opciones_secciones .= '<option value="' . $sec['id'] . '" ' . $selected . '>' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '</option>';
 }
 ?>
 
@@ -223,7 +235,13 @@ while($sec = $secciones->fetch_assoc()) {
                     <div class="col-md-6"><label>Padre (nombre)</label><input type="text" name="padre_nombre" class="form-control text-uppercase" value="<?= htmlspecialchars($estudiante['padre_nombre']) ?>"></div>
                     <div class="col-md-3"><label>Cédula padre</label><input type="text" name="padre_cedula" class="form-control" value="<?= htmlspecialchars($estudiante['padre_cedula']) ?>"></div>
                     <div class="col-md-3"><label>Teléfono padre</label><input type="text" name="padre_telefono" class="form-control" value="<?= htmlspecialchars($estudiante['padre_telefono']) ?>"></div>
-                    <div class="col-md-4"><label>Sala / Grado actual</label><select name="sala" class="form-select" required><?= $opciones_secciones ?></select></div>
+                    
+                    <!-- ========== SELECCIÓN DE SALA ACTUAL (con ID) ========== -->
+                    <div class="col-md-4"><label>Sala / Grado actual</label>
+                        <select name="sala" class="form-select" required>
+                            <?= $opciones_secciones ?>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- ================= DATOS DEL REPRESENTANTE ================= -->
