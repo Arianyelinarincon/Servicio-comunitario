@@ -17,6 +17,7 @@ if (isset($_GET['tipo'])) {
 if (isset($_GET['buscar_estudiante'])) {
     $termino = $_GET['buscar_estudiante'] . '%';
     $periodo_actual = $_SESSION['ano_escolar'] ?? '2025 / 2026';
+    $ano_inicio = substr($periodo_actual, 0, 4); // Extrae "2025"
     
     $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
                    s.nombre AS grupo, p.nombre AS doc_nombre, p.apellido AS doc_apellido
@@ -32,16 +33,17 @@ if (isset($_GET['buscar_estudiante'])) {
                   WHERE eg.estudiante_id = e.id 
                     AND eg.sala = e.sala 
                     AND eg.seccion_id = e.seccion_id 
-                    AND eg.periodo = ?
+                    AND eg.periodo LIKE ?
               )
               AND EXISTS (
                   SELECT 1 FROM inscripciones i
-                  WHERE i.estudiante_id = e.id AND i.ano_escolar = ?
+                  WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?
               )
             LIMIT 10";
     $stmt = $conexion->prepare($sql);
     $buscar = "%$termino%";
-    $stmt->bind_param("sss", $buscar, $periodo_actual, $periodo_actual);
+    $like_periodo = $ano_inicio . '%';
+    $stmt->bind_param("sss", $buscar, $like_periodo, $like_periodo);
     $stmt->execute();
     $result = $stmt->get_result();
     $sugerencias = [];
@@ -65,6 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Verificar que el estudiante seleccionado sigue cumpliendo los requisitos
     $estudiante_id = intval($_POST['estudiante_id']);
     $periodo_actual = $_POST['ano_escolar'] ?? '2025 / 2026';
+    $ano_inicio = substr($periodo_actual, 0, 4);
+    $like_periodo = $ano_inicio . '%';
+    
     $stmt_check = $conexion->prepare("SELECT id FROM estudiantes 
                                       WHERE id = ? AND inscripcion_completa = 1 AND estatus = 'Activo'
                                       AND NOT EXISTS (
@@ -72,13 +77,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                           WHERE eg.estudiante_id = estudiantes.id 
                                             AND eg.sala = estudiantes.sala 
                                             AND eg.seccion_id = estudiantes.seccion_id 
-                                            AND eg.periodo = ?
+                                            AND eg.periodo LIKE ?
                                       )
                                       AND EXISTS (
                                           SELECT 1 FROM inscripciones i
-                                          WHERE i.estudiante_id = estudiantes.id AND i.ano_escolar = ?
+                                          WHERE i.estudiante_id = estudiantes.id AND i.ano_escolar LIKE ?
                                       )");
-    $stmt_check->bind_param("iss", $estudiante_id, $periodo_actual, $periodo_actual);
+    $stmt_check->bind_param("iss", $estudiante_id, $like_periodo, $like_periodo);
     $stmt_check->execute();
     $existe = $stmt_check->get_result()->fetch_assoc();
     if (!$existe) {
