@@ -7,18 +7,23 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 include '../includes/header.php';
 require_once '../config/conexion.php';
 
+// CSRF token para el formulario de eliminación
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 // ========== FILTROS CON BUSCADOR EN TIEMPO REAL ==========
 $buscar_estudiante = trim($_GET['estudiante'] ?? '');
 $periodo = trim($_GET['periodo'] ?? '');
 $tipo = trim($_GET['tipo'] ?? '');
 
-// ========== CONSULTA PRINCIPAL ==========
+// ========== CONSULTA PRINCIPAL - INNER JOIN para evitar huérfanos ==========
 $sql = "SELECT b.*, 
                CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante,
                e.cedula_escolar,
                e.sala
         FROM boletines b
-        JOIN estudiantes e ON b.estudiante_id = e.id
+        INNER JOIN estudiantes e ON b.estudiante_id = e.id
         WHERE 1=1";
 $params = [];
 $types = "";
@@ -144,7 +149,6 @@ $nombres_salas = [
         box-shadow: 0 0 0 3px rgba(0,45,84,0.15);
     }
 
-    /* ===== PUNTOS INDICADORES DE LAPSOS ===== */
     .puntos-lapsos {
         display: flex;
         gap: 6px;
@@ -176,7 +180,6 @@ $nombres_salas = [
         text-align: center;
         margin-top: 2px;
     }
-
     .badge-sala {
         background-color: #e9ecef;
         color: #002d54;
@@ -185,6 +188,29 @@ $nombres_salas = [
         border-radius: 6px;
         font-size: 0.78rem;
         white-space: nowrap;
+    }
+
+    /* Botón eliminar */
+    .btn-eliminar-boletin {
+        background: none;
+        border: none;
+        color: #dc3545;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: background 0.2s;
+        cursor: pointer;
+    }
+    .btn-eliminar-boletin:hover {
+        background: #dc3545;
+        color: white;
+    }
+
+    .modal-confirmacion .modal-header {
+        background: #dc3545;
+        color: white;
+    }
+    .modal-confirmacion .modal-footer {
+        border-top: none;
     }
 </style>
 
@@ -253,7 +279,7 @@ $nombres_salas = [
                             <th style="width:7%">Tipo</th>
                             <th style="width:11%">Fecha Emisión</th>
                             <th style="width:12%">Lapsos Completos</th>
-                            <th style="width:12%">Acciones</th>
+                            <th style="width:14%">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -261,17 +287,14 @@ $nombres_salas = [
                             <?php while ($row = $result->fetch_assoc()): 
                                 $tipo_clase = ($row['tipo_boletin'] == 'inicial') ? 'badge-inicial' : 'badge-primaria';
                                 $tipo_nombre = ($row['tipo_boletin'] == 'inicial') ? 'Inicial' : 'Primaria';
-                                
-                                // Obtener nombre legible de la sala
                                 $sala_nombre = $nombres_salas[$row['sala']] ?? $row['sala'];
                                 
-                                // ===== CONTAR LAPSOS COMPLETOS =====
                                 $lapsos_completos = 0;
                                 if (!empty($row['m1_formacion'])) $lapsos_completos++;
                                 if (!empty($row['m2_formacion'])) $lapsos_completos++;
                                 if (!empty($row['m3_formacion'])) $lapsos_completos++;
                             ?>
-                            <tr>
+                            <tr data-id="<?= $row['id'] ?>">
                                 <td><strong><?= htmlspecialchars($row['nombre_estudiante']) ?></strong></td>
                                 <td><span class="font-monospace"><?= htmlspecialchars($row['cedula_escolar'] ?? '') ?></span></td>
                                 <td><span class="badge-sala"><?= htmlspecialchars($sala_nombre) ?></span></td>
@@ -294,6 +317,10 @@ $nombres_salas = [
                                     <?php else: ?>
                                         <a href="panel_boletin_primaria.php?editar_id=<?= $row['id'] ?>" class="btn btn-sm btn-warning btn-accion" title="Editar boletín"><i class="fas fa-edit"></i></a>
                                     <?php endif; ?>
+                                    <!-- ===== BOTÓN ELIMINAR ===== -->
+                                    <button type="button" class="btn-eliminar-boletin" title="Eliminar boletín" data-id="<?= $row['id'] ?>" data-estudiante="<?= htmlspecialchars($row['nombre_estudiante']) ?>" data-periodo="<?= htmlspecialchars($row['periodo']) ?>" data-tipo="<?= $tipo_nombre ?>">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -307,6 +334,33 @@ $nombres_salas = [
         <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
             <span class="text-muted small"><i class="fas fa-database me-1"></i> Total: <?= $result->num_rows ?> boletines</span>
             <span class="text-muted small"><i class="fas fa-sync-alt me-1"></i> Filtro automático</span>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL DE CONFIRMACIÓN DE ELIMINACIÓN ===== -->
+<div class="modal fade modal-confirmacion" id="modalEliminarBoletin" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i> Confirmar eliminación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="fw-bold">¿Está seguro de eliminar este boletín?</p>
+                <p><strong>Estudiante:</strong> <span id="modalEstudiante"></span></p>
+                <p><strong>Período:</strong> <span id="modalPeriodo"></span></p>
+                <p><strong>Tipo:</strong> <span id="modalTipo"></span></p>
+                <div class="mt-3 text-danger small">
+                    <i class="fas fa-exclamation-circle me-1"></i> Esta acción <strong>no se puede deshacer</strong>.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="btn-confirmar-eliminar-boletin">
+                    <i class="fas fa-trash-alt me-2"></i> Sí, eliminar
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -328,6 +382,74 @@ document.addEventListener('DOMContentLoaded', function() {
         busquedaInput.focus();
         const length = busquedaInput.value.length;
         busquedaInput.setSelectionRange(length, length);
+    }
+
+    // ===== ELIMINAR BOLETÍN =====
+    const modalEliminar = new bootstrap.Modal(document.getElementById('modalEliminarBoletin'));
+    let boletinIdAEliminar = null;
+
+    document.querySelectorAll('.btn-eliminar-boletin').forEach(btn => {
+        btn.addEventListener('click', function() {
+            boletinIdAEliminar = this.dataset.id;
+            document.getElementById('modalEstudiante').textContent = this.dataset.estudiante;
+            document.getElementById('modalPeriodo').textContent = this.dataset.periodo;
+            document.getElementById('modalTipo').textContent = this.dataset.tipo;
+            modalEliminar.show();
+        });
+    });
+
+    document.getElementById('btn-confirmar-eliminar-boletin').addEventListener('click', function() {
+        if (!boletinIdAEliminar) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Eliminando...';
+
+        const formData = new FormData();
+        formData.append('id', boletinIdAEliminar);
+        formData.append('csrf_token', '<?= $_SESSION['csrf_token'] ?>');
+
+        fetch('eliminar_boletin.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                modalEliminar.hide();
+                mostrarNotificacion('Boletín eliminado correctamente.', 'success');
+                // Recargar tabla sin recargar página
+                const fila = document.querySelector(`tr[data-id="${boletinIdAEliminar}"]`);
+                if (fila) fila.remove();
+                // Actualizar contador
+                const badge = document.querySelector('.card-header .badge');
+                if (badge) {
+                    let total = parseInt(badge.textContent);
+                    badge.textContent = (total - 1) + ' boletín(es)';
+                }
+            } else {
+                mostrarNotificacion('Error: ' + (data.error || 'No se pudo eliminar'), 'danger');
+            }
+        })
+        .catch(() => {
+            mostrarNotificacion('Error de conexión', 'danger');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-trash-alt me-2"></i> Sí, eliminar';
+            boletinIdAEliminar = null;
+        });
+    });
+
+    function mostrarNotificacion(mensaje, tipo = 'success') {
+        const alerta = document.createElement('div');
+        alerta.className = `alert alert-${tipo} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+        alerta.style.zIndex = '9999';
+        alerta.style.maxWidth = '400px';
+        alerta.innerHTML = `${mensaje} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        document.body.appendChild(alerta);
+        setTimeout(() => {
+            alerta.remove();
+        }, 4000);
     }
 });
 </script>

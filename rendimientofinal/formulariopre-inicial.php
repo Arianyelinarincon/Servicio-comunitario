@@ -2,7 +2,7 @@
 require_once "../estadisticas/config_db.php";
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// ========== CORRECCIÓN: Validar y sanitizar parámetros GET ==========
+// ========== VALIDAR PARÁMETROS ==========
 $salas_permitidas = ['sala4', 'sala5'];
 $sala_seleccionada = $_GET['sala'] ?? '';
 if (!in_array($sala_seleccionada, $salas_permitidas)) {
@@ -11,14 +11,12 @@ if (!in_array($sala_seleccionada, $salas_permitidas)) {
 
 $seccion_id = isset($_GET['seccion']) ? intval($_GET['seccion']) : '';
 $profesor_id = isset($_GET['profesor']) ? intval($_GET['profesor']) : '';
-
-// ========== CORRECCIÓN: Período por defecto 2025-2026 si no viene en GET ==========
 $periodo = isset($_GET['periodo']) ? trim($_GET['periodo']) : '2025-2026';
-if (!empty($periodo) && !preg_match('/^\d{4}-\d{4}$/', $periodo)) {
+if (!preg_match('/^\d{4}-\d{4}$/', $periodo)) {
     $periodo = '2025-2026';
 }
 
-if(empty($sala_seleccionada) || empty($seccion_id)) {
+if (empty($sala_seleccionada) || empty($seccion_id)) {
     die("<div class='alert alert-danger'>Error: Faltan parámetros. Genere el formulario desde el panel principal.</div>");
 }
 
@@ -40,19 +38,31 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 }
 $stmt_sec->close();
 
-// ========== CORRECCIÓN: Cambiar ORDER BY para que ordene por NOMBRE primero ==========
-$query_est = "SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
-                     e.fecha_nacimiento, e.lugar_nacimiento 
-              FROM estudiantes e
-              INNER JOIN inscripciones i ON e.id = i.estudiante_id
-              WHERE e.sala = ? 
-              AND e.seccion_id = ? 
-              AND i.ano_escolar = ? 
-              AND e.estatus = 'Activo' 
-              ORDER BY e.nombre ASC, e.apellido ASC";
+// ========== CONSULTA CORREGIDA ==========
+// - Debe existir inscripción en la tabla inscripciones para el período
+// - Debe tener boletín completo (3 momentos) para el período
+$ano_inicio = substr($periodo, 0, 4);
+$query_est = "
+    SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
+           e.fecha_nacimiento, e.lugar_nacimiento
+    FROM estudiantes e
+    INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar LIKE ?
+    INNER JOIN boletines b ON e.id = b.estudiante_id 
+        AND b.tipo_boletin = 'inicial'
+        AND b.periodo LIKE ?
+        AND b.m1_formacion IS NOT NULL AND b.m1_formacion != ''
+        AND b.m2_formacion IS NOT NULL AND b.m2_formacion != ''
+        AND b.m3_formacion IS NOT NULL AND b.m3_formacion != ''
+    WHERE e.sala = ? 
+      AND e.seccion_id = ? 
+      AND e.estatus = 'Activo'
+      AND e.inscripcion_completa = 1
+    ORDER BY e.nombre ASC, e.apellido ASC
+";
 
 $stmt_est = $conexion->prepare($query_est);
-$stmt_est->bind_param("sis", $sala_seleccionada, $seccion_id, $periodo); 
+$like_periodo = $ano_inicio . '%';
+$stmt_est->bind_param("sssi", $like_periodo, $like_periodo, $sala_seleccionada, $seccion_id);
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
@@ -265,10 +275,7 @@ include "../includes/header.php";
                         $cedula = !empty($est['cedula_escolar']) ? htmlspecialchars($est['cedula_escolar']) : (htmlspecialchars($est['cedula'] ?? 'S/C'));
                         $aprobado_guardado = $rendimientos[$est['id']]['aprobado'] ?? 'SI';
                         $observacion_guardada = htmlspecialchars($rendimientos[$est['id']]['observacion'] ?? '', ENT_QUOTES, 'UTF-8');
-                        
-                        // ========== CORRECCIÓN: Mostrar "NOMBRE APELLIDO" en lugar de "APELLIDO NOMBRE" ==========
                         $nombre_completo = mb_strtoupper(htmlspecialchars($est['nombre'] . ' ' . $est['apellido']));
-                        
                         $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
                         $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
                     ?>

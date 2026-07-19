@@ -20,7 +20,6 @@ if (empty($sala_seleccionada) || empty($seccion_id)) {
     die("<div class='alert alert-danger'>Error: Faltan parámetros. Genere el formulario desde el panel principal.</div>");
 }
 
-// ========== OBTENER DOCENTE Y SECCIÓN ==========
 $nombre_profesor = 'No definido';
 $nombre_seccion = '';
 $stmt_prof = $conexion->prepare("SELECT nombre FROM profesores WHERE id = ?");
@@ -39,7 +38,10 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 }
 $stmt_sec->close();
 
-// ========== CONSULTA CON JOIN A BOLETINES (primaria) ==========
+// ========== CONSULTA CORREGIDA ==========
+// - Debe existir inscripción en la tabla inscripciones para el período
+// - Debe tener boletín completo (3 lapsos) para el período
+$ano_inicio = substr($periodo, 0, 4);
 $query_est = "
     SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
            e.fecha_nacimiento, e.lugar_nacimiento,
@@ -47,17 +49,23 @@ $query_est = "
            b.literal_final,
            b.observacion AS observacion_boletin
     FROM estudiantes e
-    LEFT JOIN boletines b ON e.id = b.estudiante_id 
-        AND b.tipo_boletin = 'primaria' 
-        AND b.periodo = ?
+    INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar LIKE ?
+    INNER JOIN boletines b ON e.id = b.estudiante_id 
+        AND b.tipo_boletin = 'primaria'
+        AND b.periodo LIKE ?
+        AND b.m1_formacion IS NOT NULL AND b.m1_formacion != ''
+        AND b.m2_formacion IS NOT NULL AND b.m2_formacion != ''
+        AND b.m3_formacion IS NOT NULL AND b.m3_formacion != ''
     WHERE e.sala = ? 
       AND e.seccion_id = ? 
       AND e.estatus = 'Activo'
+      AND e.inscripcion_completa = 1
     ORDER BY e.nombre ASC, e.apellido ASC
 ";
 
 $stmt_est = $conexion->prepare($query_est);
-$stmt_est->bind_param("ssi", $periodo, $sala_seleccionada, $seccion_id);
+$like_periodo = $ano_inicio . '%';
+$stmt_est->bind_param("sssi", $like_periodo, $like_periodo, $sala_seleccionada, $seccion_id);
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
@@ -73,9 +81,6 @@ $total_alumnos = $varones + $hembras;
 
 include "../includes/header.php";
 ?>
-
-<!-- ========== EL MISMO ESTILO Y ESTRUCTURA QUE formulariopre-inicial.php ========== -->
-<!-- Solo cambia el título y la consulta (ya está cambiada) -->
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>

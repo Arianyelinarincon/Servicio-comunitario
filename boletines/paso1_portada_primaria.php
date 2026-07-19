@@ -12,8 +12,8 @@ $_SESSION['tipo_boletin'] = 'primaria';
 // Búsqueda AJAX para autocompletado
 if (isset($_GET['buscar_estudiante'])) {
     $termino = $_GET['buscar_estudiante'] . '%';
-    // Añadir filtro: solo estudiantes con inscripción completa, activos y no egresados en el período actual
     $periodo_actual = $_SESSION['ano_escolar'] ?? '2025 / 2026';
+    
     $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
                    s.nombre AS grupo, p.nombre AS doc_nombre, p.apellido AS doc_apellido
             FROM estudiantes e
@@ -30,10 +30,14 @@ if (isset($_GET['buscar_estudiante'])) {
                     AND eg.seccion_id = e.seccion_id 
                     AND eg.periodo = ?
               )
+              AND EXISTS (
+                  SELECT 1 FROM inscripciones i
+                  WHERE i.estudiante_id = e.id AND i.ano_escolar = ?
+              )
             LIMIT 10";
     $stmt = $conexion->prepare($sql);
     $buscar = "%$termino%";
-    $stmt->bind_param("ss", $buscar, $periodo_actual);
+    $stmt->bind_param("sss", $buscar, $periodo_actual, $periodo_actual);
     $stmt->execute();
     $result = $stmt->get_result();
     $sugerencias = [];
@@ -65,8 +69,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                             AND eg.sala = estudiantes.sala 
                                             AND eg.seccion_id = estudiantes.seccion_id 
                                             AND eg.periodo = ?
+                                      )
+                                      AND EXISTS (
+                                          SELECT 1 FROM inscripciones i
+                                          WHERE i.estudiante_id = estudiantes.id AND i.ano_escolar = ?
                                       )");
-    $stmt_check->bind_param("is", $estudiante_id, $periodo_actual);
+    $stmt_check->bind_param("iss", $estudiante_id, $periodo_actual, $periodo_actual);
     $stmt_check->execute();
     $existe = $stmt_check->get_result()->fetch_assoc();
     if (!$existe) {
