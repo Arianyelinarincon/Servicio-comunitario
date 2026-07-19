@@ -1,433 +1,256 @@
 <?php
-// plantilla_ficha.php - NO debe tener session_start()
-// Variables esperadas: $estudiante, $inscripciones, $id, $es_pdf, $es_preview
+session_start();
+require_once '../config/conexion.php';
 
-if (!function_exists('checkbox')) {
-    function checkbox($valor) {
-        $marcado = ($valor === 'Si' || $valor === 'Sí') ? 'checked-box' : '';
-        return '<span class="checkbox-box ' . $marcado . '"></span>';
+ini_set('display_errors', 1);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
+// ========== FUNCIÓN DE AUDITORÍA (si no está definida) ==========
+if (!function_exists('registrarAuditoria')) {
+    function registrarAuditoria($conexion, $usuario_id, $accion, $tabla, $registro_id, $detalles = null) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $stmt = $conexion->prepare("INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, detalles, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt) {
+            $stmt->bind_param("ississ", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
+            $stmt->execute();
+            $stmt->close();
+        }
     }
 }
+
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    
+    // ========== Validar campos obligatorios ==========
+    $nombre = strtoupper(trim($_POST['nombre'] ?? ''));
+    $apellido = strtoupper(trim($_POST['apellido'] ?? ''));
+    $fecha_nac = $_POST['fecha_nacimiento'] ?? '';
+    $genero = $_POST['genero'] ?? '';
+    $rep_cedula = trim($_POST['rep_cedula'] ?? '');
+    $rep_nombre = trim($_POST['rep_nombre'] ?? '');
+    $rep_telefono = trim($_POST['rep_telefono'] ?? '');
+    $madre_cedula = trim($_POST['cedula_base'] ?? ''); 
+
+    if (empty($nombre) || empty($apellido) || empty($fecha_nac) || empty($genero) || 
+        empty($rep_cedula) || empty($rep_nombre) || empty($rep_telefono) || empty($madre_cedula)) {
+        header("Location: inscripcion.php?error=campos_requeridos");
+        exit();
+    }
+
+    $conexion->begin_transaction();
+    try {
+        // ========== Verificar estudiante duplicado ==========
+        $año = date('Y', strtotime($fecha_nac));
+        $año2Dig = substr($año, -2);
+        $cedulaLimpia = preg_replace('/\D/', '', $madre_cedula);
+        $cedulaLimpia = str_pad($cedulaLimpia, 8, '0', STR_PAD_LEFT);
+        $cedulaLimpia = substr($cedulaLimpia, -8);
+        $orden_nacimiento = intval($_POST['orden_nacimiento'] ?? 1);
+        $cedula_escolar = $orden_nacimiento . $año2Dig . $cedulaLimpia;
+        if (strlen($cedula_escolar) != 11) {
+            $cedula_escolar = str_pad($cedula_escolar, 11, '0', STR_PAD_RIGHT);
+        }
+
+        // Verificar por Cédula Escolar
+        $stmt_check = $conexion->prepare("SELECT id, nombre, apellido, estatus FROM estudiantes WHERE cedula_escolar = ?");
+        $stmt_check->bind_param("s", $cedula_escolar);
+        $stmt_check->execute();
+        $result_check = $stmt_check->get_result();
+        
+        if ($result_check->num_rows > 0) {
+            $duplicado = $result_check->fetch_assoc();
+            $estado = ($duplicado['estatus'] == 'Activo') ? 'activo' : 'inactivo';
+            $nombre_duplicado = $duplicado['nombre'] . ' ' . $duplicado['apellido'];
+            $stmt_check->close();
+            
+            $mensaje = urlencode("El estudiante con Cédula Escolar $cedula_escolar ya existe en el sistema. Nombre: $nombre_duplicado (Estado: $estado)");
+            header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
+            exit();
+        }
+        $stmt_check->close();
+
+        // Verificar por Nombre + Apellido + Fecha Nacimiento
+        $stmt_check2 = $conexion->prepare("SELECT id, nombre, apellido, cedula_escolar, estatus FROM estudiantes WHERE nombre = ? AND apellido = ? AND fecha_nacimiento = ?");
+        $stmt_check2->bind_param("sss", $nombre, $apellido, $fecha_nac);
+        $stmt_check2->execute();
+        $result_check2 = $stmt_check2->get_result();
+        
+        if ($result_check2->num_rows > 0) {
+            $duplicado2 = $result_check2->fetch_assoc();
+            $estado2 = ($duplicado2['estatus'] == 'Activo') ? 'activo' : 'inactivo';
+            $stmt_check2->close();
+            
+            $mensaje = urlencode("Ya existe un estudiante con el mismo nombre ($nombre $apellido) y fecha de nacimiento. Cédula Escolar: " . $duplicado2['cedula_escolar'] . " (Estado: $estado2)");
+            header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
+            exit();
+        }
+        $stmt_check2->close();
+
+        // ==================== 1. REPRESENTANTE ====================
+        $rep_nombre = trim($_POST['rep_nombre']);
+        $rep_cedula = trim($_POST['rep_cedula']);
+        $rep_telefono = trim($_POST['rep_telefono']);
+        $rep_fecha_nac = !empty($_POST['rep_fecha_nacimiento']) ? $_POST['rep_fecha_nacimiento'] : null;
+        $rep_estado_civil = $_POST['rep_estado_civil'] ?? '';
+        $rep_afinidad = $_POST['rep_afinidad'] ?? '';
+        $rep_sexo = $_POST['rep_sexo'] ?? '';
+        $rep_pais_nac = $_POST['rep_pais_nacimiento'] ?? 'Venezuela';
+        $rep_estado_nac = $_POST['rep_estado_nacimiento'] ?? '';
+        $rep_nacionalidad = $_POST['rep_nacionalidad'] ?? 'Venezolana';
+        $rep_direccion = $_POST['rep_direccion'] ?? '';
+        $rep_estado_res = $_POST['rep_estado_residencia'] ?? '';
+        $rep_municipio = $_POST['rep_municipio'] ?? '';
+        $rep_parroquia = $_POST['rep_parroquia'] ?? '';
+        $rep_ciudad = $_POST['rep_ciudad'] ?? '';
+
+        $stmt = $conexion->prepare("INSERT INTO representantes 
+            (nombre_completo, cedula, telefono, fecha_nacimiento, estado_civil, afinidad, sexo, 
+             pais_nacimiento, estado_nacimiento, nacionalidad, direccion, estado_residencia, 
+             municipio, parroquia, ciudad, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+        $stmt->bind_param("sssssssssssssss", 
+            $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil, 
+            $rep_afinidad, $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad, 
+            $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad);
+        $stmt->execute();
+        $representante_id = $conexion->insert_id;
+        $stmt->close();
+
+        // ==================== 2. ESTUDIANTE ====================
+        $nacionalidad = $_POST['nacionalidad'] ?? 'Venezolana';
+        $pais_nac = $_POST['pais_nacimiento'] ?? 'Venezuela';
+        $estado_nac = $_POST['estado_nacimiento'] ?? '';
+        $direccion = $_POST['direccion'] ?? '';
+        $estado_res = $_POST['estado_residencia'] ?? '';
+        $municipio = $_POST['municipio'] ?? '';
+        $parroquia = $_POST['parroquia'] ?? '';
+        $ciudad = $_POST['ciudad'] ?? '';
+        $enfermedad = $_POST['enfermedad'] ?? 'No';
+        $enfermedad_cual = $_POST['enfermedad_cual'] ?? '';
+        $educacion_fisica = $_POST['educacion_fisica'] ?? 'Si';
+        $educacion_fisica_porque = $_POST['educacion_fisica_porque'] ?? '';
+        $alergia = $_POST['alergia'] ?? 'No';
+        $alergia_cual = $_POST['alergia_cual'] ?? '';
+        $madre_nombre = $_POST['madre_nombre'] ?? '';
+        $madre_telefono = $_POST['madre_telefono'] ?? '';
+        $padre_nombre = $_POST['padre_nombre'] ?? '';
+        $padre_cedula = $_POST['padre_cedula'] ?? '';
+        $padre_telefono = $_POST['padre_telefono'] ?? '';
+        $sala = ''; // Se actualizará después
+
+        // ========== CORRECCIÓN: tipos y variables coinciden ==========
+        $stmt = $conexion->prepare("INSERT INTO estudiantes 
+            (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, 
+             representante_id, nacionalidad, pais_nacimiento, estado_nacimiento, direccion, 
+             estado_residencia, municipio, parroquia, ciudad, enfermedad, enfermedad_cual, 
+             educacion_fisica, educacion_fisica_porque, alergia, alergia_cual, 
+             madre_nombre, madre_cedula, madre_telefono, padre_nombre, padre_cedula, padre_telefono, 
+             orden_nacimiento, estatus, created_at, inscripcion_completa) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW(), ?)");
+
+        // 26 strings + 3 enteros = 29 placeholders
+        $types = str_repeat('s', 26) . 'iii'; // 26 strings: nombre hasta padre_telefono, 3 ints: representante_id, orden_nacimiento, inscripcion_completa
+
+        $inscripcion_completa = 1; // Marcar como inscripción completa
+
+        $stmt->bind_param($types, 
+            $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
+            $nacionalidad, $pais_nac, $estado_nac, $direccion, $estado_res, $municipio, $parroquia, $ciudad,
+            $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
+            $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
+            $padre_nombre, $padre_cedula, $padre_telefono, $orden_nacimiento, $inscripcion_completa
+        );
+        $stmt->execute();
+        $estudiante_id = $conexion->insert_id;
+        $stmt->close();
+
+        // ==================== 3. INSCRIPCIONES ====================
+        $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
+        $registro_arr = $_POST['registro'] ?? [];
+        $repite_arr = $_POST['repite'] ?? [];
+        $c_arr = $_POST['c'] ?? [];
+        $f_arr = $_POST['f'] ?? [];
+        $p_arr = $_POST['p'] ?? [];
+        $peso_arr = $_POST['peso'] ?? [];
+        $talla_arr = $_POST['talla'] ?? [];
+
+        $fecha_inscripcion = date('Y-m-d');
+        $funcionario = $_SESSION['nombre_profesor'] ?? $_SESSION['usuario'] ?? 'Sistema';
+
+        $stmt_ins = $conexion->prepare("INSERT INTO inscripciones 
+            (estudiante_id, ano_escolar, grado_seccion, registro, repite, c, f, p, peso, talla, 
+             firma_representante, fecha_inscripcion, funcionario) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)");
+
+        for ($i = 0; $i < count($ano_escolar_arr); $i++) {
+            $ano = $ano_escolar_arr[$i] ?? '';
+            $grado = ''; // Ya no se usa, lo dejamos vacío
+            $registro = $registro_arr[$i] ?? '';
+            $repite = $repite_arr[$i] ?? 'No';
+            $c = $c_arr[$i] ?? '';
+            $f = $f_arr[$i] ?? '';
+            $p = $p_arr[$i] ?? '';
+            $peso = !empty($peso_arr[$i]) ? floatval($peso_arr[$i]) : null;
+            $talla = !empty($talla_arr[$i]) ? floatval($talla_arr[$i]) : null;
+
+            $stmt_ins->bind_param("isssssssddss", 
+                $estudiante_id, $ano, $grado, $registro, $repite, $c, $f, $p, $peso, $talla, 
+                $fecha_inscripcion, $funcionario);
+            $stmt_ins->execute();
+        }
+        $stmt_ins->close();
+
+        // ==================== 4. ACTUALIZAR SALA Y SECCIÓN DEL ESTUDIANTE ====================
+        // Obtener la sala y sección del último registro de inscripción (grado_seccion)
+        if (count($grado_seccion_arr ?? []) > 0) {
+            $ultimo_grado = end($grado_seccion_arr);
+            // Extraer sala del texto "sala4 - Sección U"
+            $partes = explode(' - ', $ultimo_grado);
+            $sala_actual = $partes[0] ?? '';
+            
+            // Obtener el ID de la sección
+            $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
+            $nombre_seccion = $partes[1] ?? '';
+            $stmt_sec->bind_param("ss", $sala_actual, $nombre_seccion);
+            $stmt_sec->execute();
+            $row_sec = $stmt_sec->get_result()->fetch_assoc();
+            $seccion_id = $row_sec['id'] ?? null;
+            $stmt_sec->close();
+
+            if ($seccion_id) {
+                $stmt_upd = $conexion->prepare("UPDATE estudiantes SET sala = ?, seccion_id = ? WHERE id = ?");
+                $stmt_upd->bind_param("sii", $sala_actual, $seccion_id, $estudiante_id);
+                $stmt_upd->execute();
+                $stmt_upd->close();
+            }
+        }
+
+        // ==================== 5. AUDITORÍA ====================
+        $usuario_id = $_SESSION['usuario_id'] ?? 0;
+        if ($usuario_id > 0) {
+            $detalles = "Nuevo estudiante: $nombre $apellido (Cédula Escolar: $cedula_escolar)";
+            registrarAuditoria($conexion, $usuario_id, 'INSCRIBIR_ESTUDIANTE', 'estudiantes', $estudiante_id, $detalles);
+        }
+
+        $conexion->commit();
+        
+        header("Location: inscripcion_exito.php?id=$estudiante_id");
+        exit();
+        
+    } catch (Exception $e) {
+        $conexion->rollback();
+        error_log("Error en inscripción: " . $e->getMessage());
+        header("Location: inscripcion.php?error=1");
+        exit();
+    }
+} else {
+    header("Location: inscripcion.php");
+    exit();
+}
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ficha de Inscripción - <?= htmlspecialchars($estudiante['nombre'] . ' ' . $estudiante['apellido']) ?></title>
-    
-    <style>
-        /* ===== ESTILOS PARA PANTALLA Y PDF ===== */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            background-color: <?= $es_preview ? '#f4f6f9' : '#fff' ?>;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 1.3;
-            color: #000;
-            margin: 0;
-            padding: <?= $es_preview ? '20px' : '0' ?>;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .hoja-impresion {
-            background-color: #fff;
-            max-width: <?= $es_preview ? '850px' : '100%' ?>;
-            width: 100%;
-            margin: 0 auto;
-            padding: <?= $es_preview ? '40px 50px' : '0.8cm 1cm' ?>;
-            box-shadow: <?= $es_preview ? '0 0 10px rgba(0,0,0,0.1)' : 'none' ?>;
-            color: #000;
-            font-size: 11px;
-            line-height: 1.3;
-            box-sizing: border-box;
-        }
-
-        /* ===== CABECERA CON FOTOS ===== */
-        .header-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 10px;
-        }
-        .header-table td {
-            vertical-align: top;
-            padding: 0;
-        }
-        .header-title {
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            padding-top: 5px;
-        }
-        .fotos-box {
-            text-align: right;
-            white-space: nowrap;
-        }
-        .foto-box {
-            display: inline-block;
-            width: 65px;
-            height: 85px;
-            border: 1.5px solid #000;
-            background: #fafafa;
-            margin-left: 5px;
-        }
-
-        /* ===== SECCIONES ===== */
-        .seccion-titulo {
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-top: 14px;
-            margin-bottom: 6px;
-            font-size: 11px;
-            border-bottom: 1px solid #000;
-            padding-bottom: 2px;
-        }
-        .fila {
-            display: table;
-            width: 100%;
-            margin-bottom: 2px;
-        }
-        .grupo {
-            display: table-cell;
-            vertical-align: baseline;
-            padding-right: 4px;
-            white-space: nowrap;
-        }
-        .grupo label {
-            font-size: 10px;
-            font-weight: normal;
-        }
-        .dato {
-            font-weight: bold;
-            text-transform: uppercase;
-            color: #222;
-            font-size: 10px;
-            border-bottom: 1px solid #000;
-            display: inline-block;
-            min-width: 30px;
-            padding-bottom: 0px;
-            margin-left: 2px;
-        }
-        .dato-line {
-            display: inline-block;
-            min-width: 18px;
-            text-align: center;
-            font-weight: bold;
-        }
-        .opciones-cb {
-            display: inline-block;
-            font-size: 12px;
-            margin-left: 2px;
-        }
-        .checkbox-box {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border: 1px solid #000;
-            margin-right: 3px;
-            vertical-align: middle;
-        }
-        .checked-box {
-            background-color: #000;
-        }
-
-        /* ===== TABLA DE HISTORIAL ESCOLAR ===== */
-        .tabla-notas {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            font-size: 8px;
-            text-align: center;
-        }
-        .tabla-notas th, .tabla-notas td {
-            border: 1px solid #000;
-            padding: 2px 1px;
-            vertical-align: middle;
-        }
-        .tabla-notas th {
-            font-weight: bold;
-            background: transparent;
-            font-size: 7px;
-            text-transform: uppercase;
-        }
-        .tabla-notas td {
-            font-weight: bold;
-            text-transform: uppercase;
-            font-size: 7px;
-        }
-        .tabla-notas td .dato-line {
-            min-width: 12px;
-        }
-
-        /* ===== PIE DE PÁGINA ===== */
-        .footer-pdf {
-            text-align: center;
-            font-size: 6.5px;
-            color: #999;
-            border-top: 1px solid #ddd;
-            padding-top: 4px;
-            margin-top: 10px;
-        }
-
-        /* ===== OCULTAR ENCABEZADO Y PIE DE PÁGINA AL IMPRIMIR ===== */
-        @media print {
-            body { background: #fff; padding: 0; margin: 0; }
-            .hoja-impresion { 
-                box-shadow: none !important; 
-                padding: 0.8cm 1cm; 
-                max-width: 100%; 
-                border: none !important;
-                margin: 0 !important;
-            }
-            @page { 
-                margin: 1.2cm; 
-                size: letter portrait;
-            }
-            .header-table { margin-bottom: 5px; }
-            body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-        }
-    </style>
-</head>
-<body>
-
-<?php if ($es_preview): ?>
-<!-- Integración de FontAwesome y los estilos exactos de tus botones -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-<style>
-    .botones-accion {
-        text-align: center;
-        margin-top: 10px;
-        margin-bottom: 20px;
-    }
-    .btn-volver, .btn-descargar, .btn-imprimir {
-        color: white !important;
-        border: none;
-        padding: 7px 20px;
-        border-radius: 5px;
-        font-weight: bold;
-        transition: background 0.3s;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 14px;
-        cursor: pointer;
-        font-family: Arial, sans-serif;
-    }
-    .btn-volver { background-color: #6c757d; }
-    .btn-volver:hover { background-color: #5a6268; }
-    
-    .btn-descargar { background-color: #28a745; }
-    .btn-descargar:hover { background-color: #218838; }
-    
-    .btn-imprimir { background-color: #17a2b8; }
-    .btn-imprimir:hover { background-color: #138496; }
-    
-    .me-2 { margin-right: 8px; }
-    
-    @media print {
-        .d-print-none { display: none !important; }
-    }
-</style>
-
-<div class="botones-accion d-print-none">
-    <button onclick="window.print()" class="btn-imprimir me-2">
-        <i class="fas fa-print me-2"></i> Imprimir
-    </button>
-    <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn-descargar me-2">
-        <i class="fas fa-file-pdf me-2"></i> Descargar PDF
-    </a>
-    <a href="ver_ficha.php?id=<?= $id ?>" class="btn-volver">
-        <i class="fas fa-arrow-left me-2"></i> Volver
-    </a>
-</div>
-<?php endif; ?>
-
-<div class="hoja-impresion">
-    
-    <!-- ===== CABECERA CON FOTOS ===== -->
-    <table class="header-table">
-        <tr>
-            <td style="width: 70%;">
-                <div class="header-title">FICHA DE INSCRIPCIÓN</div>
-            </td>
-            <td style="width: 30%;" class="fotos-box">
-                <span class="foto-box"></span>
-                <span class="foto-box"></span>
-            </td>
-        </tr>
-    </table>
-
-    <!-- ===== DATOS DEL ALUMNO ===== -->
-    <div class="seccion-titulo">DATOS DEL ALUMNO</div>
-    
-    <div class="fila">
-        <span class="grupo" style="width:45%;"><label>Nombres y Apellidos</label> <span class="dato"><?= htmlspecialchars($estudiante['nombre'] . ' ' . $estudiante['apellido']) ?></span></span>
-        <span class="grupo" style="width:22%;"><label>Fecha Nacimiento:</label> <span class="dato"><?= !empty($estudiante['fecha_nacimiento']) ? date('d/m/Y', strtotime($estudiante['fecha_nacimiento'])) : '' ?></span></span>
-        <span class="grupo" style="width:15%;"><label>Sexo</label> <span class="dato"><?= htmlspecialchars($estudiante['genero'] ?? '') ?></span></span>
-    </div>
-    
-    <div class="fila">
-        <span class="grupo" style="width:25%;"><label>Cédula Escolar</label> <span class="dato"><?= htmlspecialchars($estudiante['cedula_escolar'] ?? '') ?></span></span>
-        <span class="grupo" style="width:25%;"><label>Nacionalidad</label> <span class="dato"><?= htmlspecialchars($estudiante['nacionalidad'] ?? '') ?></span></span>
-        <span class="grupo" style="width:25%;"><label>País de Nacimiento</label> <span class="dato"><?= htmlspecialchars($estudiante['pais_nacimiento'] ?? '') ?></span></span>
-    </div>
-    
-    <div class="fila">
-        <span class="grupo" style="width:25%;"><label>Estado de Nacimiento</label> <span class="dato"><?= htmlspecialchars($estudiante['estado_nacimiento'] ?? '') ?></span></span>
-        <span class="grupo" style="width:75%;"><label>Dirección:</label> <span class="dato"><?= htmlspecialchars($estudiante['direccion'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:20%;"><label>Estado de Residencia</label> <span class="dato"><?= htmlspecialchars($estudiante['estado_residencia'] ?? '') ?></span></span>
-        <span class="grupo" style="width:20%;"><label>Municipio</label> <span class="dato"><?= htmlspecialchars($estudiante['municipio'] ?? '') ?></span></span>
-        <span class="grupo" style="width:20%;"><label>Parroquia:</label> <span class="dato"><?= htmlspecialchars($estudiante['parroquia'] ?? '') ?></span></span>
-        <span class="grupo" style="width:20%;"><label>Ciudad:</label> <span class="dato"><?= htmlspecialchars($estudiante['ciudad'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:22%;">
-            <label>Sufre Alguna Enfermedad</label>
-            <span class="opciones-cb">
-                <?= checkbox($estudiante['enfermedad'] ?? '') ?> Si
-                <?php $no = ($estudiante['enfermedad'] ?? '') == 'No' ? 'checked-box' : ''; ?>
-                <span class="checkbox-box <?= $no ?>" style="margin-left:8px;"></span> No
-            </span>
-        </span>
-        <span class="grupo" style="width:38%;"><label>Cual:</label> <span class="dato"><?= htmlspecialchars($estudiante['enfermedad_cual'] ?? '') ?></span></span>
-        <span class="grupo" style="width:30%;">
-            <label>Puede Realizar Educación Física</label>
-            <span class="opciones-cb">
-                <?= checkbox($estudiante['educacion_fisica'] ?? '') ?> Si
-                <?php $no2 = ($estudiante['educacion_fisica'] ?? '') == 'No' ? 'checked-box' : ''; ?>
-                <span class="checkbox-box <?= $no2 ?>" style="margin-left:8px;"></span> No
-            </span>
-        </span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:30%;"><label>Porque</label> <span class="dato"><?= htmlspecialchars($estudiante['educacion_fisica_porque'] ?? '') ?></span></span>
-        <span class="grupo" style="width:28%;">
-            <label>Es alérgico algún medicamento:</label>
-            <span class="opciones-cb">
-                <?= checkbox($estudiante['alergia'] ?? '') ?> Si
-                <?php $no3 = ($estudiante['alergia'] ?? '') == 'No' ? 'checked-box' : ''; ?>
-                <span class="checkbox-box <?= $no3 ?>" style="margin-left:8px;"></span> No
-            </span>
-        </span>
-        <span class="grupo" style="width:35%;"><label>Cual:</label> <span class="dato"><?= htmlspecialchars($estudiante['alergia_cual'] ?? '') ?></span></span>
-    </div>
-
-    <!-- ===== DATOS DEL REPRESENTANTE ===== -->
-    <div class="seccion-titulo">DATOS DEL REPRESENTANTE</div>
-
-    <div class="fila">
-        <span class="grupo" style="width:22%;"><label>Cédula de Identidad:</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_cedula'] ?? '') ?></span></span>
-        <span class="grupo" style="width:78%;"><label>Nombres y Apellidos:</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_nombre'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:18%;"><label>Fecha Nacimiento</label> <span class="dato"><?= !empty($estudiante['rep_fecha_nac']) ? date('d/m/Y', strtotime($estudiante['rep_fecha_nac'])) : '' ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Estado Civil.</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_estado_civil'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Afinidad:</label> <span class="dato"><?= htmlspecialchars($estudiante['afinidad'] ?? '') ?></span></span>
-        <span class="grupo" style="width:22%;"><label>Teléfono:</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_telefono'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:12%;"><label>Sexo</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_sexo'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>País de Nacimiento</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_pais_nac'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Estado de Nacimiento:</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_estado_nac'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Nacionalidad:</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_nacionalidad'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:35%;"><label>Dirección</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_direccion'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Estado de Residencia.</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_estado_res'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Municipio</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_municipio'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:18%;"><label>Parroquia</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_parroquia'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Ciudad</label> <span class="dato"><?= htmlspecialchars($estudiante['rep_ciudad'] ?? '') ?></span></span>
-    </div>
-
-    <!-- ===== DATOS DE LOS PADRES ===== -->
-    <div class="seccion-titulo">DATOS DE LOS PADRES</div>
-
-    <div class="fila">
-        <span class="grupo" style="width:38%;"><label>Nombres y Apellidos de la Madre</label> <span class="dato"><?= htmlspecialchars($estudiante['madre_nombre'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Cédula</label> <span class="dato"><?= htmlspecialchars($estudiante['madre_cedula'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Teléfono</label> <span class="dato"><?= htmlspecialchars($estudiante['madre_telefono'] ?? '') ?></span></span>
-    </div>
-
-    <div class="fila">
-        <span class="grupo" style="width:38%;"><label>Nombre y Apellido del Padre</label> <span class="dato"><?= htmlspecialchars($estudiante['padre_nombre'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Cédula</label> <span class="dato"><?= htmlspecialchars($estudiante['padre_cedula'] ?? '') ?></span></span>
-        <span class="grupo" style="width:18%;"><label>Teléfono</label> <span class="dato"><?= htmlspecialchars($estudiante['padre_telefono'] ?? '') ?></span></span>
-    </div>
-
-    <!-- ===== HISTORIAL ESCOLAR (CON FUNCIONARIO VACÍO) ===== -->
-    <table class="tabla-notas">
-        <thead>
-            <tr>
-                <th style="width:11%;">Año Escolar</th>
-                <th style="width:11%;">Grado y<br>Sección</th>
-                <th style="width:5%;">Reg.</th>
-                <th style="width:5%;">Rep</th>
-                <th style="width:5%;">C</th>
-                <th style="width:5%;">F</th>
-                <th style="width:5%;">P</th>
-                <th style="width:6%;">Peso</th>
-                <th style="width:6%;">Talla</th>
-                <th style="width:12%;">Firma<br>Representante</th>
-                <th style="width:10%;">Fecha<br>Inscripción</th>
-                <th style="width:10%;">Funcionario</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php for($i = 0; $i < 8; $i++): ?>
-                <?php 
-                $ins = isset($inscripciones[$i]) ? $inscripciones[$i] : null; 
-                if ($ins):
-                    $anos = explode('-', $ins['ano_escolar']);
-                    $ano1 = isset($anos[0]) ? substr(trim($anos[0]), -2) : '';
-                    $ano2 = isset($anos[1]) ? substr(trim($anos[1]), -2) : '';
-                ?>
-                <tr>
-                    <td>20<span class="dato-line"><?= $ano1 ?></span> - 20<span class="dato-line"><?= $ano2 ?></span></td>
-                    <td><?= htmlspecialchars($ins['grado_seccion'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['registro'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['repite'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['c'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['f'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['p'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['peso'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['talla'] ?? '') ?></td>
-                    <td></td>
-                    <td><?= !empty($ins['fecha_inscripcion']) ? date('d/m/Y', strtotime($ins['fecha_inscripcion'])) : '' ?></td>
-                    <td></td>
-                </tr>
-                <?php else: ?>
-                <tr>
-                    <td>20<span class="dato-line"></span> - 20<span class="dato-line"></span></td>
-                    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-                </tr>
-                <?php endif; ?>
-            <?php endfor; ?>
-        </tbody>
-    </table>
-
-    <div class="footer-pdf">
-        Documento generado por el Sistema de Gestión Educativa - U.E.B.N. Juan Pablo Pérez Alfonzo<br>
-        Fecha: <?= date('d/m/Y H:i:s') ?>
-    </div>
-
-</div>
-
-</body>
-</html>
