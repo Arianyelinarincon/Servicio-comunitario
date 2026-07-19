@@ -88,9 +88,7 @@ include '../includes/header.php';
             <a href="index.php" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Volver a Asistencia
             </a>
-            <a href="editar_resumen.php" class="btn btn-info">
-                <i class="fas fa-plus"></i> Crear Nuevo Resumen
-            </a>
+            
         </div>
     </div>
 
