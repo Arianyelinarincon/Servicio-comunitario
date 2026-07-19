@@ -38,6 +38,12 @@ if ($error_tipo === 'duplicado' && isset($_GET['mensaje'])) {
         Por favor complete todos los campos obligatorios marcados con <span class="text-danger">*</span>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     </div>';
+} elseif ($error_tipo === 'padres_requeridos') {
+    $mensaje_error = '<div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-circle"></i> <strong>Datos de padres requeridos.</strong><br>
+        Debe completar al menos el nombre de la madre o del padre.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>';
 } elseif ($error_tipo === '1') {
     $mensaje_error = '<div class="alert alert-danger alert-dismissible fade show" role="alert">
         <i class="fas fa-exclamation-triangle"></i> <strong>Error al guardar.</strong><br>
@@ -46,14 +52,13 @@ if ($error_tipo === 'duplicado' && isset($_GET['mensaje'])) {
     </div>';
 }
 
-// Obtener secciones para el historial
+// Obtener secciones para el historial (formato: "sala - letra" sin "Sección")
 $secciones = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 $opciones_secciones = '<option value="">Seleccione</option>';
 while($sec = $secciones->fetch_assoc()) {
-    $opciones_secciones .= '<option value="' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '">' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '</option>';
+    $opciones_secciones .= '<option value="' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '">' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '</option>';
 }
 ?>
-
 <div class="container mt-4 mb-5">
     <div class="card shadow-sm border-0">
         <div class="card-header bg-navy text-white rounded-top">
@@ -80,13 +85,6 @@ while($sec = $secciones->fetch_assoc()) {
                 <!-- Campo oculto para el procesador -->
                 <input type="hidden" name="madre_cedula_temp" id="madre_cedula_temp">
                 <input type="hidden" name="fecha_ingreso_prefill" id="fecha_ingreso_prefill" value="<?= htmlspecialchars($prefill_data['fi'] ?? '') ?>">
-                
-                <!-- Campos ocultos para el año actual -->
-                <input type="hidden" name="grado_actual" id="grado_actual" value="">
-                <input type="hidden" name="seccion_actual_id" id="seccion_actual_id" value="">
-                <input type="hidden" name="peso_actual" id="peso_actual" value="">
-                <input type="hidden" name="talla_actual" id="talla_actual" value="">
-                <input type="hidden" name="ano_escolar_actual" id="ano_escolar_actual" value="">
                 
                 <ul class="nav nav-tabs nav-justified mb-4 border-0" id="stepTabs">
                     <li class="nav-item"><a class="nav-link active rounded-0" href="#step1" data-step="1">1. Datos del Alumno</a></li>
@@ -335,7 +333,10 @@ while($sec = $secciones->fetch_assoc()) {
 
                 <!-- STEP 3 -->
                 <div id="step3" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DE LOS PADRES</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DE LOS PADRES <span class="text-danger">*</span></h5>
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-2"></i> Debe completar al menos el nombre de la madre o del padre.
+                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <h6 class="text-primary">Madre</h6>
@@ -358,7 +359,7 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                     <div class="d-flex justify-content-between mt-4">
                         <button type="button" class="btn btn-secondary px-4 prev-step"><i class="fas fa-arrow-left me-1"></i> Anterior</button>
-                        <button type="button" class="btn btn-primary px-4 next-step">Siguiente <i class="fas fa-arrow-right ms-1"></i></button>
+                        <button type="button" class="btn btn-primary px-4 next-step" id="nextStep3">Siguiente <i class="fas fa-arrow-right ms-1"></i></button>
                     </div>
                 </div>
 
@@ -371,18 +372,11 @@ while($sec = $secciones->fetch_assoc()) {
                         Al guardar, se actualizará automáticamente su grado, sección, peso y talla.
                     </div>
                     
-                    <!-- Campos ocultos para el año actual -->
-                    <input type="hidden" name="grado_actual" id="grado_actual" value="">
-                    <input type="hidden" name="seccion_actual_id" id="seccion_actual_id" value="">
-                    <input type="hidden" name="peso_actual" id="peso_actual" value="">
-                    <input type="hidden" name="talla_actual" id="talla_actual" value="">
-                    <input type="hidden" name="ano_escolar_actual" id="ano_escolar_actual" value="">
-                    
                     <div class="table-responsive">
                         <table class="table table-bordered table-sm" id="tablaHistorial">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Año Escolar</th>
+                                    <th style="min-width:130px;">Año Escolar</th>
                                     <th>Grado y Sección</th>
                                     <th>Reg.</th>
                                     <th>Rep.</th>
@@ -564,9 +558,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // ---------- VALIDACIÓN DE PADRES EN STEP 3 ----------
+    document.getElementById('nextStep3')?.addEventListener('click', function(e) {
+        const madreNombre = document.getElementById('madre_nombre').value.trim();
+        const padreNombre = document.getElementById('padre_nombre').value.trim();
+        if (!madreNombre && !padreNombre) {
+            alert('⚠️ Debe completar al menos el nombre de la madre o del padre.');
+            e.preventDefault();
+            return false;
+        }
+        // Si todo está bien, avanzar al paso 4
+        nextHandler();
+    });
+
     // ---------- WIZARD ----------
     const steps = document.querySelectorAll('.step');
-    const nextBtns = document.querySelectorAll('.next-step');
+    const nextBtns = document.querySelectorAll('.next-step:not(#nextStep3)');
     const prevBtns = document.querySelectorAll('.prev-step');
     const tabs = document.querySelectorAll('#stepTabs .nav-link');
     const progressBar = document.getElementById('progressBar');
@@ -811,6 +818,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const wizardForm = document.getElementById('wizardForm');
     if (wizardForm) {
         wizardForm.addEventListener('submit', function(e) {
+            // Verificar que haya al menos una fila marcada como actual (por seguridad)
             const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
             if (actuales.length === 0) {
                 e.preventDefault();
@@ -836,7 +844,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ============================================================================
-    // DATOS GEOGRÁFICOS (resumido para no repetir todo)
+    // DATOS GEOGRÁFICOS (resumido)
     // ============================================================================
     const paisesLista = [
         'Venezuela', 'Argentina', 'Bolivia', 'Brasil', 'Chile', 'Colombia',
@@ -1112,6 +1120,14 @@ document.addEventListener('DOMContentLoaded', function() {
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+    #tablaHistorial {
+        table-layout: auto !important;
+    }
+    #tablaHistorial th:first-child,
+    #tablaHistorial td:first-child {
+        min-width: 130px;
+        white-space: nowrap;
     }
 </style>
 

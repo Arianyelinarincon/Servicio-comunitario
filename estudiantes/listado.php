@@ -6,6 +6,23 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'a
 }
 require_once '../config/conexion.php';
 
+// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
+function verificarCamposCompletos($datos) {
+    $obligatorios = [
+        'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar',
+        'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'
+    ];
+    foreach ($obligatorios as $campo) {
+        if (empty($datos[$campo])) {
+            return false;
+        }
+    }
+    if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
+        return false;
+    }
+    return true;
+}
+
 // CSRF token (para eliminación)
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -83,24 +100,36 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                         <td><strong><?= htmlspecialchars($e['nombre'] . ' ' . $e['apellido']) ?></strong></td>
                         <td>
                             <?php
-                            // Verificar campos faltantes
-                            $faltantes = [];
-                            if (empty($e['direccion'])) $faltantes[] = 'Dirección';
-                            if (empty($e['rep_cedula']) && empty($e['rep_nombre'])) $faltantes[] = 'Representante';
-                            if (empty($e['madre_cedula']) && empty($e['madre_nombre'])) $faltantes[] = 'Madre';
-                            if (empty($e['padre_cedula']) && empty($e['padre_nombre'])) $faltantes[] = 'Padre';
-                            if (empty($e['fecha_nacimiento'])) $faltantes[] = 'Fecha Nac.';
-                            if (empty($e['cedula_escolar'])) $faltantes[] = 'Cédula Escolar';
-                            // Puedes agregar más campos aquí (ej. telefono del representante, etc.)
-
-                            if (!empty($faltantes)) {
-                                echo '<span class="text-warning" title="Faltan datos: ' . implode(', ', $faltantes) . '">
-                                        <i class="fas fa-exclamation-triangle fa-lg"></i>
-                                      </span>';
+                            $datos_verificar = [
+                                'nombre' => $e['nombre'],
+                                'apellido' => $e['apellido'],
+                                'fecha_nacimiento' => $e['fecha_nacimiento'],
+                                'genero' => $e['genero'],
+                                'cedula_escolar' => $e['cedula_escolar'],
+                                'rep_nombre' => $e['rep_nombre'],
+                                'rep_cedula' => $e['rep_cedula'],
+                                'rep_telefono' => $e['rep_telefono'],
+                                'sala' => $e['sala'],
+                                'seccion_id' => $e['seccion_id'],
+                                'madre_nombre' => $e['madre_nombre'],
+                                'padre_nombre' => $e['padre_nombre'],
+                            ];
+                            $completa = verificarCamposCompletos($datos_verificar);
+                            if ($completa) {
+                                echo '<span class="text-success" title="Inscripción completa"><i class="fas fa-check-circle fa-lg"></i></span>';
                             } else {
-                                echo '<span class="text-success" title="Todos los datos completos">
-                                        <i class="fas fa-check-circle fa-lg"></i>
-                                      </span>';
+                                // Obtener lista de campos faltantes para el tooltip
+                                $faltantes = [];
+                                $obligatorios = ['nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar', 'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'];
+                                foreach ($obligatorios as $campo) {
+                                    if (empty($e[$campo])) {
+                                        $faltantes[] = $campo;
+                                    }
+                                }
+                                if (empty($e['madre_nombre']) && empty($e['padre_nombre'])) {
+                                    $faltantes[] = 'madre/padre';
+                                }
+                                echo '<span class="text-warning" title="Faltan: ' . implode(', ', $faltantes) . '"><i class="fas fa-exclamation-triangle fa-lg"></i></span>';
                             }
                             ?>
                         </td>
@@ -143,7 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
     $id = intval($_POST['id']);
 
-    // Obtener nombre del estudiante para auditoría
     $stmt_nombre = $conexion->prepare("SELECT nombre, apellido FROM estudiantes WHERE id = ?");
     $stmt_nombre->bind_param("i", $id);
     $stmt_nombre->execute();
@@ -152,13 +180,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $stmt_nombre->close();
     $nombre_estudiante = $estudiante ? $estudiante['nombre'] . ' ' . $estudiante['apellido'] : 'ID: ' . $id;
 
-    // Baja lógica
     $stmt = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $stmt->close();
 
-    // Auditoría
     $usuario_id = $_SESSION['usuario_id'] ?? 0;
     if ($usuario_id > 0 && function_exists('registrarAuditoria')) {
         registrarAuditoria($conexion, $usuario_id, 'ELIMINAR_ESTUDIANTE', 'estudiantes', $id, "Baja lógica (estatus -> Inactivo) del estudiante: $nombre_estudiante");
@@ -170,7 +196,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
 include '../includes/header.php';
 
-// Obtener filtros para los selects (solo para la vista inicial)
 $sala_filtro = isset($_GET['sala']) ? trim($_GET['sala']) : '';
 $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
 ?>
@@ -230,13 +255,6 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
         border-radius: 6px;
         font-size: 0.78rem;
     }
-    .btn-accion {
-        margin: 2px;
-        border-radius: 6px;
-        padding: 5px 10px;
-        font-size: 0.78rem;
-    }
-    .btn-accion i { font-size: 0.9rem; }
     #busquedaInput {
         transition: all 0.3s ease;
     }
@@ -264,7 +282,6 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
         </div>
     </div>
 
-    <!-- Mensajes -->
     <?php if (isset($_GET['msg']) && $_GET['msg'] === 'deleted'): ?>
         <div class="alert alert-success alert-dismissible fade show">
             Estudiante eliminado correctamente.
@@ -272,7 +289,7 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
         </div>
     <?php endif; ?>
 
-    <!-- Filtros con buscador en tiempo real (sin botones) -->
+    <!-- Filtros -->
     <div class="card card-filtros">
         <div class="card-body p-4">
             <form method="GET" action="listado.php" id="filtroForm" autocomplete="off">
@@ -319,7 +336,6 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
 </div>
 
 <script>
-// ========== FILTRO EN TIEMPO REAL ==========
 const busquedaInput = document.getElementById('busquedaInput');
 const salaSelect = document.getElementById('salaSelect');
 const tablaContainer = document.getElementById('tabla-container');
@@ -331,7 +347,6 @@ function cargarTabla() {
     const termino = busquedaInput.value.trim();
     const sala = salaSelect.value;
 
-    // Mostrar loading
     tablaContainer.innerHTML = `
         <div class="text-center py-5">
             <div class="spinner-border text-primary" role="status">
@@ -350,7 +365,6 @@ function cargarTabla() {
         .then(response => response.text())
         .then(html => {
             tablaContainer.innerHTML = html;
-            // Actualizar contadores
             const filas = tablaContainer.querySelectorAll('tbody tr');
             const total = filas.length;
             contadorTotal.textContent = total;
@@ -366,18 +380,14 @@ function cargarTabla() {
         });
 }
 
-// Disparar búsqueda al escribir (con debounce)
 busquedaInput.addEventListener('input', function() {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(cargarTabla, 400);
-    // Mantener el foco
     this.focus();
 });
 
-// Disparar búsqueda al cambiar sala
 salaSelect.addEventListener('change', cargarTabla);
 
-// Mantener el foco después de recargar
 document.addEventListener('DOMContentLoaded', function() {
     if (busquedaInput) {
         busquedaInput.focus();

@@ -77,6 +77,8 @@ $options->set('isHtml5ParserEnabled', true);
 $options->set('isRemoteEnabled', true);
 $dompdf = new Dompdf($options);
 
+
+
 ob_start();
 ?>
 <!DOCTYPE html>
