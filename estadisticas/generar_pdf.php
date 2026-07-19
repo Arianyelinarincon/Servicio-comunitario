@@ -9,7 +9,7 @@ if (!isset($_SESSION['usuario'])) {
 // ========== DETECTAR SI VIENE DEL HISTORIAL (GET) O DEL FORMULARIO (POST) ==========
 $desde_historial = isset($_GET['id']) && !empty($_GET['id']);
 
-// Variables por defecto para evitar undefined
+// Variables por defecto
 $porcentaje_total = 0;
 $dias_habiles = 0;
 $mat_v = 0;
@@ -45,10 +45,8 @@ $nombres_salas = [
 function capitalizarNombre($nombre) {
     $nombre = trim($nombre);
     if (empty($nombre)) return '';
-    // Dividir en palabras
     $palabras = explode(' ', $nombre);
     $palabras = array_map(function($palabra) {
-        // Palabras que no se capitalizan (conjunciones, preposiciones)
         $excepciones = ['de', 'la', 'del', 'las', 'los', 'y', 'e', 'o', 'u', 'con', 'sin', 'por', 'para'];
         $palabra_lower = strtolower($palabra);
         if (in_array($palabra_lower, $excepciones)) {
@@ -59,6 +57,7 @@ function capitalizarNombre($nombre) {
     return implode(' ', $palabras);
 }
 
+// ========== CARGAR DATOS DESDE POST O HISTORIAL ==========
 if ($desde_historial) {
     // ========== CARGAR DATOS DESDE EL HISTORIAL ==========
     $id_resumen = (int)$_GET['id'];
@@ -87,10 +86,8 @@ if ($desde_historial) {
     $porcentaje_total = (int)$resumen['porcentaje_asistencia'];
     $observaciones = $resumen['observaciones'];
     
-    // Decodificar JSONs
+    // Decodificar JSONs de clasificación
     $datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
-    $ingresos_display = json_decode($resumen['ingresos'], true) ?: [];
-    $egresos_display = json_decode($resumen['egresos'], true) ?: [];
     
     // Obtener nombre del docente
     $nombre_docente = 'No definido';
@@ -193,49 +190,6 @@ if ($desde_historial) {
     $extranjero_v = $_POST['extranjero_v'] ?? [];
     $extranjero_h = $_POST['extranjero_h'] ?? [];
     
-    // INGRESOS / EGRESOS
-    $ingreso_apellido = $_POST['ingreso_apellido'] ?? [];
-    $ingreso_nombre = $_POST['ingreso_nombre'] ?? [];
-    $ingreso_genero = $_POST['ingreso_genero'] ?? [];
-    $ingreso_ci = $_POST['ingreso_ci'] ?? [];
-    $ingreso_fn = $_POST['ingreso_fn'] ?? [];
-    $ingreso_fi = $_POST['ingreso_fi'] ?? [];
-    
-    $egreso_apellido = $_POST['egreso_apellido'] ?? [];
-    $egreso_nombre = $_POST['egreso_nombre'] ?? [];
-    $egreso_genero = $_POST['egreso_genero'] ?? [];
-    $egreso_ci = $_POST['egreso_ci'] ?? [];
-    $egreso_fn = $_POST['egreso_fn'] ?? [];
-    $egreso_fi = $_POST['egreso_fi'] ?? [];
-    
-    // Combinar nombres
-    $ingresos_display = [];
-    foreach ($ingreso_apellido as $idx => $apellido) {
-        if (trim($apellido) === '') continue;
-        $nombre = $ingreso_nombre[$idx] ?? '';
-        $nombre_completo = trim($nombre . ' ' . $apellido);
-        $ingresos_display[] = [
-            'nombre' => $nombre_completo,
-            'genero' => $ingreso_genero[$idx] ?? '',
-            'ci' => $ingreso_ci[$idx] ?? '',
-            'fn' => $ingreso_fn[$idx] ?? '',
-            'fi' => $ingreso_fi[$idx] ?? ''
-        ];
-    }
-    $egresos_display = [];
-    foreach ($egreso_apellido as $idx => $apellido) {
-        if (trim($apellido) === '') continue;
-        $nombre = $egreso_nombre[$idx] ?? '';
-        $nombre_completo = trim($nombre . ' ' . $apellido);
-        $egresos_display[] = [
-            'nombre' => $nombre_completo,
-            'genero' => $egreso_genero[$idx] ?? '',
-            'ci' => $egreso_ci[$idx] ?? '',
-            'fn' => $egreso_fn[$idx] ?? '',
-            'fi' => $egreso_fi[$idx] ?? ''
-        ];
-    }
-    
     // ASISTENCIA DIARIA
     $asistencia_v = array_fill(1, $dias_en_mes, 0);
     $asistencia_h = array_fill(1, $dias_en_mes, 0);
@@ -270,10 +224,69 @@ if ($desde_historial) {
     }
     
     // Recalcular porcentaje
-    $porcentaje_total = 0; // Inicializar
+    $porcentaje_total = 0;
     if ($mat_total > 0 && $dias_habiles > 0) {
         $porcentaje_total = (int)round(($total_asistencia / ($mat_total * $dias_habiles)) * 100);
     }
+}
+
+// =====================================================================
+// ========== OBTENER INGRESOS Y EGRESOS DESDE LA BD (SIEMPRE) ==========
+// =====================================================================
+$ingresos_display = [];
+$egresos_display = [];
+
+$periodo_mes = date('Y-m', strtotime($periodo));
+
+// Solo consultar si tenemos sala y sección válidas
+if (!empty($sala) && $seccion_id > 0) {
+    // ---------- INGRESOS ----------
+    $stmt_ing = $conexion->prepare("
+        SELECT apellido, nombre, genero, ci, fecha_nacimiento, fecha_ingreso 
+        FROM ingresos 
+        WHERE sala = ? AND seccion_id = ? AND periodo = ?
+    ");
+    $stmt_ing->bind_param("sis", $sala, $seccion_id, $periodo_mes);
+    $stmt_ing->execute();
+    $res_ing = $stmt_ing->get_result();
+    while ($row = $res_ing->fetch_assoc()) {
+        $nombre_completo = trim($row['nombre'] . ' ' . $row['apellido']);
+        $ingresos_display[] = [
+            'nombre' => $nombre_completo,
+            'genero' => $row['genero'],
+            'ci' => $row['ci'] ?? '',
+            'fn' => $row['fecha_nacimiento'] ?? '',
+            'fi' => $row['fecha_ingreso'] ?? ''
+        ];
+    }
+    $stmt_ing->close();
+
+    // ---------- EGRESOS ----------
+    $stmt_eg = $conexion->prepare("
+        SELECT 
+            est.nombre, est.apellido, 
+            COALESCE(est.cedula, est.cedula_escolar, '') AS cedula,
+            est.genero, 
+            est.fecha_nacimiento,
+            e.fecha_egreso
+        FROM egresos e
+        JOIN estudiantes est ON e.estudiante_id = est.id
+        WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?
+    ");
+    $stmt_eg->bind_param("sis", $sala, $seccion_id, $periodo_mes);
+    $stmt_eg->execute();
+    $res_eg = $stmt_eg->get_result();
+    while ($row = $res_eg->fetch_assoc()) {
+        $nombre_completo = trim($row['nombre'] . ' ' . $row['apellido']);
+        $egresos_display[] = [
+            'nombre' => $nombre_completo,
+            'genero' => $row['genero'],
+            'ci' => $row['cedula'] ?? '',
+            'fn' => $row['fecha_nacimiento'] ?? '',
+            'fi' => $row['fecha_egreso'] ?? ''
+        ];
+    }
+    $stmt_eg->close();
 }
 
 // ========== PERÍODO ESCOLAR ==========
@@ -484,7 +497,6 @@ $letras_dias = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
             $ing = isset($ingresos_display[$i]) ? $ingresos_display[$i] : null;
             $eg = isset($egresos_display[$i]) ? $egresos_display[$i] : null;
             
-            // Capitalizar nombres de ingreso/egreso
             $ing_nombre = $ing ? capitalizarNombre($ing['nombre']) : '';
             $eg_nombre = $eg ? capitalizarNombre($eg['nombre']) : '';
         ?>
@@ -598,7 +610,7 @@ if (!$desde_historial) {
             matricula_h INT DEFAULT 0,
             total_asistencia_v INT DEFAULT 0,
             total_asistencia_h INT DEFAULT 0,
-            porcentaje_asistencia INT DEFAULT 0,
+            porcentaje_asistencia DECIMAL(5,2) DEFAULT 0.00,
             datos_clasificacion JSON,
             ingresos JSON,
             egresos JSON,

@@ -122,7 +122,7 @@ while($sec = $secciones->fetch_assoc()) {
                                     <option value="padre">Padre</option>
                                     <option value="representante">Representante</option>
                                 </select>
-                                <input type="text" name="cedula_base" id="cedula_base" class="form-control" placeholder="Ej: 09799555" required>
+                                <input type="text" name="cedula_base" id="cedula_base" class="form-control" placeholder="Ej: 123456789" required>
                             </div>
                         </div>
 

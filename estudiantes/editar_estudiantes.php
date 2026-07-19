@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $padre_nombre = $_POST['padre_nombre'];
         $padre_cedula = $_POST['padre_cedula'];
         $padre_telefono = $_POST['padre_telefono'];
-        $seccion_id = intval($_POST['sala']); // Ahora recibimos el ID de la sección
+        $seccion_id = intval($_POST['sala']);
 
         // ========== OBTENER NOMBRE DE LA SALA DESDE EL ID DE SECCIÓN ==========
         $stmt_sec = $conexion->prepare("SELECT sala FROM secciones WHERE id = ?");
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $sala_nombre = $row_sec['sala'] ?? '';
         $stmt_sec->close();
 
-        // ========== ACTUALIZAR ESTUDIANTE (incluyendo sala y seccion_id) ==========
+        // ========== ACTUALIZAR ESTUDIANTE ==========
         $stmt_upd = $conexion->prepare("UPDATE estudiantes SET 
             nombre=?, apellido=?, fecha_nacimiento=?, genero=?, orden_nacimiento=?,
             nacionalidad=?, pais_nacimiento=?, estado_nacimiento=?, direccion=?,
@@ -92,8 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             padre_nombre=?, padre_cedula=?, padre_telefono=?,
             sala=?, seccion_id=?
             WHERE id=?");
-
-        // 26 strings + 2 ints
         $types = str_repeat('s', 26) . 'ii';
         $stmt_upd->bind_param($types,
             $nombre, $apellido, $fecha_nac, $genero, $orden_nacimiento,
@@ -186,7 +184,6 @@ include('../includes/header.php');
 $secciones = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 $opciones_secciones = '<option value="">Seleccione</option>';
 while($sec = $secciones->fetch_assoc()) {
-    // Ahora el valor es el ID de la sección, y se compara con el seccion_id del estudiante
     $selected = ($estudiante['seccion_id'] == $sec['id']) ? 'selected' : '';
     $opciones_secciones .= '<option value="' . $sec['id'] . '" ' . $selected . '>' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '</option>';
 }
@@ -236,7 +233,7 @@ while($sec = $secciones->fetch_assoc()) {
                     <div class="col-md-3"><label>Cédula padre</label><input type="text" name="padre_cedula" class="form-control" value="<?= htmlspecialchars($estudiante['padre_cedula']) ?>"></div>
                     <div class="col-md-3"><label>Teléfono padre</label><input type="text" name="padre_telefono" class="form-control" value="<?= htmlspecialchars($estudiante['padre_telefono']) ?>"></div>
                     
-                    <!-- ========== SELECCIÓN DE SALA ACTUAL (con ID) ========== -->
+                    <!-- ========== SELECCIÓN DE SALA ACTUAL ========== -->
                     <div class="col-md-4"><label>Sala / Grado actual</label>
                         <select name="sala" class="form-select" required>
                             <?= $opciones_secciones ?>
@@ -275,7 +272,17 @@ while($sec = $secciones->fetch_assoc()) {
                             <?php if (count($inscripciones) > 0): ?>
                                 <?php foreach ($inscripciones as $ins): ?>
                                     <tr class="fila-historial">
-                                        <td><input type="text" name="ano_escolar[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['ano_escolar']) ?>" required></td>
+                                        <td>
+                                            <select name="ano_escolar[]" class="form-select form-select-sm" required>
+                                                <option value="">Seleccione</option>
+                                                <?php for ($a = 2000; $a <= 2049; $a++): 
+                                                    $periodo = $a . '-' . ($a + 1);
+                                                    $selected = ($ins['ano_escolar'] == $periodo) ? 'selected' : '';
+                                                ?>
+                                                    <option value="<?= htmlspecialchars($periodo) ?>" <?= $selected ?>><?= htmlspecialchars($periodo) ?></option>
+                                                <?php endfor; ?>
+                                            </select>
+                                        </td>
                                         <td><select name="grado_seccion[]" class="form-select form-select-sm" required><?= str_replace('value="' . htmlspecialchars($ins['grado_seccion']) . '"', 'value="' . htmlspecialchars($ins['grado_seccion']) . '" selected', $opciones_secciones) ?></select></td>
                                         <td><input type="text" name="registro[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['registro']) ?>"></td>
                                         <td><select name="repite[]" class="form-select form-select-sm"><option value="No" <?= ($ins['repite']=='No')?'selected':'' ?>>No</option><option value="Si" <?= ($ins['repite']=='Si')?'selected':'' ?>>Si</option></select></td>
@@ -289,7 +296,16 @@ while($sec = $secciones->fetch_assoc()) {
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr class="fila-historial">
-                                    <td><input type="text" name="ano_escolar[]" class="form-control form-control-sm" placeholder="2024-2025" required></td>
+                                    <td>
+                                        <select name="ano_escolar[]" class="form-select form-select-sm" required>
+                                            <option value="">Seleccione</option>
+                                            <?php for ($a = 2000; $a <= 2049; $a++): 
+                                                $periodo = $a . '-' . ($a + 1);
+                                            ?>
+                                                <option value="<?= htmlspecialchars($periodo) ?>"><?= htmlspecialchars($periodo) ?></option>
+                                            <?php endfor; ?>
+                                        </select>
+                                    </td>
                                     <td><select name="grado_seccion[]" class="form-select form-select-sm" required><?= $opciones_secciones ?></select></td>
                                     <td><input type="text" name="registro[]" class="form-control form-control-sm"></td>
                                     <td><select name="repite[]" class="form-select form-select-sm"><option value="No">No</option><option value="Si">Si</option></select></td>

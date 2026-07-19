@@ -6,6 +6,386 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 require_once '../config/conexion.php';
 
+// ========== FUNCIONES DE SEGURIDAD ==========
+function generarTokenCSRF() {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verificarTokenCSRF($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+function sanitizarEntrada($dato, $tipo = 'string') {
+    if (is_array($dato)) {
+        return array_map(function($item) use ($tipo) {
+            return sanitizarEntrada($item, $tipo);
+        }, $dato);
+    }
+    $dato = trim($dato);
+    switch ($tipo) {
+        case 'int': return filter_var($dato, FILTER_VALIDATE_INT) ? (int)$dato : 0;
+        case 'email': return filter_var($dato, FILTER_VALIDATE_EMAIL) ? $dato : '';
+        default: return htmlspecialchars($dato, ENT_QUOTES, 'UTF-8');
+    }
+}
+
+function responderJSON($data, $status = 200) {
+    http_response_code($status);
+    header('Content-Type: application/json');
+    echo json_encode($data);
+    exit;
+}
+
+// ========== AJAX HANDLER ==========
+if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
+    if (session_status() === PHP_SESSION_NONE) session_start();
+    if (!isset($_SESSION['usuario'])) {
+        http_response_code(403);
+        echo json_encode(['error' => 'No autorizado']);
+        exit;
+    }
+    
+    header('Content-Type: application/json');
+    $action = $_POST['action'] ?? '';
+    
+    // ========== CARGAR INGRESOS EXISTENTES ==========
+    if ($action == 'cargar_ingresos') {
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion = (int)($_POST['seccion'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? date('Y-m'));
+        
+        if (empty($sala) || $seccion <= 0 || empty($periodo)) {
+            responderJSON(['ingresos' => []]);
+        }
+        
+        $stmt = $conexion->prepare("
+            SELECT i.*, 
+                   CONCAT(i.apellido, ' ', i.nombre) AS nombre_completo
+            FROM ingresos i
+            WHERE i.sala = ? AND i.seccion_id = ? AND i.periodo = ?
+            ORDER BY i.created_at DESC
+        ");
+        $stmt->bind_param("sis", $sala, $seccion, $periodo);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $ingresos = [];
+        while ($row = $result->fetch_assoc()) {
+            $ingresos[] = [
+                'id' => (int)$row['id'],
+                'nombre_completo' => htmlspecialchars($row['nombre_completo']),
+                'genero' => $row['genero'],
+                'nacionalidad' => $row['nacionalidad'] ?? 'Venezolana',
+                'ci' => htmlspecialchars($row['ci'] ?? ''),
+                'fn' => $row['fecha_nacimiento'] ? date('d/m/Y', strtotime($row['fecha_nacimiento'])) : '',
+                'fi' => $row['fecha_ingreso'] ? date('d/m/Y', strtotime($row['fecha_ingreso'])) : ''
+            ];
+        }
+        responderJSON(['ingresos' => $ingresos]);
+    }
+
+    // ========== ELIMINAR INGRESO ==========
+    if ($action == 'eliminar_ingreso') {
+        if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
+            responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            responderJSON(['success' => false, 'error' => 'ID inválido']);
+        }
+        
+        $stmt = $conexion->prepare("DELETE FROM ingresos WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        if ($stmt->execute()) {
+            responderJSON(['success' => true, 'mensaje' => 'Ingreso eliminado correctamente']);
+        } else {
+            responderJSON(['success' => false, 'error' => 'Error al eliminar']);
+        }
+        $stmt->close();
+        exit;
+    }
+
+    // ========== BUSCAR ESTUDIANTES (para egresos e ingresos) ==========
+    if ($action == 'buscar_estudiantes') {
+        $termino = sanitizarEntrada($_POST['termino'] ?? '');
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion = (int)($_POST['seccion_id'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? date('Y-m'));
+        $tipo = sanitizarEntrada($_POST['tipo'] ?? 'egreso');
+
+        if (empty($termino) || empty($sala) || $seccion <= 0) {
+            responderJSON(['estudiantes' => []]);
+        }
+
+        $termino = "%$termino%";
+        
+        $sql = "
+            SELECT id, nombre, apellido, 
+                   COALESCE(cedula, cedula_escolar) AS cedula,
+                   genero, nacionalidad, fecha_nacimiento,
+                   CONCAT(apellido, ' ', nombre) AS nombre_completo,
+                   inscripcion_completa
+            FROM estudiantes
+            WHERE sala = ? AND seccion_id = ? 
+              AND estatus = 'Activo'
+              AND (nombre LIKE ? OR apellido LIKE ? OR COALESCE(cedula, cedula_escolar) LIKE ?)
+        ";
+
+        if ($tipo === 'egreso') {
+            $sql .= " AND inscripcion_completa = 1
+                       AND id NOT IN (
+                           SELECT estudiante_id FROM egresos 
+                           WHERE sala = ? AND seccion_id = ? AND periodo = ?
+                       )";
+            $sql .= " ORDER BY apellido, nombre LIMIT 15";
+            $stmt = $conexion->prepare($sql);
+            $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
+        } elseif ($tipo === 'ingreso') {
+            $sql .= " AND inscripcion_completa = 0
+                       AND id NOT IN (
+                           SELECT estudiante_id FROM egresos 
+                           WHERE sala = ? AND seccion_id = ? AND periodo = ?
+                       )";
+            $sql .= " ORDER BY apellido, nombre LIMIT 15";
+            $stmt = $conexion->prepare($sql);
+            $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
+        } else {
+            $sql .= " ORDER BY apellido, nombre LIMIT 15";
+            $stmt = $conexion->prepare($sql);
+            $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
+        }
+
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $estudiantes = [];
+        while ($row = $result->fetch_assoc()) {
+            $estudiantes[] = [
+                'id' => (int)$row['id'],
+                'nombre_completo' => htmlspecialchars($row['nombre_completo']),
+                'cedula' => htmlspecialchars($row['cedula']),
+                'genero' => $row['genero'],
+                'nacionalidad' => $row['nacionalidad'] ?? 'Venezolana',
+                'fecha_nacimiento' => $row['fecha_nacimiento'],
+                'inscripcion_completa' => (int)$row['inscripcion_completa']
+            ];
+        }
+        responderJSON(['estudiantes' => $estudiantes]);
+    }
+
+    // ========== CONFIRMAR EGRESO ==========
+    if ($action == 'confirmar_egreso') {
+        if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
+            responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
+        }
+        
+        $estudiante_id = (int)($_POST['estudiante_id'] ?? 0);
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion = (int)($_POST['seccion'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        $motivo = sanitizarEntrada($_POST['motivo'] ?? 'Retiro');
+        
+        if (!$estudiante_id || empty($sala) || $seccion <= 0 || empty($periodo)) {
+            responderJSON(['success' => false, 'error' => 'Datos incompletos']);
+        }
+        
+        $stmt = $conexion->prepare("SELECT inscripcion_completa, nombre, apellido, genero, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
+        $stmt->bind_param("i", $estudiante_id);
+        $stmt->execute();
+        $estudiante = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        if (!$estudiante) {
+            responderJSON(['success' => false, 'error' => 'Estudiante no encontrado']);
+        }
+        
+        if ($estudiante['inscripcion_completa'] != 1) {
+            responderJSON(['success' => false, 'error' => 'El estudiante no tiene inscripción completa']);
+        }
+
+        $stmt = $conexion->prepare("SELECT id FROM egresos WHERE estudiante_id = ? AND sala = ? AND seccion_id = ? AND periodo = ?");
+        $stmt->bind_param("isis", $estudiante_id, $sala, $seccion, $periodo);
+        $stmt->execute();
+        if ($stmt->get_result()->num_rows > 0) {
+            responderJSON(['success' => false, 'error' => 'Este estudiante ya fue egresado en este período']);
+        }
+        $stmt->close();
+        
+        $genero_estudiante = $estudiante['genero'] ?? 'V';
+        $fecha_egreso = date('Y-m-d');
+        $stmt = $conexion->prepare("INSERT INTO egresos (estudiante_id, sala, seccion_id, periodo, fecha_egreso, motivo, genero) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("isissss", $estudiante_id, $sala, $seccion, $periodo, $fecha_egreso, $motivo, $genero_estudiante);
+        $stmt->execute();
+        $stmt->close();
+        
+        $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
+        $stmt_up->bind_param("i", $estudiante_id);
+        $stmt_up->execute();
+        $stmt_up->close();
+        
+        responderJSON([
+            'success' => true,
+            'mensaje' => 'Egreso registrado correctamente',
+            'estudiante' => [
+                'nombre_completo' => $estudiante['apellido'] . ' ' . $estudiante['nombre'],
+                'genero' => $estudiante['genero'],
+                'ci' => $estudiante['cedula'],
+                'fn' => $estudiante['fecha_nacimiento'],
+                'fi' => $fecha_egreso
+            ]
+        ]);
+    }
+
+    // ========== ELIMINAR EGRESO (reactivar estudiante) ==========
+    if ($action == 'eliminar_egreso') {
+        if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
+            responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
+        }
+        $egreso_id = (int)($_POST['egreso_id'] ?? 0);
+        if ($egreso_id <= 0) {
+            responderJSON(['success' => false, 'error' => 'ID inválido']);
+        }
+        
+        $stmt = $conexion->prepare("SELECT estudiante_id FROM egresos WHERE id = ?");
+        $stmt->bind_param("i", $egreso_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $egreso = $result->fetch_assoc();
+        $stmt->close();
+        if (!$egreso) {
+            responderJSON(['success' => false, 'error' => 'Egreso no encontrado']);
+        }
+        $estudiante_id = $egreso['estudiante_id'];
+        
+        $stmt = $conexion->prepare("DELETE FROM egresos WHERE id = ?");
+        $stmt->bind_param("i", $egreso_id);
+        $stmt->execute();
+        $stmt->close();
+        
+        $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
+        $stmt_up->bind_param("i", $estudiante_id);
+        $stmt_up->execute();
+        $stmt_up->close();
+        
+        responderJSON(['success' => true, 'mensaje' => 'Egreso eliminado y estudiante reactivado']);
+    }
+
+    // ========== CONFIRMAR INGRESO ==========
+    if ($action == 'confirmar_ingreso') {
+        if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
+            responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
+        }
+        
+        $apellido = strtoupper(sanitizarEntrada($_POST['apellido'] ?? ''));
+        $nombre = strtoupper(sanitizarEntrada($_POST['nombre'] ?? ''));
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion = (int)($_POST['seccion'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        $genero = sanitizarEntrada($_POST['genero'] ?? 'V');
+        $cedula = sanitizarEntrada($_POST['cedula'] ?? '');
+        $fecha_nacimiento = sanitizarEntrada($_POST['fecha_nacimiento'] ?? '');
+        $estudiante_id = (int)($_POST['estudiante_id'] ?? 0);
+
+        if (empty($apellido) || empty($nombre) || empty($sala) || $seccion <= 0 || empty($periodo)) {
+            responderJSON(['success' => false, 'error' => 'Datos incompletos']);
+        }
+        
+        $stmt = $conexion->prepare("SELECT id, inscripcion_completa, estatus FROM estudiantes WHERE apellido = ? AND nombre = ? AND sala = ? AND seccion_id = ?");
+        $stmt->bind_param("sssi", $apellido, $nombre, $sala, $seccion);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $existente = $result->fetch_assoc();
+        $stmt->close();
+        
+        if ($existente) {
+            if ($existente['inscripcion_completa'] == 1) {
+                responderJSON(['success' => false, 'error' => 'Este estudiante ya está inscrito (inscripción completa). No se puede registrar como ingreso.']);
+            }
+            if ($existente['estatus'] != 'Activo') {
+                $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Activo' WHERE id = ?");
+                $stmt_up->bind_param("i", $existente['id']);
+                $stmt_up->execute();
+                $stmt_up->close();
+            }
+            $estudiante_id = $existente['id'];
+        } else {
+            $stmt = $conexion->prepare("INSERT INTO estudiantes (apellido, nombre, genero, cedula, fecha_nacimiento, sala, seccion_id, estatus, inscripcion_completa) VALUES (?, ?, ?, ?, ?, ?, ?, 'Activo', 0)");
+            $stmt->bind_param("ssssssi", $apellido, $nombre, $genero, $cedula, $fecha_nacimiento, $sala, $seccion);
+            $stmt->execute();
+            $estudiante_id = $stmt->insert_id;
+            $stmt->close();
+        }
+        
+        $fecha_ingreso = date('Y-m-d');
+        $nacionalidad = 'Venezolana';
+        $stmt = $conexion->prepare("INSERT INTO ingresos (id, sala, seccion_id, periodo, apellido, nombre, genero, nacionalidad, ci, fecha_nacimiento, fecha_ingreso) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("isissssssss", $estudiante_id, $sala, $seccion, $periodo, $apellido, $nombre, $genero, $nacionalidad, $cedula, $fecha_nacimiento, $fecha_ingreso);
+        $stmt->execute();
+        $ingreso_id = $conexion->insert_id;
+        $stmt->close();
+        
+        $stmt = $conexion->prepare("SELECT nombre, apellido, genero, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
+        $stmt->bind_param("i", $estudiante_id);
+        $stmt->execute();
+        $estudiante = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        responderJSON([
+            'success' => true,
+            'mensaje' => 'Ingreso registrado correctamente',
+            'estudiante' => [
+                'id' => $ingreso_id,
+                'nombre_completo' => $estudiante['apellido'] . ' ' . $estudiante['nombre'],
+                'genero' => $estudiante['genero'],
+                'ci' => $estudiante['cedula'],
+                'fn' => $estudiante['fecha_nacimiento'],
+                'fi' => $fecha_ingreso
+            ]
+        ]);
+    }
+
+    // ========== CARGAR EGRESOS EXISTENTES ==========
+    if ($action == 'cargar_egresos_existentes') {
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $seccion = (int)($_POST['seccion'] ?? 0);
+        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        
+        if (empty($sala) || $seccion <= 0 || empty($periodo)) {
+            responderJSON(['egresos' => []]);
+        }
+        
+        $stmt = $conexion->prepare("
+            SELECT est.nombre, est.apellido, e.genero, 
+                   COALESCE(est.cedula, est.cedula_escolar, '') AS ci,
+                   est.fecha_nacimiento, e.fecha_egreso,
+                   CONCAT(est.apellido, ' ', est.nombre) AS nombre_completo,
+                   e.id AS egreso_id
+            FROM egresos e
+            JOIN estudiantes est ON e.estudiante_id = est.id
+            WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?
+            ORDER BY e.fecha_egreso DESC
+        ");
+        $stmt->bind_param("sis", $sala, $seccion, $periodo);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $egresos = [];
+        while ($row = $result->fetch_assoc()) {
+            $egresos[] = [
+                'egreso_id' => $row['egreso_id'],
+                'nombre_completo' => $row['nombre_completo'],
+                'genero' => $row['genero'],
+                'ci' => $row['ci'],
+                'fn' => $row['fecha_nacimiento'],
+                'fi' => $row['fecha_egreso']
+            ];
+        }
+        responderJSON(['egresos' => $egresos]);
+    }
+
+    exit;
+}
+
 // ========== SI VIENE CON ID ==========
 $id_resumen = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 if ($id_resumen == 0) {
@@ -85,13 +465,10 @@ for ($d = 1; $d <= $dias_en_mes; $d++) {
 }
 
 $meses_es = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
-$nombre_mes = $meses_es[$mes_num] ?? '';
+$nombre_mes = $meses_es[str_pad($mes_num, 2, '0', STR_PAD_LEFT)] ?? '';
 
 // ========== OBTENER CLASIFICACIÓN ==========
 $datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
-$ingresos_display = json_decode($resumen['ingresos'], true) ?: [];
-$egresos_display = json_decode($resumen['egresos'], true) ?: [];
-
 $venezolano_v = [];
 $venezolano_h = [];
 $extranjero_v = [];
@@ -126,20 +503,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
     $venezolano_h = $_POST['venezolano_h'] ?? [];
     $extranjero_v = $_POST['extranjero_v'] ?? [];
     $extranjero_h = $_POST['extranjero_h'] ?? [];
-    
-    $ingreso_apellido = $_POST['ingreso_apellido'] ?? [];
-    $ingreso_nombre = $_POST['ingreso_nombre'] ?? [];
-    $ingreso_genero = $_POST['ingreso_genero'] ?? [];
-    $ingreso_ci = $_POST['ingreso_ci'] ?? [];
-    $ingreso_fn = $_POST['ingreso_fn'] ?? [];
-    $ingreso_fi = $_POST['ingreso_fi'] ?? [];
-    
-    $egreso_apellido = $_POST['egreso_apellido'] ?? [];
-    $egreso_nombre = $_POST['egreso_nombre'] ?? [];
-    $egreso_genero = $_POST['egreso_genero'] ?? [];
-    $egreso_ci = $_POST['egreso_ci'] ?? [];
-    $egreso_fn = $_POST['egreso_fn'] ?? [];
-    $egreso_fi = $_POST['egreso_fi'] ?? [];
     
     $anio = date('Y', strtotime($periodo));
     $mes = date('m', strtotime($periodo));
@@ -187,36 +550,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
             'extranjeros' => ['V' => $ext_v, 'H' => $ext_h, 'total' => $ext_v + $ext_h]
         ];
     }
+    $datos_clasificacion_json = json_encode($clasificacion, JSON_UNESCAPED_UNICODE);
     
+    // ========== ACTUALIZAR RESUMEN ==========
+    // Nota: ya no guardamos ingresos/egresos en el resumen aquí, porque se manejan por AJAX.
+    // Pero por compatibilidad, podemos actualizar el JSON de ingresos/egresos obteniéndolos de las tablas.
+    $periodo_mes = date('Y-m', strtotime($periodo));
     $ingresos_display = [];
-    foreach ($ingreso_apellido as $idx => $apellido) {
-        if (trim($apellido) === '') continue;
-        $nombre_completo = trim(($ingreso_nombre[$idx] ?? '') . ' ' . $apellido);
+    $egresos_display = [];
+    
+    $stmt_ing = $conexion->prepare("SELECT apellido, nombre, genero, ci, fecha_nacimiento, fecha_ingreso FROM ingresos WHERE sala = ? AND seccion_id = ? AND periodo = ?");
+    $stmt_ing->bind_param("sis", $sala, $seccion_id, $periodo_mes);
+    $stmt_ing->execute();
+    $res_ing = $stmt_ing->get_result();
+    while ($row = $res_ing->fetch_assoc()) {
+        $nombre_completo = trim($row['nombre'] . ' ' . $row['apellido']);
         $ingresos_display[] = [
             'nombre' => $nombre_completo,
-            'genero' => $ingreso_genero[$idx] ?? '',
-            'ci' => $ingreso_ci[$idx] ?? '',
-            'fn' => $ingreso_fn[$idx] ?? '',
-            'fi' => $ingreso_fi[$idx] ?? ''
+            'genero' => $row['genero'],
+            'ci' => $row['ci'] ?? '',
+            'fn' => $row['fecha_nacimiento'] ?? '',
+            'fi' => $row['fecha_ingreso'] ?? ''
         ];
     }
-    $egresos_display = [];
-    foreach ($egreso_apellido as $idx => $apellido) {
-        if (trim($apellido) === '') continue;
-        $nombre_completo = trim(($egreso_nombre[$idx] ?? '') . ' ' . $apellido);
+    $stmt_ing->close();
+    
+    $stmt_eg = $conexion->prepare("SELECT est.nombre, est.apellido, est.genero, COALESCE(est.cedula, est.cedula_escolar, '') AS ci, est.fecha_nacimiento, e.fecha_egreso FROM egresos e JOIN estudiantes est ON e.estudiante_id = est.id WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?");
+    $stmt_eg->bind_param("sis", $sala, $seccion_id, $periodo_mes);
+    $stmt_eg->execute();
+    $res_eg = $stmt_eg->get_result();
+    while ($row = $res_eg->fetch_assoc()) {
+        $nombre_completo = trim($row['nombre'] . ' ' . $row['apellido']);
         $egresos_display[] = [
             'nombre' => $nombre_completo,
-            'genero' => $egreso_genero[$idx] ?? '',
-            'ci' => $egreso_ci[$idx] ?? '',
-            'fn' => $egreso_fn[$idx] ?? '',
-            'fi' => $egreso_fi[$idx] ?? ''
+            'genero' => $row['genero'],
+            'ci' => $row['ci'] ?? '',
+            'fn' => $row['fecha_nacimiento'] ?? '',
+            'fi' => $row['fecha_egreso'] ?? ''
         ];
     }
+    $stmt_eg->close();
     
-    $datos_clasificacion_json = json_encode($clasificacion, JSON_UNESCAPED_UNICODE);
-    $ingresos_json = json_encode($ingresos_display ?? [], JSON_UNESCAPED_UNICODE);
-    $egresos_json = json_encode($egresos_display ?? [], JSON_UNESCAPED_UNICODE);
+    $ingresos_json = json_encode($ingresos_display, JSON_UNESCAPED_UNICODE);
+    $egresos_json = json_encode($egresos_display, JSON_UNESCAPED_UNICODE);
     
+    // Actualizar resumen
     $stmt = $conexion->prepare("UPDATE resumen_estadistico SET 
         matricula_v = ?, 
         matricula_h = ?, 
@@ -228,11 +606,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
         ingresos = ?,
         egresos = ?
         WHERE id = ?");
-    $stmt->bind_param("iiiiissssi", $mat_v, $mat_h, $total_v, $total_h, $porcentaje, $observaciones, $datos_clasificacion_json, $ingresos_json, $egresos_json, $id_resumen);
-    $stmt->execute();
-    $stmt->close();
     
-    $mensaje = '<div class="alert alert-success alert-dismissible fade show">✅ Datos actualizados correctamente.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    // Tipos: 6 enteros (mat_v, mat_h, total_v, total_h, porcentaje, id) + 4 strings (observaciones, datos_clasificacion, ingresos, egresos)
+    $types = "iiiiissssi"; // 6 i (5 campos + id) + 4 s = 10 tipos
+    $stmt->bind_param($types, 
+        $mat_v, $mat_h, $total_v, $total_h, $porcentaje, 
+        $observaciones, $datos_clasificacion_json, $ingresos_json, $egresos_json, 
+        $id_resumen
+    );
+    
+    if ($stmt->execute()) {
+        $mensaje = '<div class="alert alert-success alert-dismissible fade show">✅ Datos actualizados correctamente.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    } else {
+        $mensaje = '<div class="alert alert-danger alert-dismissible fade show">❌ Error al actualizar: ' . $stmt->error . '<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>';
+    }
+    $stmt->close();
     
     // Recargar
     $stmt = $conexion->prepare("SELECT * FROM resumen_estadistico WHERE id = ?");
@@ -241,7 +629,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
     $resumen = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     
-    // Recargar asistencia
     $mat_v = $resumen['matricula_v'];
     $mat_h = $resumen['matricula_h'];
     $total_v = $resumen['total_asistencia_v'];
@@ -249,6 +636,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
     $porcentaje = $resumen['porcentaje_asistencia'];
     $observaciones = $resumen['observaciones'] ?? '';
 }
+
+// ========== CSRF TOKEN ==========
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
 
 include '../includes/header.php';
 ?>
@@ -273,8 +666,8 @@ include '../includes/header.php';
     .btn-cancelar { background-color: #6c757d; color: white; font-weight: bold; padding: 10px 30px; font-size: 1.1rem; border-radius: 30px; transition: all 0.3s; border: none; }
     .btn-cancelar:hover { background-color: #5a6268; transform: scale(1.02); }
     
-    .tabla-dinamica { width: 100%; table-layout: fixed; }
-    .tabla-dinamica th, .tabla-dinamica td { vertical-align: middle; padding: 5px; }
+    .tabla-dinamica { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    .tabla-dinamica th, .tabla-dinamica td { vertical-align: middle; padding: 5px; border: 1px solid #dee2e6; }
     .tabla-dinamica input, .tabla-dinamica select { width: 100%; box-sizing: border-box; }
     .col-nombre { width: 27%; }
     .col-genero { width: 8%; }
@@ -288,6 +681,44 @@ include '../includes/header.php';
     .col-edad { width: 8%; }
     .col-pequeno { width: 6%; }
     .col-mediano { width: 10%; }
+    
+    .autocomplete-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        max-height: 200px;
+        overflow-y: auto;
+        background: white;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        z-index: 999999 !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        margin-top: 2px;
+    }
+    .autocomplete-dropdown .dropdown-item {
+        padding: 6px 12px;
+        cursor: pointer;
+    }
+    .autocomplete-dropdown .dropdown-item:hover {
+        background-color: #e8f4f8;
+    }
+    #tablaEgresos, #tablaEgresos tbody, #tablaEgresos tr, #tablaEgresos td, .table-responsive {
+        overflow: visible !important;
+    }
+    #tablaEgresos { position: relative; }
+    #tablaIngresos, #tablaIngresos tbody, #tablaIngresos tr, #tablaIngresos td { overflow: visible !important; }
+    #tablaIngresos { position: relative; }
+    
+    .notification {
+        position: fixed; top: 20px; right: 20px; z-index: 99999;
+        padding: 15px 25px; border-radius: 8px; color: white; font-weight: bold;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;
+    }
+    .notification-success { background: #28a745; }
+    .notification-danger { background: #dc3545; }
+    .notification-info { background: #17a2b8; }
+    @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 </style>
 
 <div class="container-fluid py-4">
@@ -326,6 +757,7 @@ include '../includes/header.php';
         <input type="hidden" name="docente_id" value="<?= htmlspecialchars($resumen['docente_id']) ?>">
         <input type="hidden" id="tipo_reporte" name="tipo_reporte" value="regular">
 
+        <!-- ===== TABLA DE ASISTENCIA ===== -->
         <div class="card shadow mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <div>
@@ -453,51 +885,33 @@ include '../includes/header.php';
             </div>
         </div>
 
-        <!-- ========== INGRESO/EGRESO ========== -->
+        <!-- ========== INGRESOS / EGRESOS ========== -->
         <div class="card mb-4">
             <div class="card-header bg-navy text-white">
                 <h6 class="mb-0">Ingreso / Egreso del Mes</h6>
             </div>
             <div class="card-body p-3">
+                <!-- ===== INGRESOS ===== -->
                 <div class="mb-4">
-                    <h6 class="text-primary">Ingresos</h6>
-                    <table class="table table-sm table-bordered tabla-dinamica" id="tablaIngresos">
-                        <colgroup>
-                            <col class="col-nombre"><col class="col-genero"><col class="col-nacionalidad"><col class="col-ci"><col class="col-fecha"><col class="col-fecha"><col class="col-accion">
-                        </colgroup>
-                        <thead>
-                            <tr>
-                                <th>Apellido y Nombre</th><th>Género</th><th>Nacionalidad</th><th>CI o CE</th><th>F.N</th><th>F.I</th><th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($ingresos_display)): ?>
-                                <?php foreach($ingresos_display as $ing): ?>
-                                <tr class="fila-ingreso">
-                                    <td>
-                                        <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ing['nombre'] ?? '') ?>" placeholder="Apellido">
-                                        <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
-                                    </td>
-                                    <td>
-                                        <select name="ingreso_genero[]" class="form-select form-select-sm">
-                                            <option value="V" <?= ($ing['genero'] == 'V') ? 'selected' : '' ?>>Varón (V)</option>
-                                            <option value="H" <?= ($ing['genero'] == 'H') ? 'selected' : '' ?>>Hembra (H)</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select name="ingreso_nacionalidad[]" class="form-select form-select-sm">
-                                            <option value="Venezolana">Venezolana</option>
-                                            <option value="Extranjera">Extranjera</option>
-                                        </select>
-                                    </td>
-                                    <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ing['ci'] ?? '') ?>" placeholder="Cédula" maxlength="11"></td>
-                                    <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ing['fn'] ?? '') ?>" placeholder="DD/MM/YYYY"></td>
-                                    <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ing['fi'] ?? '') ?>" placeholder="DD/MM/YYYY"></td>
-                                    <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
+                    <h6 class="text-primary"><i class="fas fa-sign-in-alt me-2"></i>Ingresos</h6>
+                    <div class="table-responsive" style="overflow: visible !important;">
+                        <table class="table table-sm table-bordered tabla-dinamica" id="tablaIngresos">
+                            <colgroup>
+                                <col class="col-nombre"><col class="col-genero"><col class="col-nacionalidad"><col class="col-ci"><col class="col-fecha"><col class="col-fecha"><col class="col-accion">
+                            </colgroup>
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Apellido y Nombre</th>
+                                    <th>Género</th>
+                                    <th>Nacionalidad</th>
+                                    <th>CI o CE</th>
+                                    <th>F.N</th>
+                                    <th>F.I</th>
+                                    <th style="width:50px;">Acción</th>
                                 </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr class="fila-ingreso">
+                            </thead>
+                            <tbody id="ingresos-body">
+                                <tr class="fila-ingreso-form" id="fila-ingreso-form">
                                     <td>
                                         <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
                                         <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
@@ -515,67 +929,46 @@ include '../includes/header.php';
                                         </select>
                                     </td>
                                     <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-                                    <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-                                    <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-                                    <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
+                                    <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+                                    <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-success confirmar-ingreso" title="Confirmar ingreso">✓</button>
+                                    </td>
                                 </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                    <button type="button" class="btn btn-sm btn-light mt-2" onclick="agregarFila('ingreso')">+ Agregar Ingreso</button>
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-light mt-2" onclick="agregarFilaIngreso()">
+                        <i class="fas fa-plus me-1"></i> Agregar Ingreso
+                    </button>
                 </div>
+
+                <!-- ===== EGRESOS ===== -->
                 <div>
-                    <h6 class="text-danger">Egresos</h6>
-                    <table class="table table-sm table-bordered tabla-dinamica" id="tablaEgresos">
-                        <colgroup>
-                            <col class="col-nombre"><col class="col-genero"><col class="col-ci"><col class="col-fecha"><col class="col-fecha"><col class="col-accion">
-                        </colgroup>
-                        <thead>
-                            <tr>
-                                <th>Apellido y Nombre</th><th>Género</th><th>CI o CE</th><th>F.N</th><th>F.I</th><th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (!empty($egresos_display)): ?>
-                                <?php foreach($egresos_display as $eg): ?>
-                                <tr class="fila-egreso">
-                                    <td>
-                                        <input type="text" name="egreso_apellido[]" class="form-control form-control-sm" value="<?= htmlspecialchars($eg['nombre'] ?? '') ?>" placeholder="Apellido">
-                                        <input type="text" name="egreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
-                                    </td>
-                                    <td>
-                                        <select name="egreso_genero[]" class="form-select form-select-sm">
-                                            <option value="V" <?= ($eg['genero'] == 'V') ? 'selected' : '' ?>>Varón (V)</option>
-                                            <option value="H" <?= ($eg['genero'] == 'H') ? 'selected' : '' ?>>Hembra (H)</option>
-                                        </select>
-                                    </td>
-                                    <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" value="<?= htmlspecialchars($eg['ci'] ?? '') ?>" placeholder="Cédula" maxlength="11"></td>
-                                    <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" value="<?= htmlspecialchars($eg['fn'] ?? '') ?>" placeholder="DD/MM/YYYY"></td>
-                                    <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" value="<?= htmlspecialchars($eg['fi'] ?? '') ?>" placeholder="DD/MM/YYYY"></td>
-                                    <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
+                    <h6 class="text-danger"><i class="fas fa-sign-out-alt me-2"></i>Egresos</h6>
+                    <div class="table-responsive" style="overflow: visible !important;">
+                        <table class="table table-sm table-bordered tabla-dinamica" id="tablaEgresos">
+                            <colgroup>
+                                <col class="col-nombre"><col class="col-genero"><col class="col-ci"><col class="col-fecha"><col class="col-fecha"><col class="col-accion">
+                            </colgroup>
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Apellido y Nombre</th>
+                                    <th>Género</th>
+                                    <th>CI o CE</th>
+                                    <th>F.N</th>
+                                    <th>F.I</th>
+                                    <th style="width:50px;">Acción</th>
                                 </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr class="fila-egreso">
-                                    <td>
-                                        <input type="text" name="egreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
-                                        <input type="text" name="egreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
-                                    </td>
-                                    <td>
-                                        <select name="egreso_genero[]" class="form-select form-select-sm">
-                                            <option value="V">Varón (V)</option>
-                                            <option value="H">Hembra (H)</option>
-                                        </select>
-                                    </td>
-                                    <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-                                    <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-                                    <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-                                    <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
-                                </tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                    <button type="button" class="btn btn-sm btn-light mt-2" onclick="agregarFila('egreso')">+ Agregar Egreso</button>
+                            </thead>
+                            <tbody id="egresos-body">
+                                <!-- Se llenan con JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-light mt-2" onclick="agregarFilaEgreso()">
+                        <i class="fas fa-plus me-1"></i> Agregar Egreso Manual
+                    </button>
                 </div>
             </div>
         </div>
@@ -601,10 +994,22 @@ include '../includes/header.php';
 </div>
 
 <script>
+// ========== NOTIFICACIONES ==========
+function mostrarNotificacion(mensaje, tipo = 'success') {
+    const div = document.createElement('div');
+    div.className = `notification notification-${tipo}`;
+    div.textContent = mensaje;
+    document.body.appendChild(div);
+    setTimeout(() => {
+        div.style.opacity = '0';
+        div.style.transition = 'opacity 0.5s';
+        setTimeout(() => div.remove(), 500);
+    }, 3000);
+}
+
+// ========== FUNCIONES DE ASISTENCIA ==========
 function limpiarCero(input) {
-    if (input.value === '0') {
-        input.value = '';
-    }
+    if (input.value === '0') input.value = '';
 }
 
 function limpiarTodo() {
@@ -613,127 +1018,493 @@ function limpiarTodo() {
 }
 
 window.recalcular = function() {
-    const diasHabilesEl = document.getElementById('dias_hab_val');
-    const matVEl = document.getElementById('mat_v');
-    const matHEl = document.getElementById('mat_h');
-    
-    const diasHabilesVal = diasHabilesEl ? parseInt(diasHabilesEl.value) || 0 : 0;
-    let matVVal = matVEl ? (parseInt(matVEl.value) || 0) : 0;
-    let matHVal = matHEl ? (parseInt(matHEl.value) || 0) : 0;
+    const diasHabiles = parseInt(document.getElementById('dias_hab_val').value) || 0;
+    const matV = parseInt(document.getElementById('mat_v').value) || 0;
+    const matH = parseInt(document.getElementById('mat_h').value) || 0;
+    const matTotal = matV + matH;
     
     let totalV = 0, totalH = 0;
     const totalesDia = {};
     
     document.querySelectorAll('.in-v').forEach(input => {
-        let val = parseInt(input.value);
-        if (isNaN(val)) val = 0;
+        let val = parseInt(input.value) || 0;
         totalV += val;
         const dia = input.dataset.dia;
         totalesDia[dia] = (totalesDia[dia] || 0) + val;
     });
     
     document.querySelectorAll('.in-h').forEach(input => {
-        let val = parseInt(input.value);
-        if (isNaN(val)) val = 0;
+        let val = parseInt(input.value) || 0;
         totalH += val;
         const dia = input.dataset.dia;
         totalesDia[dia] = (totalesDia[dia] || 0) + val;
     });
     
-    document.getElementById('res_total_v').textContent = totalV;
-    document.getElementById('res_total_h').textContent = totalH;
-    document.getElementById('gran_total_asist').textContent = totalV + totalH;
-    
     const totalGeneral = totalV + totalH;
-    const porcV = totalGeneral ? Math.round((totalV / totalGeneral) * 100) : 0;
-    const porcH = totalGeneral ? Math.round((totalH / totalGeneral) * 100) : 0;
     
-    document.getElementById('res_porc_v').textContent = porcV + '%';
-    document.getElementById('res_porc_h').textContent = porcH + '%';
-    document.getElementById('gran_total_porc').textContent = '100%';
+    const porcV = matV * diasHabiles > 0 ? Math.round((totalV / (matV * diasHabiles)) * 100) : 0;
+    const porcH = matH * diasHabiles > 0 ? Math.round((totalH / (matH * diasHabiles)) * 100) : 0;
+    const porcTotal = matTotal * diasHabiles > 0 ? Math.round((totalGeneral / (matTotal * diasHabiles)) * 100) : 0;
     
-    const promedio = diasHabilesVal > 0 ? (totalGeneral / diasHabilesVal).toFixed(1) : '0.0';
-    const promedioTotalEl = document.getElementById('promedio_total');
-    if (promedioTotalEl) promedioTotalEl.textContent = promedio;
+    document.getElementById('res_total_v').textContent = totalV || '';
+    document.getElementById('res_total_h').textContent = totalH || '';
+    document.getElementById('gran_total_asist').textContent = totalGeneral || '';
+    
+    document.getElementById('res_porc_v').textContent = porcV ? porcV + '%' : '';
+    document.getElementById('res_porc_h').textContent = porcH ? porcH + '%' : '';
+    document.getElementById('gran_total_porc').textContent = porcTotal ? porcTotal + '%' : '';
+    
+    document.getElementById('promedio_total').textContent = diasHabiles > 0 ? (totalGeneral / diasHabiles).toFixed(1) : '0.0';
     
     for(let d = 1; d <= 31; d++) {
         const td = document.getElementById('total_dia_' + d);
-        if (td) td.textContent = (totalesDia[d] !== undefined) ? totalesDia[d] : '-';
+        if (td) td.textContent = totalesDia[d] || '-';
     }
+    
+    document.querySelectorAll('.ven-v, .ven-h').forEach(inp => calcularTotalFila(inp, 'venezolano'));
+    document.querySelectorAll('.ext-v, .ext-h').forEach(inp => calcularTotalFila(inp, 'extranjero'));
 };
 
 window.calcularTotalFila = function(input, tipo) {
     const fila = input.closest('tr');
+    if (!fila) return;
     if (tipo === 'venezolano') {
-        let v = parseInt(fila.querySelector('.ven-v')?.value);
-        let h = parseInt(fila.querySelector('.ven-h')?.value);
-        if (isNaN(v)) v = 0;
-        if (isNaN(h)) h = 0;
-        const total = v + h;
-        fila.querySelector('.ven-total').value = total;
+        const v = parseInt(fila.querySelector('.ven-v')?.value) || 0;
+        const h = parseInt(fila.querySelector('.ven-h')?.value) || 0;
+        fila.querySelector('.ven-total').value = (v + h) || '';
     } else if (tipo === 'extranjero') {
-        let v = parseInt(fila.querySelector('.ext-v')?.value);
-        let h = parseInt(fila.querySelector('.ext-h')?.value);
-        if (isNaN(v)) v = 0;
-        if (isNaN(h)) h = 0;
-        const total = v + h;
-        fila.querySelector('.ext-total').value = total;
+        const v = parseInt(fila.querySelector('.ext-v')?.value) || 0;
+        const h = parseInt(fila.querySelector('.ext-h')?.value) || 0;
+        fila.querySelector('.ext-total').value = (v + h) || '';
     }
 };
 
-function agregarFila(tipo) {
-    const tbody = document.querySelector(`#tabla${tipo === 'ingreso' ? 'Ingresos' : 'Egresos'} tbody`);
-    const fila = document.createElement('tr');
-    fila.className = `fila-${tipo}`;
-    
-    if (tipo === 'ingreso') {
-        fila.innerHTML = `
-            <td>
-                <input type="text" name="ingreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
-                <input type="text" name="ingreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
-            </td>
-            <td>
-                <select name="ingreso_genero[]" class="form-select form-select-sm">
-                    <option value="V">Varón (V)</option>
-                    <option value="H">Hembra (H)</option>
-                </select>
-            </td>
-            <td>
-                <select name="ingreso_nacionalidad[]" class="form-select form-select-sm">
-                    <option value="Venezolana">Venezolana</option>
-                    <option value="Extranjera">Extranjera</option>
-                </select>
-            </td>
-            <td><input type="text" name="ingreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-            <td><input type="text" name="ingreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-            <td><input type="text" name="ingreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
-        `;
-    } else {
-        fila.innerHTML = `
-            <td>
-                <input type="text" name="egreso_apellido[]" class="form-control form-control-sm" placeholder="Apellido">
-                <input type="text" name="egreso_nombre[]" class="form-control form-control-sm mt-1" placeholder="Nombre">
-            </td>
-            <td>
-                <select name="egreso_genero[]" class="form-select form-select-sm">
-                    <option value="V">Varón (V)</option>
-                    <option value="H">Hembra (H)</option>
-                </select>
-            </td>
-            <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm" placeholder="Cédula" maxlength="11"></td>
-            <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-            <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="DD/MM/YYYY"></td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest('tr').remove()">✖</button></td>
-        `;
-    }
-    tbody.appendChild(fila);
+// ========== INGRESOS ==========
+function agregarFilaIngreso() {
+    const tbody = document.getElementById('ingresos-body');
+    const filaForm = document.getElementById('fila-ingreso-form');
+    const newRow = filaForm.cloneNode(true);
+    newRow.id = '';
+    newRow.className = 'fila-ingreso-form';
+    newRow.querySelectorAll('input').forEach(inp => inp.value = '');
+    newRow.querySelectorAll('select').forEach(sel => sel.selectedIndex = 0);
+    tbody.appendChild(newRow);
 }
 
+function cargarIngresosExistentes() {
+    const sala = document.getElementById('select-grado')?.value || '<?= htmlspecialchars($sala) ?>';
+    const seccion = document.getElementById('select-seccion')?.value || '<?= htmlspecialchars($seccion_id) ?>';
+    const periodo = document.getElementById('select-mes')?.value || '<?= htmlspecialchars(date('Y-m', strtotime($periodo))) ?>';
+    if (!sala || !seccion || !periodo) return;
+    
+    const formData = new FormData();
+    formData.append('action', 'cargar_ingresos');
+    formData.append('sala', sala);
+    formData.append('seccion', seccion);
+    formData.append('periodo', periodo);
+    
+    fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('ingresos-body');
+            const filaForm = document.getElementById('fila-ingreso-form');
+            tbody.innerHTML = '';
+            tbody.appendChild(filaForm);
+            
+            if (data.ingresos && data.ingresos.length > 0) {
+                data.ingresos.forEach(ing => {
+                    const row = document.createElement('tr');
+                    row.className = 'fila-ingreso-existente';
+                    row.innerHTML = `
+                        <td><input type="text" class="form-control form-control-sm" value="${ing.nombre_completo}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${ing.genero === 'V' ? 'Varón' : 'Hembra'}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${ing.nacionalidad}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${ing.ci}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${ing.fn}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${ing.fi}" readonly></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger eliminar-ingreso" data-id="${ing.id}" title="Eliminar ingreso">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+        })
+        .catch(err => console.error('Error cargando ingresos:', err));
+}
+
+// ========== EGRESOS ==========
+function agregarFilaEgreso() {
+    const tbody = document.getElementById('egresos-body');
+    const fila = document.createElement('tr');
+    fila.className = 'fila-egreso-manual';
+    fila.innerHTML = `
+        <td style="position: relative; overflow: visible !important;">
+            <input type="text" class="form-control form-control-sm egreso-busqueda" placeholder="Apellido y Nombre" autocomplete="off">
+            <input type="hidden" name="egreso_apellido[]" class="egreso-apellido" value="">
+            <input type="hidden" name="egreso_nombre[]" class="egreso-nombre" value="">
+            <input type="hidden" name="egreso_estudiante_id[]" class="egreso-id" value="">
+            <div class="autocomplete-dropdown" style="display:none;"></div>
+        </td>
+        <td>
+            <select name="egreso_genero[]" class="form-select form-select-sm egreso-genero">
+                <option value="V">Varón (V)</option>
+                <option value="H">Hembra (H)</option>
+            </select>
+        </td>
+        <td><input type="text" name="egreso_ci[]" class="form-control form-control-sm egreso-ci" placeholder="Cédula" readonly></td>
+        <td><input type="text" name="egreso_fn[]" class="form-control form-control-sm egreso-fn" placeholder="F.Nac." readonly></td>
+        <td><input type="text" name="egreso_fi[]" class="form-control form-control-sm" placeholder="F.Ingreso" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"></td>
+        <td>
+            <button type="button" class="btn btn-sm btn-success confirmar-egreso" title="Confirmar egreso">✓</button>
+            <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">✖</button>
+        </td>
+    `;
+    tbody.appendChild(fila);
+    inicializarAutocompletadoEgreso(fila);
+}
+
+function cargarEgresosExistentes() {
+    const sala = document.getElementById('select-grado')?.value || '<?= htmlspecialchars($sala) ?>';
+    const seccion = document.getElementById('select-seccion')?.value || '<?= htmlspecialchars($seccion_id) ?>';
+    const periodo = document.getElementById('select-mes')?.value || '<?= htmlspecialchars(date('Y-m', strtotime($periodo))) ?>';
+    if (!sala || !seccion || !periodo) return;
+    
+    const formData = new FormData();
+    formData.append('action', 'cargar_egresos_existentes');
+    formData.append('sala', sala);
+    formData.append('seccion', seccion);
+    formData.append('periodo', periodo);
+    
+    fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('egresos-body');
+            tbody.innerHTML = '';
+            if (data.egresos && data.egresos.length > 0) {
+                data.egresos.forEach(eg => {
+                    const fila = document.createElement('tr');
+                    fila.className = 'fila-egreso-existente';
+                    fila.innerHTML = `
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.nombre_completo}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.genero === 'V' ? 'Varón' : 'Hembra'}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.ci}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.fn}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${eg.fi}" readonly></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger eliminar-egreso-existente" data-egreso-id="${eg.egreso_id}" title="Eliminar egreso y reactivar estudiante">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(fila);
+                });
+            }
+        })
+        .catch(err => console.error('Error cargando egresos:', err));
+}
+
+// ========== AUTOCOMPLETADO PARA EGRESOS ==========
+function inicializarAutocompletadoEgreso(fila) {
+    const busquedaInput = fila.querySelector('.egreso-busqueda');
+    const dropdown = fila.querySelector('.autocomplete-dropdown');
+    const apellidoHidden = fila.querySelector('.egreso-apellido');
+    const nombreHidden = fila.querySelector('.egreso-nombre');
+    const idHidden = fila.querySelector('.egreso-id');
+    const generoSelect = fila.querySelector('.egreso-genero');
+    const ciInput = fila.querySelector('.egreso-ci');
+    const fnInput = fila.querySelector('.egreso-fn');
+    let timeoutId;
+
+    const realizarBusqueda = () => {
+        clearTimeout(timeoutId);
+        const termino = busquedaInput.value.trim();
+
+        if (termino.length < 1) {
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
+            return;
+        }
+
+        timeoutId = setTimeout(() => {
+            const sala = document.getElementById('select-grado')?.value || '<?= htmlspecialchars($sala) ?>';
+            const seccion = document.getElementById('select-seccion')?.value || '<?= htmlspecialchars($seccion_id) ?>';
+            const periodo = document.getElementById('select-mes')?.value || '<?= htmlspecialchars(date('Y-m', strtotime($periodo))) ?>';
+            if (!sala || !seccion || !periodo) {
+                dropdown.innerHTML = '<div class="p-2 text-muted small">Seleccione sala, sección y mes primero</div>';
+                dropdown.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'buscar_estudiantes');
+            formData.append('termino', termino);
+            formData.append('sala', sala);
+            formData.append('seccion_id', seccion);
+            formData.append('periodo', periodo);
+            formData.append('tipo', 'egreso');
+
+            fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    dropdown.innerHTML = '';
+                    if (data.estudiantes && data.estudiantes.length > 0) {
+                        data.estudiantes.forEach(est => {
+                            const item = document.createElement('a');
+                            item.href = '#';
+                            item.className = 'dropdown-item small';
+                            item.innerHTML = `<strong>${est.nombre_completo}</strong> <span class="text-muted">- ${est.cedula}</span>`;
+                            item.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                seleccionarEstudianteEgreso(fila, est);
+                                dropdown.style.display = 'none';
+                            });
+                            dropdown.appendChild(item);
+                        });
+                        dropdown.style.display = 'block';
+                    } else {
+                        dropdown.innerHTML = '<div class="p-2 text-muted small">No se encontraron estudiantes activos y con inscripción completa para egreso</div>';
+                        dropdown.style.display = 'block';
+                    }
+                })
+                .catch(() => {
+                    dropdown.innerHTML = '<div class="p-2 text-danger small">Error de conexión</div>';
+                    dropdown.style.display = 'block';
+                });
+        }, 300);
+    };
+
+    busquedaInput.addEventListener('input', realizarBusqueda);
+
+    busquedaInput.addEventListener('blur', () => {
+        setTimeout(() => { dropdown.style.display = 'none'; }, 200);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!fila.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+
+function seleccionarEstudianteEgreso(fila, estudiante) {
+    const partes = estudiante.nombre_completo.split(' ');
+    const apellido = partes.slice(1).join(' ') || partes[0];
+    const nombre = partes[0] || '';
+
+    fila.querySelector('.egreso-busqueda').value = estudiante.nombre_completo;
+    fila.querySelector('.egreso-apellido').value = apellido;
+    fila.querySelector('.egreso-nombre').value = nombre;
+    fila.querySelector('.egreso-id').value = estudiante.id;
+    fila.querySelector('.egreso-genero').value = estudiante.genero || 'V';
+    fila.querySelector('.egreso-ci').value = estudiante.cedula || '';
+    fila.querySelector('.egreso-fn').value = estudiante.fecha_nacimiento || '';
+
+    const fiInput = fila.querySelector('[name="egreso_fi[]"]');
+    if (!fiInput.value) {
+        fiInput.value = new Date().toISOString().split('T')[0];
+    }
+}
+
+// ========== EVENTOS ==========
+document.addEventListener('click', function(e) {
+    // ===== CONFIRMAR INGRESO =====
+    if (e.target.classList.contains('confirmar-ingreso')) {
+        e.preventDefault();
+        const fila = e.target.closest('tr');
+        const apellido = fila.querySelector('[name="ingreso_apellido[]"]').value.trim();
+        const nombre = fila.querySelector('[name="ingreso_nombre[]"]').value.trim();
+        if (!apellido || !nombre) {
+            mostrarNotificacion('Complete al menos apellido y nombre.', 'danger');
+            return;
+        }
+        
+        const sala = document.getElementById('select-grado')?.value || '<?= htmlspecialchars($sala) ?>';
+        const seccion = document.getElementById('select-seccion')?.value || '<?= htmlspecialchars($seccion_id) ?>';
+        const periodo = document.getElementById('select-mes')?.value || '<?= htmlspecialchars(date('Y-m', strtotime($periodo))) ?>';
+        if (!sala || !seccion || !periodo) {
+            mostrarNotificacion('Seleccione sala, sección y mes.', 'danger');
+            return;
+        }
+        
+        const btn = e.target;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        const formData = new FormData();
+        formData.append('action', 'confirmar_ingreso');
+        formData.append('apellido', apellido);
+        formData.append('nombre', nombre);
+        formData.append('genero', fila.querySelector('[name="ingreso_genero[]"]').value);
+        formData.append('cedula', fila.querySelector('[name="ingreso_ci[]"]').value);
+        formData.append('fecha_nacimiento', fila.querySelector('[name="ingreso_fn[]"]').value);
+        formData.append('sala', sala);
+        formData.append('seccion', seccion);
+        formData.append('periodo', periodo);
+        formData.append('csrf_token', '<?= $csrf_token ?>');
+        formData.append('estudiante_id', '0');
+        
+        fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const tbody = document.getElementById('ingresos-body');
+                    const est = data.estudiante;
+                    const row = document.createElement('tr');
+                    row.className = 'fila-ingreso-existente';
+                    row.innerHTML = `
+                        <td><input type="text" class="form-control form-control-sm" value="${est.nombre_completo}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${est.genero === 'V' ? 'Varón' : 'Hembra'}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="Venezolana" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${est.ci}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${est.fn}" readonly></td>
+                        <td><input type="text" class="form-control form-control-sm" value="${est.fi}" readonly></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-danger eliminar-ingreso" data-id="${est.id}" title="Eliminar ingreso">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </td>
+                    `;
+                    const filaForm = document.getElementById('fila-ingreso-form');
+                    tbody.insertBefore(row, filaForm);
+                    
+                    fila.querySelector('[name="ingreso_apellido[]"]').value = '';
+                    fila.querySelector('[name="ingreso_nombre[]"]').value = '';
+                    fila.querySelector('[name="ingreso_genero[]"]').value = 'V';
+                    fila.querySelector('[name="ingreso_ci[]"]').value = '';
+                    fila.querySelector('[name="ingreso_fn[]"]').value = '';
+                    fila.querySelector('[name="ingreso_fi[]"]').value = '';
+                    
+                    mostrarNotificacion('✅ ' + data.mensaje, 'success');
+                } else {
+                    mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');
+                }
+            })
+            .catch(() => mostrarNotificacion('Error de conexión', 'danger'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '✓';
+            });
+    }
+    
+    // ===== ELIMINAR INGRESO =====
+    if (e.target.closest('.eliminar-ingreso')) {
+        const btn = e.target.closest('.eliminar-ingreso');
+        const id = btn.dataset.id;
+        if (!id) return;
+        if (!confirm('¿Eliminar este ingreso permanentemente?')) return;
+        
+        const formData = new FormData();
+        formData.append('action', 'eliminar_ingreso');
+        formData.append('id', id);
+        formData.append('csrf_token', '<?= $csrf_token ?>');
+        
+        fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    btn.closest('tr').remove();
+                    mostrarNotificacion('✅ ' + data.mensaje, 'success');
+                } else {
+                    mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');
+                }
+            })
+            .catch(() => mostrarNotificacion('Error de conexión', 'danger'));
+    }
+    
+    // ===== CONFIRMAR EGRESO =====
+    if (e.target.classList.contains('confirmar-egreso')) {
+        e.preventDefault();
+        const fila = e.target.closest('tr');
+        const idEstudiante = fila.querySelector('.egreso-id')?.value;
+        if (!idEstudiante) {
+            mostrarNotificacion('Primero busque y seleccione un estudiante.', 'danger');
+            return;
+        }
+        
+        const sala = document.getElementById('select-grado')?.value || '<?= htmlspecialchars($sala) ?>';
+        const seccion = document.getElementById('select-seccion')?.value || '<?= htmlspecialchars($seccion_id) ?>';
+        const periodo = document.getElementById('select-mes')?.value || '<?= htmlspecialchars(date('Y-m', strtotime($periodo))) ?>';
+        const motivo = 'Retiro';
+        
+        if (!sala || !seccion || !periodo) {
+            mostrarNotificacion('Seleccione sala, sección y mes.', 'danger');
+            return;
+        }
+        
+        const btn = e.target;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        const formData = new FormData();
+        formData.append('action', 'confirmar_egreso');
+        formData.append('estudiante_id', idEstudiante);
+        formData.append('sala', sala);
+        formData.append('seccion', seccion);
+        formData.append('periodo', periodo);
+        formData.append('motivo', motivo);
+        formData.append('csrf_token', '<?= $csrf_token ?>');
+        
+        fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarNotificacion('✅ Egreso registrado correctamente', 'success');
+                    fila.remove();
+                    cargarEgresosExistentes();
+                } else {
+                    mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');
+                }
+            })
+            .catch(() => mostrarNotificacion('Error de conexión', 'danger'))
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '✓';
+            });
+    }
+    
+    // ===== ELIMINAR EGRESO EXISTENTE =====
+    if (e.target.closest('.eliminar-egreso-existente')) {
+        const btn = e.target.closest('.eliminar-egreso-existente');
+        const egresoId = btn.dataset.egresoId;
+        if (!egresoId) return;
+        if (!confirm('¿Eliminar este egreso y reactivar al estudiante?')) return;
+        
+        const formData = new FormData();
+        formData.append('action', 'eliminar_egreso');
+        formData.append('egreso_id', egresoId);
+        formData.append('csrf_token', '<?= $csrf_token ?>');
+        
+        fetch('editar_resumen.php?ajax=1', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarNotificacion('✅ Egreso eliminado y estudiante reactivado', 'success');
+                    cargarEgresosExistentes();
+                } else {
+                    mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');
+                }
+            })
+            .catch(() => mostrarNotificacion('Error de conexión', 'danger'));
+    }
+    
+    // ===== ELIMINAR FILA DE EGRESO MANUAL =====
+    if (e.target.classList.contains('eliminar-fila')) {
+        e.target.closest('tr').remove();
+    }
+});
+
+// ========== CARGA INICIAL ==========
 document.addEventListener('DOMContentLoaded', function() {
     window.recalcular();
-    document.querySelectorAll('.ven-v, .ven-h').forEach(inp => calcularTotalFila(inp, 'venezolano'));
-    document.querySelectorAll('.ext-v, .ext-h').forEach(inp => calcularTotalFila(inp, 'extranjero'));
+    
+    // Cargar ingresos y egresos existentes
+    setTimeout(() => {
+        cargarIngresosExistentes();
+        cargarEgresosExistentes();
+    }, 300);
 });
 </script>
 
