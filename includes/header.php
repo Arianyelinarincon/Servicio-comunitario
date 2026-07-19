@@ -59,15 +59,6 @@ if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $
                 <!-- INICIO -->
                 <li><a href="/servicio-comunitario/index.php"><i class="fas fa-home me-2"></i> Inicio</a></li>
                 
-                <!-- PANEL DIRECTIVA (para super_admin y directiva) -->
-                <?php if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $rol_normalizado === 'directiva'): ?>
-                    <li class="bg-primary bg-opacity-10">
-                        <a href="/servicio-comunitario/profesores/panel_super_admin.php" class="text-primary fw-bold">
-                            <i class="fas fa-user-cog me-2"></i> Panel Directiva
-                        </a>
-                    </li>
-                <?php endif; ?>
-                
                 <!-- ESTUDIANTES -->
                 <li><a href="/servicio-comunitario/estudiantes/index.php"><i class="fas fa-user-plus me-2"></i> Estudiantes</a></li>
                 
