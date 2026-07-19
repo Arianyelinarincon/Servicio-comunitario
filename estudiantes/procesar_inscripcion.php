@@ -18,6 +18,7 @@ if (!function_exists('registrarAuditoria')) {
 
 // ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
 function verificarCamposCompletos($datos) {
+    // Campos obligatorios SIEMPRE
     $obligatorios = [
         'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar',
         'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'
@@ -27,10 +28,33 @@ function verificarCamposCompletos($datos) {
             return false;
         }
     }
-    // Al menos uno de los padres
+    
+    // Al menos un padre
     if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
         return false;
     }
+    
+    // Si enfermedad es "Si", debe tener enfermedad_cual
+    if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si') {
+        if (empty($datos['enfermedad_cual'])) {
+            return false;
+        }
+    }
+    
+    // Si educacion_fisica es "No", debe tener educacion_fisica_porque
+    if (!empty($datos['educacion_fisica']) && $datos['educacion_fisica'] === 'No') {
+        if (empty($datos['educacion_fisica_porque'])) {
+            return false;
+        }
+    }
+    
+    // Si alergia es "Si", debe tener alergia_cual
+    if (!empty($datos['alergia']) && $datos['alergia'] === 'Si') {
+        if (empty($datos['alergia_cual'])) {
+            return false;
+        }
+    }
+    
     return true;
 }
 
@@ -110,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rep_telefono = trim($_POST['rep_telefono']);
         $rep_fecha_nac = !empty($_POST['rep_fecha_nacimiento']) ? $_POST['rep_fecha_nacimiento'] : null;
         $rep_estado_civil = $_POST['rep_estado_civil'] ?? '';
-        $rep_afinidad = $_POST['rep_afinidad'] ?? '';
+        // ELIMINADO: $rep_afinidad (ya no se usa)
         $rep_sexo = $_POST['rep_sexo'] ?? '';
         $rep_pais_nac = $_POST['rep_pais_nacimiento'] ?? 'Venezuela';
         $rep_estado_nac = $_POST['rep_estado_nacimiento'] ?? '';
@@ -124,13 +148,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($representante_existente_id > 0) {
             $stmt_rep = $conexion->prepare("UPDATE representantes SET 
                 nombre_completo = ?, cedula = ?, telefono = ?, fecha_nacimiento = ?, 
-                estado_civil = ?, afinidad = ?, sexo = ?, pais_nacimiento = ?, 
+                estado_civil = ?, sexo = ?, pais_nacimiento = ?, 
                 estado_nacimiento = ?, nacionalidad = ?, direccion = ?, 
                 estado_residencia = ?, municipio = ?, parroquia = ?, ciudad = ? 
                 WHERE id = ?");
-            $stmt_rep->bind_param("sssssssssssssssi", 
+            $stmt_rep->bind_param("ssssssssssssssi", 
                 $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, 
-                $rep_estado_civil, $rep_afinidad, $rep_sexo, $rep_pais_nac, 
+                $rep_estado_civil, $rep_sexo, $rep_pais_nac, 
                 $rep_estado_nac, $rep_nacionalidad, $rep_direccion, 
                 $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad, 
                 $representante_existente_id);
@@ -139,13 +163,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $representante_id = $representante_existente_id;
         } else {
             $stmt_rep = $conexion->prepare("INSERT INTO representantes 
-                (nombre_completo, cedula, telefono, fecha_nacimiento, estado_civil, afinidad, sexo, 
+                (nombre_completo, cedula, telefono, fecha_nacimiento, estado_civil, sexo, 
                  pais_nacimiento, estado_nacimiento, nacionalidad, direccion, estado_residencia, 
                  municipio, parroquia, ciudad, created_at) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
             $stmt_rep->bind_param("sssssssssssssss", 
                 $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil, 
-                $rep_afinidad, $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad, 
+                $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad, 
                 $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad);
             $stmt_rep->execute();
             $representante_id = $conexion->insert_id;
@@ -178,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $madre_telefono = $_POST['madre_telefono'] ?? '';
         $padre_cedula = $_POST['padre_cedula'] ?? '';
         $padre_telefono = $_POST['padre_telefono'] ?? '';
-        $sala = ''; // Se actualizará después con el año actual
+        $sala = ''; // Se actualizará después
 
         if ($es_nuevo) {
             $stmt_est = $conexion->prepare("INSERT INTO estudiantes 
@@ -278,10 +302,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $fecha_ins_val, $funcionario);
             $stmt_ins->execute();
 
-            // Guardar el último grado para actualizar la sala
             if ($i == count($ano_escolar_arr) - 1) {
                 $ultimo_grado = $grado;
-                // Extraer sala y sección
                 if (!empty($ultimo_grado)) {
                     $partes = explode(' - ', $ultimo_grado);
                     $sala_actual = $partes[0] ?? '';
@@ -335,6 +357,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'seccion_id' => $seccion_id_actual,
             'madre_nombre' => $madre_nombre,
             'padre_nombre' => $padre_nombre,
+            'enfermedad' => $enfermedad,
+            'enfermedad_cual' => $enfermedad_cual,
+            'educacion_fisica' => $educacion_fisica,
+            'educacion_fisica_porque' => $educacion_fisica_porque,
+            'alergia' => $alergia,
+            'alergia_cual' => $alergia_cual,
         ];
         $inscripcion_completa = verificarCamposCompletos($datos_estudiante) ? 1 : 0;
 

@@ -178,17 +178,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $sql = "SELECT * FROM secretaria ORDER BY rol DESC, nombre ASC";
 $result = $conexion->query($sql);
 
-$sql_audit = "
-    SELECT a.*, 
-           COALESCE(s.nombre, 'Sistema') AS usuario_nombre
-    FROM auditoria a
-    LEFT JOIN secretaria s ON a.usuario_id = s.id
-    WHERE a.tabla_afectada = 'secretaria'
-    ORDER BY a.fecha DESC
-    LIMIT 50
-";
-$result_audit = $conexion->query($sql_audit);
-
 include '../includes/header.php';
 ?>
 
@@ -252,7 +241,8 @@ include '../includes/header.php';
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <button type="button" class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#modalAgregar" onclick="$('#modalUsuarios').modal('hide')">
+                    <!-- Botón Agregar -->
+                    <button type="button" class="btn btn-success mb-3" id="btnAbrirAgregar">
                         <i class="fas fa-user-plus me-2"></i> Agregar Secretaria
                     </button>
                     
@@ -286,11 +276,11 @@ include '../includes/header.php';
                                         <td><?= htmlspecialchars($row['email'] ?? '-') ?></td>
                                         <td><?= $estatus_label ?></td>
                                         <td class="text-nowrap">
-                                            <button class="btn btn-sm btn-primary" onclick="editarUsuario(<?= $row['id'] ?>, <?= $es_directiva ? 'true' : 'false' ?>)">
+                                            <button class="btn btn-sm btn-primary btn-editar" data-id="<?= $row['id'] ?>" data-directiva="<?= $es_directiva ? 'true' : 'false' ?>">
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <?php if (!$es_directiva && $row['id'] != $_SESSION['usuario_id']): ?>
-                                            <button class="btn btn-sm btn-danger" onclick="eliminarUsuario(<?= $row['id'] ?>, '<?= addslashes($row['nombre']) ?>')">
+                                            <button class="btn btn-sm btn-danger btn-eliminar" data-id="<?= $row['id'] ?>" data-nombre="<?= addslashes($row['nombre']) ?>">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                             <?php endif; ?>
@@ -367,15 +357,52 @@ include '../includes/header.php';
                     <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Editar Usuario</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST">
+                <form method="POST" id="formEditar">
                     <input type="hidden" name="action" value="editar">
                     <input type="hidden" name="id" id="edit_id">
-                    <div class="modal-body" id="edit_form_body">
-                        <!-- Se llena con JS -->
+                    <div class="modal-body">
+                        <div id="msg_directiva" class="alert alert-info" style="display:none;">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Directiva</strong> - Solo puedes cambiar la contraseña y el estado.
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Nombre completo *</label>
+                            <input type="text" name="nombre" id="edit_nombre" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Usuario *</label>
+                            <input type="text" name="usuario" id="edit_usuario" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Nueva Contraseña (dejar vacío para no cambiar)</label>
+                            <input type="password" name="nueva_password" id="edit_password" class="form-control" placeholder="Ingrese nueva contraseña...">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Rol</label>
+                            <select name="rol" id="edit_rol" class="form-select">
+                                <option value="administrador">Admin (Secretaria)</option>
+                                <option value="super_admin">Super Admin (Directiva)</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Teléfono</label>
+                            <input type="text" name="telefono" id="edit_telefono" class="form-control">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" id="edit_email" class="form-control">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Estado</label>
+                            <select name="estatus" id="edit_estatus" class="form-select">
+                                <option value="Activo">Activo</option>
+                                <option value="Inactivo">Inactivo</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+                        <button type="button" class="btn btn-primary" id="btnGuardarEdicion">Guardar cambios</button>
                     </div>
                 </form>
             </div>
@@ -437,7 +464,75 @@ include '../includes/header.php';
     }
 </style>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
+// Instancias globales de modales
+let modalUsuarios, modalAgregar, modalEditar, modalEliminar;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar modales
+    modalUsuarios = new bootstrap.Modal(document.getElementById('modalUsuarios'));
+    modalAgregar = new bootstrap.Modal(document.getElementById('modalAgregar'));
+    modalEditar = new bootstrap.Modal(document.getElementById('modalEditar'));
+    modalEliminar = new bootstrap.Modal(document.getElementById('modalEliminar'));
+
+    // ===== BOTÓN AGREGAR =====
+    document.getElementById('btnAbrirAgregar').addEventListener('click', function() {
+        modalUsuarios.hide(); // Ocultar modal de gestión
+        // Esperar a que se oculte y luego mostrar agregar
+        document.getElementById('modalUsuarios').addEventListener('hidden.bs.modal', function onHidden() {
+            document.getElementById('modalUsuarios').removeEventListener('hidden.bs.modal', onHidden);
+            modalAgregar.show();
+        });
+    });
+
+    // ===== BOTONES EDITAR (delegación) =====
+    document.querySelectorAll('.btn-editar').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.dataset.id;
+            const esDirectiva = this.dataset.directiva === 'true';
+            editarUsuario(id, esDirectiva);
+        });
+    });
+
+    // ===== BOTONES ELIMINAR (delegación) =====
+    document.querySelectorAll('.btn-eliminar').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.dataset.id;
+            const nombre = this.dataset.nombre;
+            eliminarUsuario(id, nombre);
+        });
+    });
+
+    // ===== AL CERRAR MODAL EDITAR, VOLVER A GESTIÓN =====
+    document.getElementById('modalEditar').addEventListener('hidden.bs.modal', function() {
+        modalUsuarios.show();
+    });
+
+    // ===== AL CERRAR MODAL AGREGAR, VOLVER A GESTIÓN =====
+    document.getElementById('modalAgregar').addEventListener('hidden.bs.modal', function() {
+        modalUsuarios.show();
+    });
+
+    // ===== AL CERRAR MODAL ELIMINAR, VOLVER A GESTIÓN =====
+    document.getElementById('modalEliminar').addEventListener('hidden.bs.modal', function() {
+        modalUsuarios.show();
+    });
+
+    // ===== GUARDAR EDICIÓN CON CÓDIGO DE SEGURIDAD =====
+    document.getElementById('btnGuardarEdicion').addEventListener('click', function() {
+        const codigo = prompt('Ingrese el código de seguridad para guardar los cambios:');
+        if (codigo === null) return;
+        if (codigo.trim() === '112233') {
+            document.getElementById('formEditar').submit();
+        } else {
+            alert('Código incorrecto. Los cambios no se guardaron.');
+        }
+    });
+});
+
+// ===== FUNCIÓN EDITAR =====
 function editarUsuario(id, esDirectiva) {
     fetch('ajax_get_secretaria.php?id=' + id)
         .then(res => {
@@ -445,89 +540,55 @@ function editarUsuario(id, esDirectiva) {
             return res.json();
         })
         .then(data => {
-            const body = document.getElementById('edit_form_body');
-            if (esDirectiva) {
-                body.innerHTML = `
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Directiva</strong> - Solo puedes cambiar la contraseña y el estado.
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Nombre</label>
-                        <input type="text" class="form-control" value="${data.nombre}" disabled>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Usuario</label>
-                        <input type="text" class="form-control" value="${data.usuario}" disabled>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Nueva Contraseña (dejar vacío para no cambiar)</label>
-                        <input type="password" name="nueva_password" class="form-control" placeholder="Ingrese nueva contraseña...">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Estado</label>
-                        <select name="estatus" class="form-select">
-                            <option value="Activo" ${data.estatus === 'Activo' ? 'selected' : ''}>Activo</option>
-                            <option value="Inactivo" ${data.estatus === 'Inactivo' ? 'selected' : ''}>Inactivo</option>
-                        </select>
-                    </div>
-                    <input type="hidden" name="nombre" value="${data.nombre}">
-                    <input type="hidden" name="usuario" value="${data.usuario}">
-                    <input type="hidden" name="rol" value="${data.rol}">
-                    <input type="hidden" name="telefono" value="${data.telefono || ''}">
-                    <input type="hidden" name="email" value="${data.email || ''}">
-                `;
-            } else {
-                body.innerHTML = `
-                    <div class="mb-2">
-                        <label class="form-label">Nombre completo *</label>
-                        <input type="text" name="nombre" class="form-control" value="${data.nombre}" required>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Usuario *</label>
-                        <input type="text" name="usuario" class="form-control" value="${data.usuario}" required>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Nueva Contraseña (dejar vacío para no cambiar)</label>
-                        <input type="password" name="nueva_password" class="form-control" placeholder="Ingrese nueva contraseña...">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Rol</label>
-                        <select name="rol" class="form-select">
-                            <option value="administrador" ${data.rol === 'admin' ? 'selected' : ''}>Admin (Secretaria)</option>
-                            <option value="super_admin" ${data.rol === 'super_admin' ? 'selected' : ''}>Super Admin (Directiva)</option>
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Teléfono</label>
-                        <input type="text" name="telefono" class="form-control" value="${data.telefono || ''}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Email</label>
-                        <input type="email" name="email" class="form-control" value="${data.email || ''}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Estado</label>
-                        <select name="estatus" class="form-select">
-                            <option value="Activo" ${data.estatus === 'Activo' ? 'selected' : ''}>Activo</option>
-                            <option value="Inactivo" ${data.estatus === 'Inactivo' ? 'selected' : ''}>Inactivo</option>
-                        </select>
-                    </div>
-                `;
-            }
             document.getElementById('edit_id').value = data.id;
-            new bootstrap.Modal(document.getElementById('modalEditar')).show();
+            document.getElementById('edit_nombre').value = data.nombre;
+            document.getElementById('edit_usuario').value = data.usuario;
+            document.getElementById('edit_password').value = '';
+            document.getElementById('edit_rol').value = data.rol;
+            document.getElementById('edit_telefono').value = data.telefono || '';
+            document.getElementById('edit_email').value = data.email || '';
+            document.getElementById('edit_estatus').value = data.estatus || 'Activo';
+
+            const msgDirectiva = document.getElementById('msg_directiva');
+            const nombreInput = document.getElementById('edit_nombre');
+            const usuarioInput = document.getElementById('edit_usuario');
+            const rolSelect = document.getElementById('edit_rol');
+
+            if (esDirectiva) {
+                msgDirectiva.style.display = 'block';
+                nombreInput.disabled = true;
+                usuarioInput.disabled = true;
+                rolSelect.disabled = true;
+            } else {
+                msgDirectiva.style.display = 'none';
+                nombreInput.disabled = false;
+                usuarioInput.disabled = false;
+                rolSelect.disabled = false;
+            }
+
+            // Ocultar gestión y mostrar editar
+            modalUsuarios.hide();
+            document.getElementById('modalUsuarios').addEventListener('hidden.bs.modal', function onHidden() {
+                document.getElementById('modalUsuarios').removeEventListener('hidden.bs.modal', onHidden);
+                modalEditar.show();
+            });
         })
-        .catch(() => alert('Error al cargar los datos del usuario.'));
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error al cargar los datos del usuario.');
+        });
 }
 
+// ===== FUNCIÓN ELIMINAR =====
 function eliminarUsuario(id, nombre) {
     document.getElementById('eliminar_id').value = id;
     document.getElementById('eliminar_nombre').textContent = nombre;
-    new bootstrap.Modal(document.getElementById('modalEliminar')).show();
+    modalUsuarios.hide();
+    document.getElementById('modalUsuarios').addEventListener('hidden.bs.modal', function onHidden() {
+        document.getElementById('modalUsuarios').removeEventListener('hidden.bs.modal', onHidden);
+        modalEliminar.show();
+    });
 }
 </script>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <?php include '../includes/footer.php'; ?>

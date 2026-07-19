@@ -13,12 +13,12 @@ $prefill_data = [];
 if ($prefill === '1') {
     $prefill_data = [
         'apellido' => $_GET['apellido'] ?? '',
-        'nombre' => $_GET['nombre'] ?? '',
-        'genero' => $_GET['genero'] ?? '',
+        'nombre'   => $_GET['nombre'] ?? '',
+        'genero'   => $_GET['genero'] ?? '',
         'nacionalidad' => $_GET['nacionalidad'] ?? '',
-        'ci' => $_GET['ci'] ?? '',
-        'fn' => $_GET['fn'] ?? '',
-        'fi' => $_GET['fi'] ?? '',
+        'ci'       => $_GET['ci'] ?? '',
+        'fn'       => $_GET['fn'] ?? '',
+        'fi'       => $_GET['fi'] ?? '',
     ];
 }
 
@@ -55,8 +55,9 @@ if ($error_tipo === 'duplicado' && isset($_GET['mensaje'])) {
 // Obtener secciones para el historial (formato: "sala - letra" sin "Sección")
 $secciones = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 $opciones_secciones = '<option value="">Seleccione</option>';
-while($sec = $secciones->fetch_assoc()) {
-    $opciones_secciones .= '<option value="' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '">' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '</option>';
+while ($sec = $secciones->fetch_assoc()) {
+    $valor = $sec['sala'] . ' - ' . $sec['nombre']; // ej: "2do - A"
+    $opciones_secciones .= '<option value="' . htmlspecialchars($valor) . '">' . htmlspecialchars($valor) . '</option>';
 }
 ?>
 <div class="container mt-4 mb-5">
@@ -111,7 +112,11 @@ while($sec = $secciones->fetch_assoc()) {
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Sexo <span class="text-danger">*</span></label>
-                            <select name="genero" class="form-select" required><option value="">--</option><option value="V">Varón</option><option value="H">Hembra</option></select>
+                            <select name="genero" class="form-select" required>
+                                <option value="">--</option>
+                                <option value="V">Varón</option>
+                                <option value="H">Hembra</option>
+                            </select>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Orden nacimiento en el año <span class="text-danger">*</span></label>
@@ -193,7 +198,7 @@ while($sec = $secciones->fetch_assoc()) {
                             </select>
                         </div>
                         <div class="col-md-8" id="div_enfermedad_cual" style="display: none;">
-                            <label class="form-label fw-semibold">¿Cuál enfermedad?</label>
+                            <label class="form-label fw-semibold">¿Cuál enfermedad? <span class="text-danger" id="req_enfermedad_cual" style="display:none;">*</span></label>
                             <input type="text" name="enfermedad_cual" class="form-control">
                         </div>
                         <div class="col-md-4">
@@ -203,7 +208,7 @@ while($sec = $secciones->fetch_assoc()) {
                             </select>
                         </div>
                         <div class="col-md-8" id="div_educacion_fisica_porque" style="display: none;">
-                            <label class="form-label fw-semibold">¿Por qué no puede?</label>
+                            <label class="form-label fw-semibold">¿Por qué no puede? <span class="text-danger" id="req_educacion_fisica_porque" style="display:none;">*</span></label>
                             <input type="text" name="educacion_fisica_porque" class="form-control">
                         </div>
                         <div class="col-md-4">
@@ -213,7 +218,7 @@ while($sec = $secciones->fetch_assoc()) {
                             </select>
                         </div>
                         <div class="col-md-8" id="div_alergia_cual" style="display: none;">
-                            <label class="form-label fw-semibold">¿Cuál(es) alergias?</label>
+                            <label class="form-label fw-semibold">¿Cuál(es) alergias? <span class="text-danger" id="req_alergia_cual" style="display:none;">*</span></label>
                             <input type="text" name="alergia_cual" class="form-control">
                         </div>
                     </div>
@@ -272,10 +277,6 @@ while($sec = $secciones->fetch_assoc()) {
                                 <option value="Viudo/a">Viudo/a</option>
                                 <option value="Unión libre">Unión libre</option>
                             </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Afinidad</label>
-                            <input type="text" name="rep_afinidad" class="form-control" placeholder="Ej: Hermana, Primo, etc.">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">País de Nacimiento</label>
@@ -424,9 +425,9 @@ while($sec = $secciones->fetch_assoc()) {
                                     <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
                                     <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
                                     <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                                        <span class="badge bg-success" style="font-size:0.75rem;">
                                             <i class="fas fa-check-circle me-1"></i> Actual
-                                        </button>
+                                        </span>
                                         <input type="hidden" name="es_actual[]" value="1">
                                     </td>
                                     <td class="text-center">
@@ -457,7 +458,6 @@ while($sec = $secciones->fetch_assoc()) {
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     
@@ -490,10 +490,38 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     <?php endif; ?>
 
-    // ---------- TOGGLES ----------
-    function toggleEnfermedad() { document.getElementById('div_enfermedad_cual').style.display = document.getElementById('enfermedad').value === 'Si' ? 'block' : 'none'; }
-    function toggleEducacionFisica() { document.getElementById('div_educacion_fisica_porque').style.display = document.getElementById('educacion_fisica').value === 'No' ? 'block' : 'none'; }
-    function toggleAlergia() { document.getElementById('div_alergia_cual').style.display = document.getElementById('alergia').value === 'Si' ? 'block' : 'none'; }
+    // ---------- TOGGLES CON REQUERIDOS CONDICIONALES ----------
+    function toggleEnfermedad() {
+        const show = document.getElementById('enfermedad').value === 'Si';
+        document.getElementById('div_enfermedad_cual').style.display = show ? 'block' : 'none';
+        document.getElementById('req_enfermedad_cual').style.display = show ? 'inline' : 'none';
+        if (show) {
+            document.querySelector('input[name="enfermedad_cual"]').setAttribute('required', 'required');
+        } else {
+            document.querySelector('input[name="enfermedad_cual"]').removeAttribute('required');
+        }
+    }
+    function toggleEducacionFisica() {
+        const show = document.getElementById('educacion_fisica').value === 'No';
+        document.getElementById('div_educacion_fisica_porque').style.display = show ? 'block' : 'none';
+        document.getElementById('req_educacion_fisica_porque').style.display = show ? 'inline' : 'none';
+        if (show) {
+            document.querySelector('input[name="educacion_fisica_porque"]').setAttribute('required', 'required');
+        } else {
+            document.querySelector('input[name="educacion_fisica_porque"]').removeAttribute('required');
+        }
+    }
+    function toggleAlergia() {
+        const show = document.getElementById('alergia').value === 'Si';
+        document.getElementById('div_alergia_cual').style.display = show ? 'block' : 'none';
+        document.getElementById('req_alergia_cual').style.display = show ? 'inline' : 'none';
+        if (show) {
+            document.querySelector('input[name="alergia_cual"]').setAttribute('required', 'required');
+        } else {
+            document.querySelector('input[name="alergia_cual"]').removeAttribute('required');
+        }
+    }
+    
     document.getElementById('enfermedad')?.addEventListener('change', toggleEnfermedad);
     document.getElementById('educacion_fisica')?.addEventListener('change', toggleEducacionFisica);
     document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
@@ -567,7 +595,6 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             return false;
         }
-        // Si todo está bien, avanzar al paso 4
         nextHandler();
     });
 
@@ -635,61 +662,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStep(0);
 
-    // ========== MANEJAR BOTÓN "MARCAR COMO ACTUAL" ==========
-
-    function actualizarDatosActual() {
-        const filas = document.querySelectorAll('#historial-body .fila-historial');
-        let filaActual = null;
-        
-        filas.forEach(fila => {
-            const btn = fila.querySelector('.btn-marcar-actual.btn-success');
-            if (btn) {
-                filaActual = fila;
-            }
-        });
-        
-        if (!filaActual) return;
-        
-        const anoSelect = filaActual.querySelector('select[name="ano_escolar[]"]');
-        const gradoSelect = filaActual.querySelector('select[name="grado_seccion[]"]');
-        const pesoInput = filaActual.querySelector('.peso-input');
-        const tallaInput = filaActual.querySelector('.talla-input');
-        
-        const ano = anoSelect ? anoSelect.value : '';
-        const grado = gradoSelect ? gradoSelect.value : '';
-        const peso = pesoInput ? pesoInput.value : '';
-        const talla = tallaInput ? tallaInput.value : '';
-        
-        document.getElementById('grado_actual').value = grado;
-        document.getElementById('seccion_actual_id').value = 0;
-        document.getElementById('peso_actual').value = peso;
-        document.getElementById('talla_actual').value = talla;
-        document.getElementById('ano_escolar_actual').value = ano;
-    }
-
-    function mostrarMensaje(texto) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
-        alertDiv.innerHTML = `
-            <i class="fas fa-check-circle me-2"></i>
-            <strong>${texto}</strong>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        
-        const tabla = document.getElementById('tablaHistorial');
-        const container = tabla.parentElement;
-        const existingAlert = container.querySelector('.alert-success');
-        if (existingAlert) existingAlert.remove();
-        container.insertBefore(alertDiv, tabla.nextSibling);
-        
-        setTimeout(() => {
-            if (alertDiv.parentElement) {
-                alertDiv.classList.remove('show');
-                setTimeout(() => alertDiv.remove(), 300);
-            }
-        }, 5000);
-    }
-
     // ---------- TABLA DINÁMICA (agregar fila AL FINAL) ----------
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
@@ -715,7 +687,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
         if (celdaActualUltima) {
             celdaActualUltima.innerHTML = `
-                <span class="badge bg-secondary" style="font-size: 0.7rem;">
+                <span class="badge bg-secondary" style="font-size:0.7rem;">
                     <i class="fas fa-history me-1"></i> Histórico
                 </span>
                 <input type="hidden" name="es_actual[]" value="0">
@@ -736,9 +708,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const celdaActualNueva = newRow.querySelector('td:nth-child(11)');
         if (celdaActualNueva) {
             celdaActualNueva.innerHTML = `
-                <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                <span class="badge bg-success" style="font-size:0.75rem;">
                     <i class="fas fa-check-circle me-1"></i> Actual
-                </button>
+                </span>
                 <input type="hidden" name="es_actual[]" value="1">
             `;
         }
@@ -760,7 +732,6 @@ document.addEventListener('DOMContentLoaded', function() {
             f.dataset.esUltima = (idx === todasLasFilas.length - 1) ? '1' : '0';
         });
         
-        actualizarDatosActual();
         mostrarMensaje('Nuevo año agregado. Complete los datos del nuevo año actual (la última fila).');
     }
 
@@ -790,9 +761,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const celdaActual = ultimaFila.querySelector('td:nth-child(11)');
                     if (celdaActual) {
                         celdaActual.innerHTML = `
-                            <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                            <span class="badge bg-success" style="font-size:0.75rem;">
                                 <i class="fas fa-check-circle me-1"></i> Actual
-                            </button>
+                            </span>
                             <input type="hidden" name="es_actual[]" value="1">
                         `;
                     }
@@ -806,8 +777,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     ultimaFila.dataset.esUltima = '1';
                 }
-                
-                actualizarDatosActual();
             } else {
                 alert('Debe haber al menos un registro escolar (el año actual).');
             }
@@ -818,7 +787,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const wizardForm = document.getElementById('wizardForm');
     if (wizardForm) {
         wizardForm.addEventListener('submit', function(e) {
-            // Verificar que haya al menos una fila marcada como actual (por seguridad)
             const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
             if (actuales.length === 0) {
                 e.preventDefault();
@@ -841,6 +809,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
+    }
+
+    function mostrarMensaje(texto) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
+        alertDiv.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>${texto}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        const tabla = document.getElementById('tablaHistorial');
+        const container = tabla.parentElement;
+        const existingAlert = container.querySelector('.alert-success');
+        if (existingAlert) existingAlert.remove();
+        container.insertBefore(alertDiv, tabla.nextSibling);
+        
+        setTimeout(() => {
+            if (alertDiv.parentElement) {
+                alertDiv.classList.remove('show');
+                setTimeout(() => alertDiv.remove(), 300);
+            }
+        }, 5000);
     }
 
     // ============================================================================
@@ -1100,7 +1091,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     inicializarGeografia();
     setTimeout(generarCedulaEscolar, 100);
-    setTimeout(actualizarDatosActual, 200);
 });
 </script>
 

@@ -55,12 +55,11 @@ if (!$es_preview && !$es_download) {
     $es_download = true;
 }
 
-// ========== FUNCIÓN CHECKMARK ==========
+// ========== FUNCIONES AUXILIARES ==========
 function checkmark($valor) {
     return ($valor === 'Si' || $valor === 'Sí') ? '&#10003;' : '';
 }
 
-// ========== FUNCIÓN DE LIMPIEZA Y FORMATO DE TEXTO ==========
 function formatearCaso($texto, $tipo = 'titulo') {
     if (empty($texto)) return '';
     $texto = trim($texto);
@@ -96,10 +95,10 @@ ob_start();
             box-sizing: border-box !important;
         }
 
-        /* ===== CONFIGURACIÓN DE PÁGINA RIGIDA (CARTA) ===== */
+        /* ===== CONFIGURACIÓN DE PÁGINA ===== */
         @page {
             size: letter portrait;
-            margin: 0 !important; /* El margen físico lo maneja la hoja mediante padding */
+            margin: 0 !important; /* Los márgenes los da el padding de .hoja */
         }
         
         html, body {
@@ -111,25 +110,24 @@ ob_start();
             color: #000;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            line-height: 1.4; /* Interlineado más aireado */
         }
 
-        /* Lienzo virtual exacto al de la impresora física */
+        /* ===== CONTENEDOR PRINCIPAL ===== */
         .hoja {
             background-color: #fff;
-            width: 21.59cm;
-            height: 27.94cm;
-            padding: 1.0cm 1.2cm;
+            max-width: 21.59cm;          /* Ancho de carta */
             margin: <?= $es_preview ? '20px auto' : '0 auto' ?>;
+            padding: 1.2cm 1.5cm;         /* Márgenes generosos como en la primera imagen */
             box-shadow: <?= $es_preview ? '0 0 10px rgba(0,0,0,0.1)' : 'none' ?>;
-            position: relative;
-            overflow: hidden;
+            box-sizing: border-box;
         }
 
         /* ===== CABECERA ===== */
         .header-container {
             position: relative;
-            height: 3.6cm;
-            margin-bottom: 0.3cm;
+            height: 3.5cm;
+            margin-bottom: 0.2cm;
         }
         .fotos-container {
             position: absolute;
@@ -140,7 +138,7 @@ ob_start();
             display: inline-block;
             width: 2.5cm;  
             height: 3.2cm; 
-            border: 1.5px solid #000;
+            border: 1px solid #000;
             background: transparent;
             margin-left: 0.4cm;
         }
@@ -160,15 +158,17 @@ ob_start();
         .seccion-titulo {
             font-weight: bold;
             text-transform: uppercase;
-            margin-top: 0.45cm;    
+            margin-top: 0.5cm;    
             margin-bottom: 0.2cm;   
             font-size: 10.5pt;
             clear: both;
+            border-bottom: 1px solid #000;
+            padding-bottom: 1px;
         }
         .fila-dato {
             display: table;
             width: 100%;
-            margin-bottom: 0.18cm;  
+            margin-bottom: 0.2cm;  
             table-layout: fixed !important;
         }
         .celda-dato {
@@ -177,11 +177,11 @@ ob_start();
             font-size: 10pt;
             word-wrap: break-word; 
             overflow: hidden;
+            padding: 0;
         }
         .celda-dato label {
             font-size: 10pt;
             font-weight: bold;
-            color: #000;
             margin-right: 0.1cm;
             display: inline;
             white-space: nowrap; 
@@ -189,7 +189,6 @@ ob_start();
         .valor-dato {
             font-size: 10pt;
             font-weight: normal;
-            color: #000;
             display: inline;
             word-wrap: break-word; 
         }
@@ -212,11 +211,28 @@ ob_start();
             min-height: 15px;
         }
 
+        /* ===== TABLA DE CONTROL MÉDICO ===== */
+        .tabla-medica {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 0.15cm;
+            margin-bottom: 0.3cm;
+            table-layout: fixed !important;
+        }
+        .tabla-medica td {
+            padding: 4px 0;
+            vertical-align: top;
+        }
+        .tabla-medica label {
+            font-weight: bold;
+            font-size: 10pt;
+        }
+
         /* ===== TABLA DE HISTORIAL ===== */
         .tabla-historial {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 0.5cm;
+            margin-top: 0.4cm;
             font-size: 8.5pt;
             text-align: center;
             table-layout: fixed !important;
@@ -224,11 +240,10 @@ ob_start();
         .tabla-historial th,
         .tabla-historial td {
             border: 1px solid #000;
-            padding: 5px 2px;
+            padding: 4px 2px;
             vertical-align: middle;
             word-wrap: break-word;
             overflow: hidden;
-            white-space: normal !important;
         }
         .tabla-historial th {
             font-weight: bold;
@@ -237,10 +252,10 @@ ob_start();
         }
         .tabla-historial td {
             font-size: 8.5pt;
-            height: 0.75cm; 
+            height: 0.8cm; 
         }
 
-        /* ===== BOTONES DE NAVEGACIÓN (SIN BOOTSTRAP) ===== */
+        /* ===== BOTONES (solo preview) ===== */
         .btn-accion {
             display: <?= $es_preview ? 'block' : 'none' ?>;
             text-align: center;
@@ -266,26 +281,18 @@ ob_start();
         .btn-success:hover { background: #218838; }
         .btn-secondary { background: #6c757d; color: white; }
         .btn-secondary:hover { background: #5a6268; }
-        .btn svg {
-            margin-right: 6px;
-            fill: currentColor;
-        }
+        .btn svg { margin-right: 6px; fill: currentColor; }
 
-        /* ===== CORRECCIONES ESTRICTAS PARA NAVEGADOR AL IMPRIMIR ===== */
+        /* ===== CORRECCIONES PARA IMPRESIÓN ===== */
         @media print {
-            body {
-                background-color: #fff !important;
-            }
-            .btn-accion {
-                display: none !important;
-            }
+            body { background-color: #fff !important; }
+            .btn-accion { display: none !important; }
             .hoja {
-                margin: 0 !important;
                 box-shadow: none !important;
-                page-break-inside: avoid;
-                page-break-after: avoid;
-                width: 21.59cm !important;
-                height: 27.94cm !important;
+                margin: 0 auto !important;
+                max-width: 100% !important;
+                padding: 1.2cm 1.5cm !important;
+                width: 100%;
             }
         }
     </style>
@@ -344,51 +351,31 @@ ob_start();
         <div class="celda-dato" style="width:20%;"><label>Ciudad</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['ciudad'] ?? '')) ?></span></div>
     </div>
 
-    <!-- ==========================================
-         TABLA INVISIBLE DE CONTROL MÉDICO
-         ========================================== -->
-    <table style="width: 100%; border-collapse: collapse; margin-top: 0.18cm; margin-bottom: 0.35cm; table-layout: fixed !important;">
-        <!-- Fila: Enfermedad -->
-        <tr style="vertical-align: top;">
-            <td style="width: 38%; padding: 4px 0;">
-                <label style="font-weight: bold; font-size: 10pt;">Sufre alguna enfermedad:</label>
-            </td>
-            <td style="width: 20%; padding: 4px 0; white-space: nowrap;">
+    <!-- ===== TABLA DE CONTROL MÉDICO ===== -->
+    <table class="tabla-medica">
+        <tr>
+            <td style="width: 38%;"><label>Sufre alguna enfermedad:</label></td>
+            <td style="width: 20%; white-space: nowrap;">
                 <span class="opcion-group">Si <span class="check-mark"><?= checkmark($estudiante['enfermedad'] ?? '') ?></span></span>
                 <span class="opcion-group">No <span class="check-mark"><?= ($estudiante['enfermedad'] ?? '') == 'No' ? '&#10003;' : '' ?></span></span>
             </td>
-            <td style="width: 42%; padding: 4px 0; word-wrap: break-word;">
-                <label style="font-weight: bold; font-size: 10pt;">Cuál:</label> 
-                <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['enfermedad_cual'] ?? '', 'oracion')) ?></span>
-            </td>
+            <td style="width: 42%;"><label>Cuál:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['enfermedad_cual'] ?? '', 'oracion')) ?></span></td>
         </tr>
-        <!-- Fila: Educación Física -->
-        <tr style="vertical-align: top;">
-            <td style="width: 38%; padding: 4px 0;">
-                <label style="font-weight: bold; font-size: 10pt;">Puede realizar Ed. Física:</label>
-            </td>
-            <td style="width: 20%; padding: 4px 0; white-space: nowrap;">
+        <tr>
+            <td><label>Puede realizar Ed. Física:</label></td>
+            <td style="white-space: nowrap;">
                 <span class="opcion-group">Si <span class="check-mark"><?= checkmark($estudiante['educacion_fisica'] ?? '') ?></span></span>
                 <span class="opcion-group">No <span class="check-mark"><?= ($estudiante['educacion_fisica'] ?? '') == 'No' ? '&#10003;' : '' ?></span></span>
             </td>
-            <td style="width: 42%; padding: 4px 0; word-wrap: break-word;">
-                <label style="font-weight: bold; font-size: 10pt;">Por qué:</label> 
-                <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['educacion_fisica_porque'] ?? '', 'oracion')) ?></span>
-            </td>
+            <td><label>Por qué:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['educacion_fisica_porque'] ?? '', 'oracion')) ?></span></td>
         </tr>
-        <!-- Fila: Alergia -->
-        <tr style="vertical-align: top;">
-            <td style="width: 38%; padding: 4px 0;">
-                <label style="font-weight: bold; font-size: 10pt;">Alergico a medicamento:</label>
-            </td>
-            <td style="width: 20%; padding: 4px 0; white-space: nowrap;">
+        <tr>
+            <td><label>Alergico a medicamento:</label></td>
+            <td style="white-space: nowrap;">
                 <span class="opcion-group">Si <span class="check-mark"><?= checkmark($estudiante['alergia'] ?? '') ?></span></span>
                 <span class="opcion-group">No <span class="check-mark"><?= ($estudiante['alergia'] ?? '') == 'No' ? '&#10003;' : '' ?></span></span>
             </td>
-            <td style="width: 42%; padding: 4px 0; word-wrap: break-word;">
-                <label style="font-weight: bold; font-size: 10pt;">Cuál:</label> 
-                <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['alergia_cual'] ?? '', 'oracion')) ?></span>
-            </td>
+            <td><label>Cuál:</label> <span class="valor-dato"><?= htmlspecialchars(formatearCaso($estudiante['alergia_cual'] ?? '', 'oracion')) ?></span></td>
         </tr>
     </table>
 

@@ -2,6 +2,32 @@
 session_start();
 require_once('../config/conexion.php');
 
+// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
+function verificarCamposCompletos($datos) {
+    $obligatorios = [
+        'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar',
+        'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'
+    ];
+    foreach ($obligatorios as $campo) {
+        if (empty($datos[$campo])) {
+            return false;
+        }
+    }
+    if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
+        return false;
+    }
+    if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si' && empty($datos['enfermedad_cual'])) {
+        return false;
+    }
+    if (!empty($datos['educacion_fisica']) && $datos['educacion_fisica'] === 'No' && empty($datos['educacion_fisica_porque'])) {
+        return false;
+    }
+    if (!empty($datos['alergia']) && $datos['alergia'] === 'Si' && empty($datos['alergia_cual'])) {
+        return false;
+    }
+    return true;
+}
+
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
     header("Location: ../profesores/Login/login.php");
     exit();
@@ -10,13 +36,6 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 $id = intval($_GET['id']);
 $mensaje = "";
 $tipo_mensaje = "";
-
-// Verificar mensajes de sesión
-if (isset($_SESSION['mensaje'])) {
-    $mensaje = $_SESSION['mensaje'];
-    $tipo_mensaje = $_SESSION['tipo_mensaje'] ?? 'info';
-    unset($_SESSION['mensaje'], $_SESSION['tipo_mensaje'], $_SESSION['campos_faltantes']);
-}
 
 // Obtener datos del estudiante con su representante y padres
 $stmt = $conexion->prepare("
@@ -239,6 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $peso_val = !empty($peso_arr[$i]) ? floatval($peso_arr[$i]) : null;
             $talla_val = !empty($talla_arr[$i]) ? floatval($talla_arr[$i]) : null;
 
+            // Asignar a variables limpias para bind_param
             $ano_esc   = $ano_escolar_arr[$i] ?? '';
             $grado_sec = $grado_seccion_arr[$i] ?? '';
             $registro  = $registro_arr[$i] ?? '';
@@ -265,73 +285,57 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt_ins->close();
 
         // ========== VERIFICAR SI LA INSCRIPCIÓN ESTÁ COMPLETA ==========
-        $inscripcion_completa = true;
-        $campos_faltantes = [];
-
-        $campos_obligatorios = [
+        $datos_estudiante = [
             'nombre' => $nombre,
             'apellido' => $apellido,
             'fecha_nacimiento' => $fecha_nac,
             'genero' => $genero,
             'cedula_escolar' => $estudiante['cedula_escolar'] ?? '',
-            'direccion' => $direccion,
             'rep_nombre' => $rep_nombre,
             'rep_cedula' => $rep_cedula,
             'rep_telefono' => $rep_telefono,
             'sala' => $sala_nombre,
             'seccion_id' => $seccion_id_actual,
+            'madre_nombre' => $madre_nombre,
+            'padre_nombre' => $padre_nombre,
+            'enfermedad' => $enfermedad,
+            'enfermedad_cual' => $enfermedad_cual,
+            'educacion_fisica' => $educacion_fisica,
+            'educacion_fisica_porque' => $educacion_fisica_porque,
+            'alergia' => $alergia,
+            'alergia_cual' => $alergia_cual,
         ];
+        $inscripcion_completa = verificarCamposCompletos($datos_estudiante) ? 1 : 0;
 
-        foreach ($campos_obligatorios as $campo => $valor) {
-            if (empty($valor)) {
-                $inscripcion_completa = false;
-                $campos_faltantes[] = $campo;
-            }
-        }
-
-        $tiene_padre = !empty($madre_nombre) || !empty($padre_nombre);
-        if (!$tiene_padre) {
-            $inscripcion_completa = false;
-            $campos_faltantes[] = 'madre/padre';
-        }
-
-        // Actualizar el campo inscripcion_completa
         $stmt_completa = $conexion->prepare("UPDATE estudiantes SET inscripcion_completa = ? WHERE id = ?");
-        $flag = $inscripcion_completa ? 1 : 0;
-        $stmt_completa->bind_param("ii", $flag, $id);
+        $stmt_completa->bind_param("ii", $inscripcion_completa, $id);
         $stmt_completa->execute();
         $stmt_completa->close();
 
         $conexion->commit();
 
-        // Mensajes de sesión
         if ($inscripcion_completa) {
-            $_SESSION['mensaje'] = "¡Datos actualizados con éxito! La inscripción está completa.";
-            $_SESSION['tipo_mensaje'] = "success";
+            header("Location: editar_estudiantes.php?id=$id&msg=success");
         } else {
-            $_SESSION['mensaje'] = "¡Datos guardados! Pero la inscripción está incompleta. Faltan: " . implode(', ', $campos_faltantes);
-            $_SESSION['tipo_mensaje'] = "warning";
+            header("Location: editar_estudiantes.php?id=$id&msg=incompleta");
         }
-
-        header("Location: editar_estudiantes.php?id=$id");
         exit();
         
     } catch (Exception $e) {
         $conexion->rollback();
-        $_SESSION['mensaje'] = "Error al guardar: " . $e->getMessage();
-        $_SESSION['tipo_mensaje'] = "danger";
-        header("Location: editar_estudiantes.php?id=$id");
-        exit();
+        $mensaje = "Error al guardar: " . $e->getMessage();
+        $tipo_mensaje = "danger";
     }
 }
 
 include('../includes/header.php'); 
 
-// Opciones para historial
+// ========== OPCIONES PARA GRADO-SECCIÓN (CORREGIDO) ==========
 $opciones_historial = '<option value="">Seleccione</option>';
 $secciones_hist = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 while($sec = $secciones_hist->fetch_assoc()) {
-    $opciones_historial .= '<option value="' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '">' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '</option>';
+    $valor = $sec['sala'] . ' - ' . $sec['nombre'];
+    $opciones_historial .= '<option value="' . htmlspecialchars($valor) . '">' . htmlspecialchars($valor) . '</option>';
 }
 ?>
 
@@ -352,6 +356,11 @@ while($sec = $secciones_hist->fetch_assoc()) {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
     }
+    #tablaHistorial th:first-child,
+    #tablaHistorial td:first-child {
+        min-width: 130px;
+        white-space: nowrap;
+    }
 </style>
 
 <div class="container mt-4 mb-5">
@@ -362,12 +371,23 @@ while($sec = $secciones_hist->fetch_assoc()) {
         <div class="card-body p-4">
             
             <?php if ($mensaje): ?>
-                <div class="alert alert-<?= $tipo_mensaje ?> alert-dismissible fade show">
-                    <?= $mensaje ?>
+                <div class="alert alert-<?= $tipo_mensaje ?> alert-dismissible fade show"><?= $mensaje ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+            <?php endif; ?>
+            
+            <?php if (isset($_GET['msg']) && $_GET['msg'] == 'success'): ?>
+                <div class="alert alert-success alert-dismissible fade show">
+                    <i class="fas fa-check-circle me-2"></i> ¡Datos actualizados con éxito! La inscripción está completa.
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
-            
+
+            <?php if (isset($_GET['msg']) && $_GET['msg'] == 'incompleta'): ?>
+                <div class="alert alert-warning alert-dismissible fade show">
+                    <i class="fas fa-exclamation-triangle me-2"></i> <strong>Inscripción incompleta.</strong> Faltan campos obligatorios.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+
             <!-- Progress Bar -->
             <div class="progress mb-4" style="height: 6px;">
                 <div id="progressBar" class="progress-bar bg-success" style="width: 25%;"></div>
@@ -571,14 +591,17 @@ while($sec = $secciones_hist->fetch_assoc()) {
 
                 <!-- STEP 3 -->
                 <div id="step3" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DE LOS PADRES</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">DATOS DE LOS PADRES <span class="text-danger">*</span></h5>
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-2"></i> Debe completar al menos el nombre de la madre o del padre.
+                    </div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <h6 class="text-primary">Madre</h6>
-                            <label class="form-label fw-semibold">Nombre completo <span class="text-danger">*</span></label>
-                            <input type="text" name="madre_nombre" class="form-control text-uppercase" value="<?= htmlspecialchars($estudiante['madre_nombre']) ?>" required>
-                            <label class="form-label fw-semibold mt-2">Cédula <span class="text-danger">*</span></label>
-                            <input type="text" name="madre_cedula" class="form-control" value="<?= htmlspecialchars($estudiante['madre_cedula']) ?>" required>
+                            <label class="form-label fw-semibold">Nombre completo</label>
+                            <input type="text" name="madre_nombre" class="form-control text-uppercase" value="<?= htmlspecialchars($estudiante['madre_nombre']) ?>">
+                            <label class="form-label fw-semibold mt-2">Cédula</label>
+                            <input type="text" name="madre_cedula" class="form-control" value="<?= htmlspecialchars($estudiante['madre_cedula']) ?>">
                             <label class="form-label fw-semibold mt-2">Teléfono</label>
                             <input type="text" name="madre_telefono" class="form-control" value="<?= htmlspecialchars($estudiante['madre_telefono']) ?>">
                         </div>
@@ -608,21 +631,21 @@ while($sec = $secciones_hist->fetch_assoc()) {
                     </div>
                     
                     <div class="table-responsive">
-                        <table class="table table-bordered table-sm" id="tablaHistorial" style="min-width: 1000px;">
+                        <table class="table table-bordered table-sm" id="tablaHistorial">
                             <thead class="table-light">
                                 <tr>
-                                    <th style="width:15%;">Año Escolar</th>
-                                    <th style="width:20%;">Grado y Sección</th>
-                                    <th style="width:8%;">Reg.</th>
-                                    <th style="width:8%;">Rep.</th>
-                                    <th style="width:8%;">C</th>
-                                    <th style="width:8%;">F</th>
-                                    <th style="width:8%;">P</th>
-                                    <th style="width:10%;">Peso(kg)</th>
-                                    <th style="width:10%;">Talla(cm)</th>
-                                    <th style="width:12%;">Fecha Inscripción</th>
-                                    <th style="width:10%;">Año Actual</th>
-                                    <th style="width:5%;">Acción</th>
+                                    <th style="min-width:130px;">Año Escolar</th>
+                                    <th>Grado y Sección</th>
+                                    <th>Reg.</th>
+                                    <th>Rep.</th>
+                                    <th>C</th>
+                                    <th>F</th>
+                                    <th>P</th>
+                                    <th>Peso(kg)</th>
+                                    <th>Talla(cm)</th>
+                                    <th>Fecha Inscripción</th>
+                                    <th style="width:100px;">Año Actual</th>
+                                    <th style="width:50px;">Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="historial-body">
@@ -649,7 +672,10 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                             </td>
                                             <td>
                                                 <select name="grado_seccion[]" class="form-select form-select-sm grado-seccion-select" required>
-                                                    <?= str_replace('value="' . htmlspecialchars($ins['grado_seccion']) . '"', 'value="' . htmlspecialchars($ins['grado_seccion']) . '" selected', $opciones_historial) ?>
+                                                    <?php 
+                                                    $grado_guardado = htmlspecialchars($ins['grado_seccion']);
+                                                    echo str_replace('value="' . $grado_guardado . '"', 'value="' . $grado_guardado . '" selected', $opciones_historial);
+                                                    ?>
                                                 </select>
                                             </td>
                                             <td><input type="text" name="registro[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['registro']) ?>" placeholder="Reg."></td>
@@ -667,12 +693,12 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                             <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm" value="<?= $ins['fecha_inscripcion'] ?>"></td>
                                             <td class="text-center">
                                                 <?php if ($es_ultima): ?>
-                                                    <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                                                    <span class="badge bg-success" style="font-size:0.75rem;">
                                                         <i class="fas fa-check-circle me-1"></i> Actual
-                                                    </button>
+                                                    </span>
                                                     <input type="hidden" name="es_actual[]" value="1">
                                                 <?php else: ?>
-                                                    <span class="badge bg-secondary" style="font-size: 0.7rem;">
+                                                    <span class="badge bg-secondary" style="font-size:0.7rem;">
                                                         <i class="fas fa-history me-1"></i> Histórico
                                                     </span>
                                                     <input type="hidden" name="es_actual[]" value="0">
@@ -727,9 +753,9 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                         <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
                                         <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
                                         <td class="text-center">
-                                            <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                                            <span class="badge bg-success" style="font-size:0.75rem;">
                                                 <i class="fas fa-check-circle me-1"></i> Actual
-                                            </button>
+                                            </span>
                                             <input type="hidden" name="es_actual[]" value="1">
                                         </td>
                                         <td class="text-center">
@@ -845,7 +871,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStep(0);
 
-    // ---------- TABLA DINÁMICA (agregar fila AL FINAL) ----------
+    // ---------- TABLA DINÁMICA ----------
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
 
@@ -870,7 +896,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
         if (celdaActualUltima) {
             celdaActualUltima.innerHTML = `
-                <span class="badge bg-secondary" style="font-size: 0.7rem;">
+                <span class="badge bg-secondary" style="font-size:0.7rem;">
                     <i class="fas fa-history me-1"></i> Histórico
                 </span>
                 <input type="hidden" name="es_actual[]" value="0">
@@ -891,9 +917,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const celdaActualNueva = newRow.querySelector('td:nth-child(11)');
         if (celdaActualNueva) {
             celdaActualNueva.innerHTML = `
-                <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                <span class="badge bg-success" style="font-size:0.75rem;">
                     <i class="fas fa-check-circle me-1"></i> Actual
-                </button>
+                </span>
                 <input type="hidden" name="es_actual[]" value="1">
             `;
         }
@@ -944,9 +970,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const celdaActual = ultimaFila.querySelector('td:nth-child(11)');
                     if (celdaActual) {
                         celdaActual.innerHTML = `
-                            <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                            <span class="badge bg-success" style="font-size:0.75rem;">
                                 <i class="fas fa-check-circle me-1"></i> Actual
-                            </button>
+                            </span>
                             <input type="hidden" name="es_actual[]" value="1">
                         `;
                     }
@@ -970,6 +996,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const wizardForm = document.getElementById('wizardForm');
     if (wizardForm) {
         wizardForm.addEventListener('submit', function(e) {
+            const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
+            if (actuales.length === 0) {
+                e.preventDefault();
+                alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
+                showStep(3);
+                return;
+            }
+            
             if (!this.checkValidity()) {
                 e.preventDefault();
                 const primerInvalido = this.querySelector(':invalid');

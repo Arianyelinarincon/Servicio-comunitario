@@ -31,7 +31,7 @@ if (!function_exists('checkbox')) {
         body {
             background: <?= $es_preview ? '#f4f6f9' : '#fff' ?>;
             font-family: 'DejaVu Sans', Arial, sans-serif;
-            font-size: 9.5px;
+            font-size: 9px;
             line-height: 1.2;
             color: #000;
             padding: <?= $es_preview ? '20px' : '0' ?>;
@@ -44,26 +44,18 @@ if (!function_exists('checkbox')) {
         .hoja-impresion {
             background: #fff;
             width: 100%;
-            max-width: <?= $es_preview ? '850px' : '100%' ?>;
+            max-width: 21.59cm;      /* Ancho de carta */
             margin: 0 auto;
-            padding: <?= $es_preview ? '30px 40px' : '0.3cm 0.6cm' ?>;
+            padding: 0.8cm 1.0cm;    /* Márgenes internos consistentes */
             box-shadow: <?= $es_preview ? '0 0 10px rgba(0,0,0,0.1)' : 'none' ?>;
             box-sizing: border-box;
-        }
-
-        /* ===== ESTILO EXCLUSIVO PARA EL PDF (ancho fijo y centrado) ===== */
-        .hoja-impresion.pdf {
-            width: 25.4cm;            /* Ancho de letter landscape menos márgenes laterales */
-            margin: 0 auto;
-            padding: 0.3cm 0.6cm;      /* Mismo padding que en preview */
-            max-width: none;
         }
 
         /* ===== CABECERA ===== */
         .header-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
         .header-table td {
             vertical-align: top;
@@ -71,11 +63,11 @@ if (!function_exists('checkbox')) {
         }
         .header-title {
             text-align: center;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            padding-top: 3px;
+            padding-top: 2px;
         }
         .fotos-box {
             text-align: right;
@@ -83,8 +75,8 @@ if (!function_exists('checkbox')) {
         }
         .foto-box {
             display: inline-block;
-            width: 55px;
-            height: 72px;
+            width: 50px;
+            height: 65px;
             border: 1.2px solid #000;
             background: #fafafa;
             margin-left: 4px;
@@ -94,9 +86,9 @@ if (!function_exists('checkbox')) {
         .seccion-titulo {
             font-weight: bold;
             text-transform: uppercase;
-            margin-top: 8px;
-            margin-bottom: 3px;
-            font-size: 10px;
+            margin-top: 6px;
+            margin-bottom: 2px;
+            font-size: 9.5px;
             border-bottom: 1px solid #000;
             padding-bottom: 1px;
         }
@@ -105,13 +97,13 @@ if (!function_exists('checkbox')) {
         .tabla-datos {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
         }
         .tabla-datos td {
-            padding: 1px 2px;
+            padding: 0.5px 2px;
             vertical-align: baseline;
             border: none;
-            font-size: 9px;
+            font-size: 8.5px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -119,6 +111,7 @@ if (!function_exists('checkbox')) {
         .tabla-datos td label {
             font-weight: normal;
             margin-right: 2px;
+            font-size: 8.5px;
         }
         .tabla-datos td .dato {
             font-weight: bold;
@@ -127,27 +120,27 @@ if (!function_exists('checkbox')) {
             display: inline-block;
             min-width: 20px;
             padding-bottom: 0px;
-            font-size: 9px;
+            font-size: 8.5px;
             max-width: 100%;
             overflow-wrap: break-word;
             word-break: break-word;
         }
         .tabla-datos td .dato-line {
             display: inline-block;
-            min-width: 14px;
+            min-width: 12px;
             text-align: center;
             font-weight: bold;
         }
 
         .opciones-cb {
             display: inline-block;
-            font-size: 11px;
+            font-size: 10px;
             margin-left: 1px;
         }
         .checkbox-box {
             display: inline-block;
-            width: 9px;
-            height: 9px;
+            width: 8px;
+            height: 8px;
             border: 1px solid #000;
             margin-right: 2px;
             vertical-align: middle;
@@ -160,15 +153,15 @@ if (!function_exists('checkbox')) {
         .tabla-notas {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 6px;
-            font-size: 5.5px;
+            margin-top: 4px;
+            font-size: 5.2px;
             text-align: center;
             table-layout: fixed;
         }
         .tabla-notas th,
         .tabla-notas td {
             border: 1px solid #000;
-            padding: 1.5px 1px;
+            padding: 1px 0.5px;
             vertical-align: middle;
             word-break: break-word;
             overflow-wrap: break-word;
@@ -176,15 +169,15 @@ if (!function_exists('checkbox')) {
         .tabla-notas th {
             font-weight: bold;
             background: transparent;
-            font-size: 5px;
+            font-size: 4.8px;
             text-transform: uppercase;
         }
         .tabla-notas td {
             font-weight: bold;
-            font-size: 5.5px;
+            font-size: 5.2px;
         }
         .tabla-notas td .dato-line {
-            min-width: 10px;
+            min-width: 8px;
         }
 
         /* ===== MÁRGENES PARA IMPRESIÓN Y PDF ===== */
@@ -196,26 +189,25 @@ if (!function_exists('checkbox')) {
             }
             .hoja-impresion {
                 box-shadow: none !important;
-                padding: 0.3cm 0.6cm !important;
-                max-width: 100%;
+                padding: 0.8cm 1.0cm !important;
+                max-width: 100% !important;
                 border: none !important;
                 margin: 0 auto !important;
                 width: 100%;
             }
-            /* ===== Ajuste para PDF: sin márgenes de página, solo padding ===== */
             <?php if ($es_pdf): ?>
             @page {
-                margin: 0 !important;   /* Los márgenes los da el padding del contenedor */
-                size: letter landscape;
+                margin: 0 !important;
+                size: letter portrait;
             }
             <?php else: ?>
             @page {
                 margin: 0.4cm 0.4cm;
-                size: letter landscape;
+                size: letter portrait;
             }
             <?php endif; ?>
             .tabla-notas {
-                font-size: 5.5px;
+                font-size: 5.2px;
             }
             body {
                 print-color-adjust: exact;
@@ -240,8 +232,8 @@ if (!function_exists('checkbox')) {
 </div>
 <?php endif; ?>
 
-<!-- ===== CONTENEDOR CON CLASE CONDICIONAL ===== -->
-<div class="hoja-impresion <?= $es_pdf ? 'pdf' : '' ?>">
+<!-- ===== CONTENEDOR ===== -->
+<div class="hoja-impresion">
     
     <!-- ===== CABECERA ===== -->
     <table class="header-table">
