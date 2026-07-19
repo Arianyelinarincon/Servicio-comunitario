@@ -16,6 +16,8 @@ if (isset($_GET['tipo'])) {
 // Búsqueda AJAX para autocompletado
 if (isset($_GET['buscar_estudiante'])) {
     $termino = $_GET['buscar_estudiante'] . '%';
+    // Añadir filtro: solo estudiantes con inscripción completa, activos y no egresados en el período actual
+    $periodo_actual = $_SESSION['ano_escolar'] ?? '2025 / 2026';
     $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
                    s.nombre AS grupo, p.nombre AS doc_nombre, p.apellido AS doc_apellido
             FROM estudiantes e
@@ -23,10 +25,19 @@ if (isset($_GET['buscar_estudiante'])) {
             LEFT JOIN secciones s ON e.seccion_id = s.id
             LEFT JOIN profesores p ON p.seccion = s.id
             WHERE CONCAT(e.nombre, ' ', e.apellido) LIKE ?
+              AND e.inscripcion_completa = 1
+              AND e.estatus = 'Activo'
+              AND NOT EXISTS (
+                  SELECT 1 FROM egresos eg 
+                  WHERE eg.estudiante_id = e.id 
+                    AND eg.sala = e.sala 
+                    AND eg.seccion_id = e.seccion_id 
+                    AND eg.periodo = ?
+              )
             LIMIT 10";
     $stmt = $conexion->prepare($sql);
     $buscar = "%$termino%";
-    $stmt->bind_param("s", $buscar);
+    $stmt->bind_param("ss", $buscar, $periodo_actual);
     $stmt->execute();
     $result = $stmt->get_result();
     $sugerencias = [];
@@ -47,6 +58,27 @@ if (isset($_GET['buscar_estudiante'])) {
 
 // Procesar selección de estudiante
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Verificar que el estudiante seleccionado sigue cumpliendo los requisitos
+    $estudiante_id = intval($_POST['estudiante_id']);
+    $periodo_actual = $_POST['ano_escolar'] ?? '2025 / 2026';
+    $stmt_check = $conexion->prepare("SELECT id FROM estudiantes 
+                                      WHERE id = ? AND inscripcion_completa = 1 AND estatus = 'Activo'
+                                      AND NOT EXISTS (
+                                          SELECT 1 FROM egresos eg 
+                                          WHERE eg.estudiante_id = estudiantes.id 
+                                            AND eg.sala = estudiantes.sala 
+                                            AND eg.seccion_id = estudiantes.seccion_id 
+                                            AND eg.periodo = ?
+                                      )");
+    $stmt_check->bind_param("is", $estudiante_id, $periodo_actual);
+    $stmt_check->execute();
+    $existe = $stmt_check->get_result()->fetch_assoc();
+    if (!$existe) {
+        // Si no es válido, redirigir con error
+        header('Location: paso1_portada.php?tipo=inicial&error=no_valido');
+        exit;
+    }
+
     $_SESSION['estudiante'] = htmlspecialchars($_POST['estudiante']);
     $_SESSION['ce'] = htmlspecialchars($_POST['ce']);
     $_SESSION['grupo'] = htmlspecialchars($_POST['grupo']);
@@ -55,7 +87,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $_SESSION['representante'] = htmlspecialchars($_POST['representante']);
     $_SESSION['estudiante_id'] = intval($_POST['estudiante_id']);
     
-    // Redirigir al panel de control del boletín
     header('Location: panel_boletin_inicial.php');
     exit;
 }
@@ -70,6 +101,7 @@ include '../includes/header.php';
     <title>Seleccionar Estudiante - Boletín Inicial</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        /* ... (estilos iguales, no los repito para no alargar) ... */
         :root {
             --primary: #1a237e;
             --primary-dark: #0d1555;
@@ -265,7 +297,6 @@ include '../includes/header.php';
             overflow: hidden;
         }
 
-        /* ===== ANIMACIÓN ===== */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -275,7 +306,6 @@ include '../includes/header.php';
             animation: fadeIn 0.5s ease;
         }
 
-        /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .portada-container {
                 padding: 12px 15px;
@@ -307,7 +337,6 @@ include '../includes/header.php';
     </style>
 </head>
 <body>
-    <!-- ===== HEADER INCLUIDO ===== -->
     
     <div class="portada-container">
         <div class="card-portada">
