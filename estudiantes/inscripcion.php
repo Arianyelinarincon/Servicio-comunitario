@@ -79,8 +79,14 @@ while($sec = $secciones->fetch_assoc()) {
             <form id="wizardForm" action="procesar_inscripcion.php" method="POST">
                 <!-- Campo oculto para el procesador -->
                 <input type="hidden" name="madre_cedula_temp" id="madre_cedula_temp">
-                <!-- Campo oculto opcional para la fecha de ingreso desde prefill -->
                 <input type="hidden" name="fecha_ingreso_prefill" id="fecha_ingreso_prefill" value="<?= htmlspecialchars($prefill_data['fi'] ?? '') ?>">
+                
+                <!-- Campos ocultos para el año actual -->
+                <input type="hidden" name="grado_actual" id="grado_actual" value="">
+                <input type="hidden" name="seccion_actual_id" id="seccion_actual_id" value="">
+                <input type="hidden" name="peso_actual" id="peso_actual" value="">
+                <input type="hidden" name="talla_actual" id="talla_actual" value="">
+                <input type="hidden" name="ano_escolar_actual" id="ano_escolar_actual" value="">
                 
                 <ul class="nav nav-tabs nav-justified mb-4 border-0" id="stepTabs">
                     <li class="nav-item"><a class="nav-link active rounded-0" href="#step1" data-step="1">1. Datos del Alumno</a></li>
@@ -356,27 +362,43 @@ while($sec = $secciones->fetch_assoc()) {
                     </div>
                 </div>
 
-                <!-- STEP 4: HISTORIAL ESCOLAR (SIN columna "Funcionario") -->
+                <!-- STEP 4: HISTORIAL ESCOLAR -->
                 <div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
-                    <h5 class="border-start border-4 border-navy ps-3 mb-4">GRADO Y SECCIÓN</h5>
+                    <h5 class="border-start border-4 border-navy ps-3 mb-4">HISTORIAL ESCOLAR</h5>
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Instrucciones:</strong> La <strong>última fila (la de abajo)</strong> es el año actual del estudiante. 
+                        Al guardar, se actualizará automáticamente su grado, sección, peso y talla.
+                    </div>
+                    
+                    <!-- Campos ocultos para el año actual -->
+                    <input type="hidden" name="grado_actual" id="grado_actual" value="">
+                    <input type="hidden" name="seccion_actual_id" id="seccion_actual_id" value="">
+                    <input type="hidden" name="peso_actual" id="peso_actual" value="">
+                    <input type="hidden" name="talla_actual" id="talla_actual" value="">
+                    <input type="hidden" name="ano_escolar_actual" id="ano_escolar_actual" value="">
+                    
                     <div class="table-responsive">
-                        <table class="table table-bordered table-sm">
-                            <thead>
+                        <table class="table table-bordered table-sm" id="tablaHistorial">
+                            <thead class="table-light">
                                 <tr>
                                     <th>Año Escolar</th>
+                                    <th>Grado y Sección</th>
                                     <th>Reg.</th>
-                                    <th>Rep</th>
+                                    <th>Rep.</th>
                                     <th>C</th>
                                     <th>F</th>
                                     <th>P</th>
-                                    <th>Peso</th>
-                                    <th>Talla</th>
+                                    <th>Peso(kg)</th>
+                                    <th>Talla(cm)</th>
                                     <th>Fecha Inscripción</th>
+                                    <th style="width:100px;">Año Actual</th>
                                     <th style="width:50px;">Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="historial-body">
-                                <tr class="fila-historial">
+                                <!-- Fila por defecto (año actual) -->
+                                <tr class="fila-historial" data-es-ultima="1">
                                     <td>
                                         <select name="ano_escolar[]" class="form-select form-select-sm" required>
                                             <option value="">Seleccione</option>
@@ -389,6 +411,11 @@ while($sec = $secciones->fetch_assoc()) {
                                             <?php endfor; ?>
                                         </select>
                                     </td>
+                                    <td>
+                                        <select name="grado_seccion[]" class="form-select form-select-sm grado-seccion-select" required>
+                                            <?= $opciones_secciones ?>
+                                        </select>
+                                    </td>
                                     <td><input type="text" name="registro[]" class="form-control form-control-sm" placeholder="Reg."></td>
                                     <td>
                                         <select name="repite[]" class="form-select form-select-sm">
@@ -399,21 +426,32 @@ while($sec = $secciones->fetch_assoc()) {
                                     <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
                                     <td><input type="text" name="f[]" class="form-control form-control-sm" placeholder="F"></td>
                                     <td><input type="text" name="p[]" class="form-control form-control-sm" placeholder="P"></td>
-                                    <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm" placeholder="Peso"></td>
-                                    <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm" placeholder="Talla"></td>
+                                    <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm peso-input" placeholder="Peso"></td>
+                                    <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
                                     <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
                                     <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
-                                            <i class="fas fa-times"></i>
+                                        <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                                            <i class="fas fa-check-circle me-1"></i> Actual
                                         </button>
+                                        <input type="hidden" name="es_actual[]" value="1">
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="text-muted" title="Año actual - no se puede eliminar">
+                                            <i class="fas fa-lock"></i>
+                                        </span>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="agregarFila">
-                        <i class="fas fa-plus me-1"></i> Agregar fila
-                    </button>
+                    <div class="text-start mt-2">
+                        <button type="button" class="btn btn-secondary btn-sm" id="agregarFila">
+                            <i class="fas fa-plus me-1"></i> Agregar año anterior
+                        </button>
+                        <span class="text-muted ms-2 small">
+                            <i class="fas fa-info-circle"></i> El nuevo año se agrega al final (abajo) y pasa a ser el actual
+                        </span>
+                    </div>
                     <div class="text-end mt-4">
                         <button type="button" class="btn btn-secondary px-4 prev-step"><i class="fas fa-arrow-left me-1"></i> Anterior</button>
                         <button type="submit" class="btn btn-success px-4"><i class="fas fa-save me-1"></i> Guardar Inscripción</button>
@@ -427,13 +465,9 @@ while($sec = $secciones->fetch_assoc()) {
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// ============================================================================
-// SCRIPT UNIFICADO: PRECARGA + WIZARD + FUNCIONES GEOGRÁFICAS CON FALLBACK LOCAL
-// ============================================================================
-
 document.addEventListener('DOMContentLoaded', function() {
     
-    // ---------- PRECARGA DE DATOS DESDE "Terminar Inscripción" ----------
+    // ---------- PRECARGA ----------
     <?php if (!empty($prefill_data)): ?>
         const apellidoField = document.querySelector('input[name="apellido"]');
         const nombreField = document.querySelector('input[name="nombre"]');
@@ -462,11 +496,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     <?php endif; ?>
 
-    // ---------- TOOLTIPS ----------
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+    // ---------- TOGGLES ----------
+    function toggleEnfermedad() { document.getElementById('div_enfermedad_cual').style.display = document.getElementById('enfermedad').value === 'Si' ? 'block' : 'none'; }
+    function toggleEducacionFisica() { document.getElementById('div_educacion_fisica_porque').style.display = document.getElementById('educacion_fisica').value === 'No' ? 'block' : 'none'; }
+    function toggleAlergia() { document.getElementById('div_alergia_cual').style.display = document.getElementById('alergia').value === 'Si' ? 'block' : 'none'; }
+    document.getElementById('enfermedad')?.addEventListener('change', toggleEnfermedad);
+    document.getElementById('educacion_fisica')?.addEventListener('change', toggleEducacionFisica);
+    document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
+    toggleEnfermedad(); toggleEducacionFisica(); toggleAlergia();
 
-    // ---------- GENERAR CÉDULA ESCOLAR ----------
+    // ---------- GENERAR CÉDULA ----------
     function generarCedulaEscolar() {
         const cedulaBaseRaw = document.getElementById('cedula_base')?.value.trim();
         const fechaNac = document.getElementById('fecha_nacimiento')?.value;
@@ -492,7 +531,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('cedula_escolar_hidden').value = ce;
     }
 
-    // ---------- SINCRONIZAR CÉDULA A LOS PADRES ----------
     function sincronizarCedula() {
         const tipo = document.getElementById('tipo_cedula_base')?.value;
         const cedula = document.getElementById('cedula_base')?.value;
@@ -509,7 +547,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // ---------- EVENTOS ----------
     document.getElementById('cedula_base')?.addEventListener('input', function() {
         generarCedulaEscolar();
         sincronizarCedula();
@@ -527,15 +564,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Campos condicionales
-    function toggleEnfermedad() { document.getElementById('div_enfermedad_cual').style.display = document.getElementById('enfermedad').value === 'Si' ? 'block' : 'none'; }
-    function toggleEducacionFisica() { document.getElementById('div_educacion_fisica_porque').style.display = document.getElementById('educacion_fisica').value === 'No' ? 'block' : 'none'; }
-    function toggleAlergia() { document.getElementById('div_alergia_cual').style.display = document.getElementById('alergia').value === 'Si' ? 'block' : 'none'; }
-    document.getElementById('enfermedad')?.addEventListener('change', toggleEnfermedad);
-    document.getElementById('educacion_fisica')?.addEventListener('change', toggleEducacionFisica);
-    document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
-    toggleEnfermedad(); toggleEducacionFisica(); toggleAlergia();
-
     // ---------- WIZARD ----------
     const steps = document.querySelectorAll('.step');
     const nextBtns = document.querySelectorAll('.next-step');
@@ -545,18 +573,31 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentStep = 0;
     const totalSteps = steps.length;
     
-    function updateProgress() { progressBar.style.width = ((currentStep+1)/totalSteps*100)+'%'; }
-    
-    function showStep(step) {
-        steps.forEach((s,i)=>s.style.display = i===step ? 'block' : 'none');
-        tabs.forEach((tab,i)=>{
-            if(i===step) { tab.classList.add('active'); tab.classList.remove('disabled'); }
-            else { tab.classList.remove('active'); tab.classList.add('disabled'); }
-        });
-        currentStep = step; updateProgress();
+    function updateProgress() {
+        progressBar.style.width = ((currentStep + 1) / totalSteps * 100) + '%';
     }
     
-    function nextHandler() { 
+    function showStep(step) {
+        steps.forEach((s, i) => {
+            s.style.display = i === step ? 'block' : 'none';
+        });
+        tabs.forEach((tab, i) => {
+            if (i === step) {
+                tab.classList.add('active');
+                tab.classList.remove('disabled');
+            } else if (i < step) {
+                tab.classList.remove('active', 'disabled');
+                tab.classList.add('completed');
+            } else {
+                tab.classList.remove('active', 'completed');
+                tab.classList.add('disabled');
+            }
+        });
+        currentStep = step;
+        updateProgress();
+    }
+    
+    function nextHandler() {
         const currentStepEl = steps[currentStep];
         const inputs = currentStepEl.querySelectorAll('input, select, textarea');
         let isValid = true;
@@ -567,18 +608,217 @@ document.addEventListener('DOMContentLoaded', function() {
                 break;
             }
         }
-        if (isValid && currentStep < totalSteps-1) showStep(currentStep+1); 
+        if (isValid && currentStep < totalSteps - 1) {
+            showStep(currentStep + 1);
+        }
     }
     
-    function prevHandler() { if(currentStep > 0) showStep(currentStep-1); }
-    nextBtns.forEach(btn=>{ btn.removeEventListener('click',nextHandler); btn.addEventListener('click',nextHandler); });
-    prevBtns.forEach(btn=>{ btn.removeEventListener('click',prevHandler); btn.addEventListener('click',prevHandler); });
+    function prevHandler() {
+        if (currentStep > 0) showStep(currentStep - 1);
+    }
+    
+    nextBtns.forEach(btn => {
+        btn.removeEventListener('click', nextHandler);
+        btn.addEventListener('click', nextHandler);
+    });
+    prevBtns.forEach(btn => {
+        btn.removeEventListener('click', prevHandler);
+        btn.addEventListener('click', prevHandler);
+    });
+    
     showStep(0);
 
-    // Validación final
+    // ========== MANEJAR BOTÓN "MARCAR COMO ACTUAL" ==========
+
+    function actualizarDatosActual() {
+        const filas = document.querySelectorAll('#historial-body .fila-historial');
+        let filaActual = null;
+        
+        filas.forEach(fila => {
+            const btn = fila.querySelector('.btn-marcar-actual.btn-success');
+            if (btn) {
+                filaActual = fila;
+            }
+        });
+        
+        if (!filaActual) return;
+        
+        const anoSelect = filaActual.querySelector('select[name="ano_escolar[]"]');
+        const gradoSelect = filaActual.querySelector('select[name="grado_seccion[]"]');
+        const pesoInput = filaActual.querySelector('.peso-input');
+        const tallaInput = filaActual.querySelector('.talla-input');
+        
+        const ano = anoSelect ? anoSelect.value : '';
+        const grado = gradoSelect ? gradoSelect.value : '';
+        const peso = pesoInput ? pesoInput.value : '';
+        const talla = tallaInput ? tallaInput.value : '';
+        
+        document.getElementById('grado_actual').value = grado;
+        document.getElementById('seccion_actual_id').value = 0;
+        document.getElementById('peso_actual').value = peso;
+        document.getElementById('talla_actual').value = talla;
+        document.getElementById('ano_escolar_actual').value = ano;
+    }
+
+    function mostrarMensaje(texto) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
+        alertDiv.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>${texto}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        const tabla = document.getElementById('tablaHistorial');
+        const container = tabla.parentElement;
+        const existingAlert = container.querySelector('.alert-success');
+        if (existingAlert) existingAlert.remove();
+        container.insertBefore(alertDiv, tabla.nextSibling);
+        
+        setTimeout(() => {
+            if (alertDiv.parentElement) {
+                alertDiv.classList.remove('show');
+                setTimeout(() => alertDiv.remove(), 300);
+            }
+        }, 5000);
+    }
+
+    // ---------- TABLA DINÁMICA (agregar fila AL FINAL) ----------
+    const agregarBtn = document.getElementById('agregarFila');
+    const historialBody = document.getElementById('historial-body');
+
+    function agregarFilaHistorial() {
+        const filas = historialBody.querySelectorAll('.fila-historial');
+        const ultimaFila = filas[filas.length - 1];
+        
+        if (!ultimaFila) return;
+        
+        const newRow = ultimaFila.cloneNode(true);
+        
+        newRow.querySelectorAll('input, select').forEach(inp => {
+            if (inp.type === 'text' || inp.type === 'number' || inp.type === 'date') {
+                inp.value = '';
+            }
+            if (inp.tagName === 'SELECT') {
+                inp.selectedIndex = 0;
+            }
+        });
+        
+        // Antigua última fila → HISTÓRICO
+        const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
+        if (celdaActualUltima) {
+            celdaActualUltima.innerHTML = `
+                <span class="badge bg-secondary" style="font-size: 0.7rem;">
+                    <i class="fas fa-history me-1"></i> Histórico
+                </span>
+                <input type="hidden" name="es_actual[]" value="0">
+            `;
+            ultimaFila.dataset.esUltima = '0';
+        }
+        
+        const celdaAccionUltima = ultimaFila.querySelector('td:last-child');
+        if (celdaAccionUltima) {
+            celdaAccionUltima.innerHTML = `
+                <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+        }
+        
+        // Nueva fila → ACTUAL
+        const celdaActualNueva = newRow.querySelector('td:nth-child(11)');
+        if (celdaActualNueva) {
+            celdaActualNueva.innerHTML = `
+                <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                    <i class="fas fa-check-circle me-1"></i> Actual
+                </button>
+                <input type="hidden" name="es_actual[]" value="1">
+            `;
+        }
+        
+        const celdaAccionNueva = newRow.querySelector('td:last-child');
+        if (celdaAccionNueva) {
+            celdaAccionNueva.innerHTML = `
+                <span class="text-muted" title="Año actual - no se puede eliminar">
+                    <i class="fas fa-lock"></i>
+                </span>
+            `;
+        }
+        
+        newRow.dataset.esUltima = '1';
+        historialBody.appendChild(newRow);
+        
+        const todasLasFilas = historialBody.querySelectorAll('.fila-historial');
+        todasLasFilas.forEach((f, idx) => {
+            f.dataset.esUltima = (idx === todasLasFilas.length - 1) ? '1' : '0';
+        });
+        
+        actualizarDatosActual();
+        mostrarMensaje('Nuevo año agregado. Complete los datos del nuevo año actual (la última fila).');
+    }
+
+    agregarBtn?.addEventListener('click', agregarFilaHistorial);
+
+    // ---------- ELIMINAR FILA ----------
+    document.getElementById('historial-body')?.addEventListener('click', function(e) {
+        const btnEliminar = e.target.closest('.eliminar-fila');
+        if (btnEliminar) {
+            const fila = btnEliminar.closest('.fila-historial');
+            const totalFilas = document.querySelectorAll('#historial-body .fila-historial').length;
+            
+            if (totalFilas > 1) {
+                if (fila.dataset.esUltima === '1') {
+                    alert('No se puede eliminar el año actual. Agregue un nuevo año primero.');
+                    return;
+                }
+                fila.remove();
+                
+                const filasRestantes = document.querySelectorAll('#historial-body .fila-historial');
+                filasRestantes.forEach((f, idx) => {
+                    f.dataset.esUltima = (idx === filasRestantes.length - 1) ? '1' : '0';
+                });
+                
+                const ultimaFila = filasRestantes[filasRestantes.length - 1];
+                if (ultimaFila) {
+                    const celdaActual = ultimaFila.querySelector('td:nth-child(11)');
+                    if (celdaActual) {
+                        celdaActual.innerHTML = `
+                            <button type="button" class="btn btn-sm btn-success btn-marcar-actual" title="Marcar como año actual">
+                                <i class="fas fa-check-circle me-1"></i> Actual
+                            </button>
+                            <input type="hidden" name="es_actual[]" value="1">
+                        `;
+                    }
+                    const celdaAccion = ultimaFila.querySelector('td:last-child');
+                    if (celdaAccion) {
+                        celdaAccion.innerHTML = `
+                            <span class="text-muted" title="Año actual - no se puede eliminar">
+                                <i class="fas fa-lock"></i>
+                            </span>
+                        `;
+                    }
+                    ultimaFila.dataset.esUltima = '1';
+                }
+                
+                actualizarDatosActual();
+            } else {
+                alert('Debe haber al menos un registro escolar (el año actual).');
+            }
+        }
+    });
+
+    // ---------- VALIDACIÓN FINAL ----------
     const wizardForm = document.getElementById('wizardForm');
     if (wizardForm) {
         wizardForm.addEventListener('submit', function(e) {
+            const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
+            if (actuales.length === 0) {
+                e.preventDefault();
+                alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
+                showStep(3);
+                return;
+            }
+            
             generarCedulaEscolar();
             if (!this.checkValidity()) {
                 e.preventDefault();
@@ -595,31 +835,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Tabla dinámica (sin campo "Funcionario")
-    const agregarBtn = document.getElementById('agregarFila');
-    const historialBody = document.getElementById('historial-body');
-    function agregarFilaHistorial() {
-        const originalRow = historialBody.querySelector('.fila-historial');
-        const newRow = originalRow.cloneNode(true);
-        newRow.querySelectorAll('input, select').forEach(inp=>{
-            if(inp.type==='text' || inp.type==='number') inp.value='';
-            if(inp.tagName==='SELECT') inp.selectedIndex=0;
-        });
-        historialBody.appendChild(newRow);
-        newRow.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
-    }
-    agregarBtn?.addEventListener('click', agregarFilaHistorial);
-    historialBody?.addEventListener('click', e=>{
-        if(e.target.classList.contains('eliminar-fila')) {
-            if(document.querySelectorAll('.fila-historial').length>1) e.target.closest('tr').remove();
-            else alert('Debe haber al menos un registro escolar.');
-        }
-    });
-
     // ============================================================================
-    // DATOS GEOGRÁFICOS LOCALES (FALLBACK)
+    // DATOS GEOGRÁFICOS (resumido para no repetir todo)
     // ============================================================================
-
     const paisesLista = [
         'Venezuela', 'Argentina', 'Bolivia', 'Brasil', 'Chile', 'Colombia',
         'Costa Rica', 'Cuba', 'Ecuador', 'El Salvador', 'España', 'Estados Unidos',
@@ -665,10 +883,6 @@ document.addEventListener('DOMContentLoaded', function() {
         'Caracas': ['Catedral', 'El Valle', 'La Candelaria', 'La Pastora', 'San Agustín', 'San Bernardino', 'San José', 'San Juan', 'Santa Teresa', 'Sucre'],
         'Valencia': ['Candelaria', 'El Socorro', 'Miguel Peña', 'Rafael Urdaneta', 'San Blas', 'San José']
     };
-
-    // ============================================================================
-    // FUNCIONES GEOGRÁFICAS CON FALLBACK LOCAL
-    // ============================================================================
 
     function cargarSelectConOpciones(selectId, opciones, valorDefault) {
         const select = document.getElementById(selectId);
@@ -727,18 +941,6 @@ document.addEventListener('DOMContentLoaded', function() {
         let input = document.getElementById(inputId);
         if (!select || !input) return;
         
-        if (!input.id) {
-            const newInput = document.createElement('input');
-            newInput.type = 'text';
-            newInput.id = inputId;
-            newInput.name = inputId.replace('input_', '') + '_otro';
-            newInput.className = 'form-control text-uppercase mt-1';
-            newInput.placeholder = 'Escriba aquí...';
-            newInput.style.display = 'none';
-            select.parentNode.appendChild(newInput);
-            input = newInput;
-        }
-        
         select.addEventListener('change', function() {
             if (this.value === 'OTRO') {
                 this.style.display = 'none';
@@ -764,12 +966,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ============================================================================
-    // INICIALIZACIÓN GEOGRÁFICA
-    // ============================================================================
-
     function inicializarGeografia() {
-        // PAÍSES
         const selectPais = document.getElementById('pais_nacimiento');
         if (selectPais) {
             cargarSelectDesdeEndpoint('ajax_geografico.php?action=get_paises', 'pais_nacimiento', 'Venezuela', paisesLista);
@@ -782,7 +979,6 @@ document.addEventListener('DOMContentLoaded', function() {
             configurarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
         }
         
-        // ESTADOS
         const estadoSelects = [
             { id: 'estado_nacimiento', inputId: 'input_estado_nacimiento', fallback: estadosVenezuela },
             { id: 'estado_residencia', inputId: 'input_estado_residencia', fallback: estadosVenezuela },
@@ -798,7 +994,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // MUNICIPIOS
         const municipioSelect = document.getElementById('municipio');
         if (municipioSelect) {
             municipioSelect.disabled = true;
@@ -811,7 +1006,6 @@ document.addEventListener('DOMContentLoaded', function() {
             configurarOtro('rep_municipio', 'input_rep_municipio');
         }
         
-        // PARROQUIAS
         const parroquiaSelect = document.getElementById('parroquia');
         if (parroquiaSelect) {
             parroquiaSelect.disabled = true;
@@ -824,7 +1018,6 @@ document.addEventListener('DOMContentLoaded', function() {
             configurarOtro('rep_parroquia', 'input_rep_parroquia');
         }
         
-        // LISTENERS PARA MUNICIPIOS/PARROQUIAS
         function actualizarMunicipios(estadoId, municipioId, parroquiaId) {
             const estadoSelect = document.getElementById(estadoId);
             const municipioSelect = document.getElementById(municipioId);
@@ -867,7 +1060,6 @@ document.addEventListener('DOMContentLoaded', function() {
             parroquiaSelect.disabled = false;
         }
         
-        // Asignar listeners
         document.getElementById('estado_nacimiento')?.addEventListener('change', function() {
             actualizarMunicipios('estado_nacimiento', 'municipio', 'parroquia');
         });
@@ -888,7 +1080,6 @@ document.addEventListener('DOMContentLoaded', function() {
             actualizarParroquias('rep_municipio', 'rep_parroquia');
         });
         
-        // Disparar eventos iniciales si hay valores preseleccionados
         setTimeout(function() {
             ['estado_nacimiento', 'estado_residencia', 'rep_estado_nacimiento', 'rep_estado_residencia'].forEach(id => {
                 const select = document.getElementById(id);
@@ -899,11 +1090,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 500);
     }
 
-    // ============================================================================
-    // INICIALIZAR TODO AL CARGAR LA PÁGINA
-    // ============================================================================
     inicializarGeografia();
     setTimeout(generarCedulaEscolar, 100);
+    setTimeout(actualizarDatosActual, 200);
 });
 </script>
 
@@ -912,8 +1101,18 @@ document.addEventListener('DOMContentLoaded', function() {
     .btn-primary { background-color: #003366; border-color: #003366; }
     .btn-primary:hover { background-color: #002244; }
     .nav-link.active { background-color: #003366 !important; color: white !important; }
+    .nav-link.completed { background-color: #28a745 !important; color: white !important; }
     .table-sm th, .table-sm td { padding: 0.3rem; vertical-align: middle; }
     .progress-bar { transition: width 0.3s ease; }
+    .step { 
+        display: none; 
+        animation: fadeIn 0.3s ease;
+    }
+    .step.active { display: block; }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
 </style>
 
 <?php include '../includes/footer.php'; ?>

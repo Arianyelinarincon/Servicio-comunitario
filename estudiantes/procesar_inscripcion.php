@@ -6,14 +6,13 @@ ini_set('display_errors', 1);
 ini_set('log_errors', 1);
 error_reporting(E_ALL);
 
-// ========== FUNCIÓN DE AUDITORÍA (si no está definida) ==========
 if (!function_exists('registrarAuditoria')) {
     function registrarAuditoria($conexion, $usuario_id, $accion, $tabla, $registro_id, $detalles = null) {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
         $stmt = $conexion->prepare("INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, detalles, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)");
         if ($stmt) {
-            $stmt->bind_param("ississ", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
+            $stmt->bind_param("ississs", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
             $stmt->execute();
             $stmt->close();
         }
@@ -142,9 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $padre_nombre = $_POST['padre_nombre'] ?? '';
         $padre_cedula = $_POST['padre_cedula'] ?? '';
         $padre_telefono = $_POST['padre_telefono'] ?? '';
-        $sala = ''; // Se actualizará después
+        $sala = '';
 
-        // ========== CORRECCIÓN: tipos y variables coinciden ==========
         $stmt = $conexion->prepare("INSERT INTO estudiantes 
             (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, 
              representante_id, nacionalidad, pais_nacimiento, estado_nacimiento, direccion, 
@@ -154,10 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              orden_nacimiento, estatus, created_at, inscripcion_completa) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW(), ?)");
 
-        // 26 strings + 3 enteros = 29 placeholders
-        $types = str_repeat('s', 26) . 'iii'; // 26 strings: nombre hasta padre_telefono, 3 ints: representante_id, orden_nacimiento, inscripcion_completa
-
-        $inscripcion_completa = 1; // Marcar como inscripción completa
+        $types = str_repeat('s', 26) . 'iii';
+        $inscripcion_completa = 1;
 
         $stmt->bind_param($types, 
             $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
@@ -172,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ==================== 3. INSCRIPCIONES ====================
         $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
+        $grado_seccion_arr = $_POST['grado_seccion'] ?? [];
         $registro_arr = $_POST['registro'] ?? [];
         $repite_arr = $_POST['repite'] ?? [];
         $c_arr = $_POST['c'] ?? [];
@@ -179,9 +176,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $p_arr = $_POST['p'] ?? [];
         $peso_arr = $_POST['peso'] ?? [];
         $talla_arr = $_POST['talla'] ?? [];
+        $fecha_inscripcion_arr = $_POST['fecha_inscripcion'] ?? [];
 
-        $fecha_inscripcion = date('Y-m-d');
         $funcionario = $_SESSION['nombre_profesor'] ?? $_SESSION['usuario'] ?? 'Sistema';
+
+        // La última fila es la actual
+        $indice_actual = count($ano_escolar_arr) - 1;
+        $grado_actual = '';
+        $seccion_id_actual = 0;
+        $peso_actual = null;
+        $talla_actual = null;
+        $ano_escolar_actual = '';
 
         $stmt_ins = $conexion->prepare("INSERT INTO inscripciones 
             (estudiante_id, ano_escolar, grado_seccion, registro, repite, c, f, p, peso, talla, 
@@ -190,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         for ($i = 0; $i < count($ano_escolar_arr); $i++) {
             $ano = $ano_escolar_arr[$i] ?? '';
-            $grado = ''; // Ya no se usa, lo dejamos vacío
+            $grado = $grado_seccion_arr[$i] ?? '';
             $registro = $registro_arr[$i] ?? '';
             $repite = $repite_arr[$i] ?? 'No';
             $c = $c_arr[$i] ?? '';
@@ -198,37 +203,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $p = $p_arr[$i] ?? '';
             $peso = !empty($peso_arr[$i]) ? floatval($peso_arr[$i]) : null;
             $talla = !empty($talla_arr[$i]) ? floatval($talla_arr[$i]) : null;
+            $fecha_ins = !empty($fecha_inscripcion_arr[$i]) ? $fecha_inscripcion_arr[$i] : date('Y-m-d');
 
             $stmt_ins->bind_param("isssssssddss", 
                 $estudiante_id, $ano, $grado, $registro, $repite, $c, $f, $p, $peso, $talla, 
-                $fecha_inscripcion, $funcionario);
+                $fecha_ins, $funcionario);
             $stmt_ins->execute();
+
+            // Si es la última fila (año actual)
+            if ($i == $indice_actual) {
+                $ano_escolar_actual = $ano;
+                $grado_actual = $grado;
+                $peso_actual = $peso;
+                $talla_actual = $talla;
+
+                // Extraer sala y sección del grado_seccion
+                $partes = explode(' - ', $grado);
+                $sala_nombre = $partes[0] ?? '';
+                $seccion_nombre = $partes[1] ?? '';
+
+                if (!empty($sala_nombre) && !empty($seccion_nombre)) {
+                    $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
+                    $stmt_sec->bind_param("ss", $sala_nombre, $seccion_nombre);
+                    $stmt_sec->execute();
+                    $row_sec = $stmt_sec->get_result()->fetch_assoc();
+                    $seccion_id_actual = $row_sec['id'] ?? 0;
+                    $stmt_sec->close();
+                }
+            }
         }
         $stmt_ins->close();
 
-        // ==================== 4. ACTUALIZAR SALA Y SECCIÓN DEL ESTUDIANTE ====================
-        // Obtener la sala y sección del último registro de inscripción (grado_seccion)
-        if (count($grado_seccion_arr ?? []) > 0) {
-            $ultimo_grado = end($grado_seccion_arr);
-            // Extraer sala del texto "sala4 - Sección U"
-            $partes = explode(' - ', $ultimo_grado);
-            $sala_actual = $partes[0] ?? '';
-            
-            // Obtener el ID de la sección
-            $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
-            $nombre_seccion = $partes[1] ?? '';
-            $stmt_sec->bind_param("ss", $sala_actual, $nombre_seccion);
-            $stmt_sec->execute();
-            $row_sec = $stmt_sec->get_result()->fetch_assoc();
-            $seccion_id = $row_sec['id'] ?? null;
-            $stmt_sec->close();
-
-            if ($seccion_id) {
-                $stmt_upd = $conexion->prepare("UPDATE estudiantes SET sala = ?, seccion_id = ? WHERE id = ?");
-                $stmt_upd->bind_param("sii", $sala_actual, $seccion_id, $estudiante_id);
-                $stmt_upd->execute();
-                $stmt_upd->close();
-            }
+        // ==================== 4. ACTUALIZAR ESTUDIANTE CON EL AÑO ACTUAL ====================
+        if (!empty($ano_escolar_actual) && !empty($grado_actual)) {
+            $stmt_upd = $conexion->prepare("UPDATE estudiantes SET 
+                sala = ?, 
+                seccion_id = ?,
+                peso = ?,
+                talla = ?
+                WHERE id = ?");
+            $stmt_upd->bind_param("siddi", 
+                $grado_actual, 
+                $seccion_id_actual,
+                $peso_actual,
+                $talla_actual,
+                $estudiante_id);
+            $stmt_upd->execute();
+            $stmt_upd->close();
         }
 
         // ==================== 5. AUDITORÍA ====================
