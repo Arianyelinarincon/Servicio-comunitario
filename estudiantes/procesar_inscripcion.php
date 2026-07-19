@@ -296,6 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: inscripcion_exito.php?id=$estudiante_id");
         exit();
         
+        
     } catch (Exception $e) {
         $conexion->rollback();
         error_log("Error en inscripción: " . $e->getMessage() . " en " . $e->getFile() . " línea " . $e->getLine());
