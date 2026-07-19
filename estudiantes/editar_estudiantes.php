@@ -11,6 +11,13 @@ $id = intval($_GET['id']);
 $mensaje = "";
 $tipo_mensaje = "";
 
+// Verificar mensajes de sesión
+if (isset($_SESSION['mensaje'])) {
+    $mensaje = $_SESSION['mensaje'];
+    $tipo_mensaje = $_SESSION['tipo_mensaje'] ?? 'info';
+    unset($_SESSION['mensaje'], $_SESSION['tipo_mensaje'], $_SESSION['campos_faltantes']);
+}
+
 // Obtener datos del estudiante con su representante y padres
 $stmt = $conexion->prepare("
     SELECT e.*, 
@@ -72,26 +79,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $padre_cedula = $_POST['padre_cedula'];
         $padre_telefono = $_POST['padre_telefono'];
         
-        // DATOS DEL AÑO ACTUAL (desde el historial)
-        $grado_actual = $_POST['grado_actual'] ?? '';
-        $seccion_actual_id = intval($_POST['seccion_actual_id'] ?? 0);
-        $peso_actual = !empty($_POST['peso_actual']) ? floatval($_POST['peso_actual']) : null;
-        $talla_actual = !empty($_POST['talla_actual']) ? floatval($_POST['talla_actual']) : null;
-        $ano_escolar_actual = $_POST['ano_escolar_actual'] ?? '';
+        // ========== OBTENER DATOS DEL HISTORIAL ESCOLAR ==========
+        $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
+        $grado_seccion_arr = $_POST['grado_seccion'] ?? [];
+        $registro_arr = $_POST['registro'] ?? [];
+        $repite_arr = $_POST['repite'] ?? [];
+        $c_arr = $_POST['c'] ?? [];
+        $f_arr = $_POST['f'] ?? [];
+        $p_arr = $_POST['p'] ?? [];
+        $peso_arr = $_POST['peso'] ?? [];
+        $talla_arr = $_POST['talla'] ?? [];
+        $fecha_inscripcion_arr = $_POST['fecha_inscripcion'] ?? [];
 
-        // Obtener nombre de la sala desde el ID de sección
-        $sala_nombre = $grado_actual;
-        if (empty($sala_nombre) && $seccion_actual_id > 0) {
-            $stmt_sec = $conexion->prepare("SELECT sala FROM secciones WHERE id = ?");
-            $stmt_sec->bind_param("i", $seccion_actual_id);
+        // ========== DETERMINAR EL AÑO ACTUAL (ÚLTIMA FILA) ==========
+        $ultimo_indice = count($ano_escolar_arr) - 1;
+        $grado_actual = $grado_seccion_arr[$ultimo_indice] ?? '';
+        $peso_actual = !empty($peso_arr[$ultimo_indice]) ? floatval($peso_arr[$ultimo_indice]) : null;
+        $talla_actual = !empty($talla_arr[$ultimo_indice]) ? floatval($talla_arr[$ultimo_indice]) : null;
+        $ano_escolar_actual = $ano_escolar_arr[$ultimo_indice] ?? '';
+
+        // Extraer sala y sección del grado_seccion (ej: "sala5 - U")
+        $sala_nombre = '';
+        $seccion_letra = '';
+        if (!empty($grado_actual)) {
+            $partes = explode(' - ', $grado_actual);
+            $sala_nombre = $partes[0] ?? '';
+            $seccion_letra = $partes[1] ?? '';
+        }
+
+        // Obtener el ID de la sección
+        $seccion_id_actual = 0;
+        if (!empty($sala_nombre) && !empty($seccion_letra)) {
+            $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
+            $stmt_sec->bind_param("ss", $sala_nombre, $seccion_letra);
             $stmt_sec->execute();
-            $result_sec = $stmt_sec->get_result();
-            $row_sec = $result_sec->fetch_assoc();
-            $sala_nombre = $row_sec['sala'] ?? '';
+            $row_sec = $stmt_sec->get_result()->fetch_assoc();
+            $seccion_id_actual = $row_sec['id'] ?? 0;
             $stmt_sec->close();
         }
 
-        // ========== ACTUALIZAR ESTUDIANTE (usando execute con array) ==========
+        // ========== ACTUALIZAR ESTUDIANTE CON LOS DATOS DEL AÑO ACTUAL ==========
         $stmt_upd = $conexion->prepare("UPDATE estudiantes SET 
             nombre=?, apellido=?, fecha_nacimiento=?, genero=?, orden_nacimiento=?,
             nacionalidad=?, pais_nacimiento=?, estado_nacimiento=?, direccion=?,
@@ -102,20 +129,52 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             sala=?, seccion_id=?, peso=?, talla=?
             WHERE id=?");
 
-        // Construir array de parámetros en el orden correcto
-        $params_upd = [
-            $nombre, $apellido, $fecha_nac, $genero, $orden_nacimiento,
-            $nacionalidad, $pais_nac, $estado_nac, $direccion,
-            $estado_res, $municipio, $parroquia, $ciudad,
-            $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
-            $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
-            $padre_nombre, $padre_cedula, $padre_telefono,
-            $sala_nombre, $seccion_actual_id, $peso_actual, $talla_actual, $id
-        ];
-        $stmt_upd->execute($params_upd);
+        // Convertir a string para evitar problemas de referencia
+        $p1 = (string)$nombre;
+        $p2 = (string)$apellido;
+        $p3 = (string)$fecha_nac;
+        $p4 = (string)$genero;
+        $p5 = (string)$orden_nacimiento;
+        $p6 = (string)$nacionalidad;
+        $p7 = (string)$pais_nac;
+        $p8 = (string)$estado_nac;
+        $p9 = (string)$direccion;
+        $p10 = (string)$estado_res;
+        $p11 = (string)$municipio;
+        $p12 = (string)$parroquia;
+        $p13 = (string)$ciudad;
+        $p14 = (string)$enfermedad;
+        $p15 = (string)$enfermedad_cual;
+        $p16 = (string)$educacion_fisica;
+        $p17 = (string)$educacion_fisica_porque;
+        $p18 = (string)$alergia;
+        $p19 = (string)$alergia_cual;
+        $p20 = (string)$madre_nombre;
+        $p21 = (string)$madre_cedula;
+        $p22 = (string)$madre_telefono;
+        $p23 = (string)$padre_nombre;
+        $p24 = (string)$padre_cedula;
+        $p25 = (string)$padre_telefono;
+        $p26 = (string)$sala_nombre;
+        $p27 = (string)$seccion_id_actual;
+        $p28 = (string)$peso_actual;
+        $p29 = (string)$talla_actual;
+        $p30 = (string)$id;
+
+        $types_upd = str_repeat('s', 30);
+        $stmt_upd->bind_param(
+            $types_upd,
+            $p1, $p2, $p3, $p4, $p5,
+            $p6, $p7, $p8, $p9, $p10,
+            $p11, $p12, $p13, $p14, $p15,
+            $p16, $p17, $p18, $p19, $p20,
+            $p21, $p22, $p23, $p24, $p25,
+            $p26, $p27, $p28, $p29, $p30
+        );
+        $stmt_upd->execute();
         $stmt_upd->close();
 
-        // ========== ACTUALIZAR REPRESENTANTE (usando execute con array) ==========
+        // ========== ACTUALIZAR REPRESENTANTE ==========
         $rep_id = $estudiante['rep_id'];
         $rep_nombre = $_POST['rep_nombre'];
         $rep_cedula = $_POST['rep_cedula'];
@@ -139,13 +198,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             direccion=?, estado_residencia=?, municipio=?, parroquia=?, ciudad=?
             WHERE id=?");
 
-        $params_rep = [
-            $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil,
-            $rep_afinidad, $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad,
-            $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad,
+        $types_rep = str_repeat('s', 16);
+        $stmt_rep->bind_param(
+            $types_rep,
+            $rep_nombre,
+            $rep_cedula,
+            $rep_telefono,
+            $rep_fecha_nac,
+            $rep_estado_civil,
+            $rep_afinidad,
+            $rep_sexo,
+            $rep_pais_nac,
+            $rep_estado_nac,
+            $rep_nacionalidad,
+            $rep_direccion,
+            $rep_estado_res,
+            $rep_municipio,
+            $rep_parroquia,
+            $rep_ciudad,
             $rep_id
-        ];
-        $stmt_rep->execute($params_rep);
+        );
+        $stmt_rep->execute();
         $stmt_rep->close();
 
         // ========== ACTUALIZAR INSCRIPCIONES ==========
@@ -153,17 +226,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt_del->bind_param("i", $id);
         $stmt_del->execute();
         $stmt_del->close();
-
-        $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
-        $grado_seccion_arr = $_POST['grado_seccion'] ?? [];
-        $registro_arr = $_POST['registro'] ?? [];
-        $repite_arr = $_POST['repite'] ?? [];
-        $c_arr = $_POST['c'] ?? [];
-        $f_arr = $_POST['f'] ?? [];
-        $p_arr = $_POST['p'] ?? [];
-        $peso_arr = $_POST['peso'] ?? [];
-        $talla_arr = $_POST['talla'] ?? [];
-        $fecha_inscripcion_arr = $_POST['fecha_inscripcion'] ?? [];
 
         $funcionario = $_SESSION['nombre_profesor'] ?? $_SESSION['usuario'] ?? 'Sistema';
 
@@ -176,33 +238,90 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $fecha_ins = !empty($fecha_inscripcion_arr[$i]) ? $fecha_inscripcion_arr[$i] : date('Y-m-d');
             $peso_val = !empty($peso_arr[$i]) ? floatval($peso_arr[$i]) : null;
             $talla_val = !empty($talla_arr[$i]) ? floatval($talla_arr[$i]) : null;
-            
-            $params_ins = [
+
+            $ano_esc   = $ano_escolar_arr[$i] ?? '';
+            $grado_sec = $grado_seccion_arr[$i] ?? '';
+            $registro  = $registro_arr[$i] ?? '';
+            $repite    = $repite_arr[$i] ?? 'No';
+            $c_val     = $c_arr[$i] ?? '';
+            $f_val     = $f_arr[$i] ?? '';
+            $p_val     = $p_arr[$i] ?? '';
+
+            $stmt_ins->bind_param("isssssssddss", 
                 $id, 
-                $ano_escolar_arr[$i] ?? '', 
-                $grado_seccion_arr[$i] ?? '', 
-                $registro_arr[$i] ?? '', 
-                $repite_arr[$i] ?? 'No',
-                $c_arr[$i] ?? '', 
-                $f_arr[$i] ?? '', 
-                $p_arr[$i] ?? '', 
+                $ano_esc, 
+                $grado_sec, 
+                $registro, 
+                $repite,
+                $c_val, 
+                $f_val, 
+                $p_val, 
                 $peso_val, 
                 $talla_val,
                 $fecha_ins, 
-                $funcionario
-            ];
-            $stmt_ins->execute($params_ins);
+                $funcionario);
+            $stmt_ins->execute();
         }
         $stmt_ins->close();
 
+        // ========== VERIFICAR SI LA INSCRIPCIÓN ESTÁ COMPLETA ==========
+        $inscripcion_completa = true;
+        $campos_faltantes = [];
+
+        $campos_obligatorios = [
+            'nombre' => $nombre,
+            'apellido' => $apellido,
+            'fecha_nacimiento' => $fecha_nac,
+            'genero' => $genero,
+            'cedula_escolar' => $estudiante['cedula_escolar'] ?? '',
+            'direccion' => $direccion,
+            'rep_nombre' => $rep_nombre,
+            'rep_cedula' => $rep_cedula,
+            'rep_telefono' => $rep_telefono,
+            'sala' => $sala_nombre,
+            'seccion_id' => $seccion_id_actual,
+        ];
+
+        foreach ($campos_obligatorios as $campo => $valor) {
+            if (empty($valor)) {
+                $inscripcion_completa = false;
+                $campos_faltantes[] = $campo;
+            }
+        }
+
+        $tiene_padre = !empty($madre_nombre) || !empty($padre_nombre);
+        if (!$tiene_padre) {
+            $inscripcion_completa = false;
+            $campos_faltantes[] = 'madre/padre';
+        }
+
+        // Actualizar el campo inscripcion_completa
+        $stmt_completa = $conexion->prepare("UPDATE estudiantes SET inscripcion_completa = ? WHERE id = ?");
+        $flag = $inscripcion_completa ? 1 : 0;
+        $stmt_completa->bind_param("ii", $flag, $id);
+        $stmt_completa->execute();
+        $stmt_completa->close();
+
         $conexion->commit();
-        header("Location: editar_estudiantes.php?id=$id&msg=success");
+
+        // Mensajes de sesión
+        if ($inscripcion_completa) {
+            $_SESSION['mensaje'] = "¡Datos actualizados con éxito! La inscripción está completa.";
+            $_SESSION['tipo_mensaje'] = "success";
+        } else {
+            $_SESSION['mensaje'] = "¡Datos guardados! Pero la inscripción está incompleta. Faltan: " . implode(', ', $campos_faltantes);
+            $_SESSION['tipo_mensaje'] = "warning";
+        }
+
+        header("Location: editar_estudiantes.php?id=$id");
         exit();
         
     } catch (Exception $e) {
         $conexion->rollback();
-        $mensaje = "Error al guardar: " . $e->getMessage();
-        $tipo_mensaje = "danger";
+        $_SESSION['mensaje'] = "Error al guardar: " . $e->getMessage();
+        $_SESSION['tipo_mensaje'] = "danger";
+        header("Location: editar_estudiantes.php?id=$id");
+        exit();
     }
 }
 
@@ -212,7 +331,7 @@ include('../includes/header.php');
 $opciones_historial = '<option value="">Seleccione</option>';
 $secciones_hist = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 while($sec = $secciones_hist->fetch_assoc()) {
-    $opciones_historial .= '<option value="' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '">' . htmlspecialchars($sec['sala'] . ' - Sección ' . $sec['nombre']) . '</option>';
+    $opciones_historial .= '<option value="' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '">' . htmlspecialchars($sec['sala'] . ' - ' . $sec['nombre']) . '</option>';
 }
 ?>
 
@@ -243,16 +362,12 @@ while($sec = $secciones_hist->fetch_assoc()) {
         <div class="card-body p-4">
             
             <?php if ($mensaje): ?>
-                <div class="alert alert-<?= $tipo_mensaje ?> alert-dismissible fade show"><?= $mensaje ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
-            <?php endif; ?>
-            
-            <?php if (isset($_GET['msg']) && $_GET['msg'] == 'success'): ?>
-                <div class="alert alert-success alert-dismissible fade show">
-                    <i class="fas fa-check-circle me-2"></i> ¡Datos actualizados con éxito!
+                <div class="alert alert-<?= $tipo_mensaje ?> alert-dismissible fade show">
+                    <?= $mensaje ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
-
+            
             <!-- Progress Bar -->
             <div class="progress mb-4" style="height: 6px;">
                 <div id="progressBar" class="progress-bar bg-success" style="width: 25%;"></div>
@@ -460,10 +575,10 @@ while($sec = $secciones_hist->fetch_assoc()) {
                     <div class="row g-3">
                         <div class="col-md-6">
                             <h6 class="text-primary">Madre</h6>
-                            <label class="form-label fw-semibold">Nombre completo</label>
-                            <input type="text" name="madre_nombre" class="form-control text-uppercase" value="<?= htmlspecialchars($estudiante['madre_nombre']) ?>">
-                            <label class="form-label fw-semibold mt-2">Cédula</label>
-                            <input type="text" name="madre_cedula" class="form-control" value="<?= htmlspecialchars($estudiante['madre_cedula']) ?>">
+                            <label class="form-label fw-semibold">Nombre completo <span class="text-danger">*</span></label>
+                            <input type="text" name="madre_nombre" class="form-control text-uppercase" value="<?= htmlspecialchars($estudiante['madre_nombre']) ?>" required>
+                            <label class="form-label fw-semibold mt-2">Cédula <span class="text-danger">*</span></label>
+                            <input type="text" name="madre_cedula" class="form-control" value="<?= htmlspecialchars($estudiante['madre_cedula']) ?>" required>
                             <label class="form-label fw-semibold mt-2">Teléfono</label>
                             <input type="text" name="madre_telefono" class="form-control" value="<?= htmlspecialchars($estudiante['madre_telefono']) ?>">
                         </div>
@@ -492,29 +607,22 @@ while($sec = $secciones_hist->fetch_assoc()) {
                         Al guardar, se actualizará automáticamente su grado, sección, peso y talla.
                     </div>
                     
-                    <!-- Campos ocultos para el año actual -->
-                    <input type="hidden" name="grado_actual" id="grado_actual" value="">
-                    <input type="hidden" name="seccion_actual_id" id="seccion_actual_id" value="">
-                    <input type="hidden" name="peso_actual" id="peso_actual" value="">
-                    <input type="hidden" name="talla_actual" id="talla_actual" value="">
-                    <input type="hidden" name="ano_escolar_actual" id="ano_escolar_actual" value="">
-                    
                     <div class="table-responsive">
-                        <table class="table table-bordered table-sm" id="tablaHistorial">
+                        <table class="table table-bordered table-sm" id="tablaHistorial" style="min-width: 1000px;">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Año Escolar</th>
-                                    <th>Grado y Sección</th>
-                                    <th>Reg.</th>
-                                    <th>Rep.</th>
-                                    <th>C</th>
-                                    <th>F</th>
-                                    <th>P</th>
-                                    <th>Peso(kg)</th>
-                                    <th>Talla(cm)</th>
-                                    <th>Fecha Inscripción</th>
-                                    <th style="width:100px;">Año Actual</th>
-                                    <th style="width:50px;">Acción</th>
+                                    <th style="width:15%;">Año Escolar</th>
+                                    <th style="width:20%;">Grado y Sección</th>
+                                    <th style="width:8%;">Reg.</th>
+                                    <th style="width:8%;">Rep.</th>
+                                    <th style="width:8%;">C</th>
+                                    <th style="width:8%;">F</th>
+                                    <th style="width:8%;">P</th>
+                                    <th style="width:10%;">Peso(kg)</th>
+                                    <th style="width:10%;">Talla(cm)</th>
+                                    <th style="width:12%;">Fecha Inscripción</th>
+                                    <th style="width:10%;">Año Actual</th>
+                                    <th style="width:5%;">Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="historial-body">
@@ -737,62 +845,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStep(0);
 
-    // ========== MANEJAR BOTÓN "MARCAR COMO ACTUAL" ==========
-
-    // Función para actualizar los campos ocultos con los datos del año actual
-    function actualizarDatosActual() {
-        const filas = document.querySelectorAll('#historial-body .fila-historial');
-        let filaActual = null;
-        
-        filas.forEach(fila => {
-            const btn = fila.querySelector('.btn-marcar-actual.btn-success');
-            if (btn) {
-                filaActual = fila;
-            }
-        });
-        
-        if (!filaActual) return;
-        
-        const anoSelect = filaActual.querySelector('select[name="ano_escolar[]"]');
-        const gradoSelect = filaActual.querySelector('select[name="grado_seccion[]"]');
-        const pesoInput = filaActual.querySelector('.peso-input');
-        const tallaInput = filaActual.querySelector('.talla-input');
-        
-        const ano = anoSelect ? anoSelect.value : '';
-        const grado = gradoSelect ? gradoSelect.value : '';
-        const peso = pesoInput ? pesoInput.value : '';
-        const talla = tallaInput ? tallaInput.value : '';
-        
-        document.getElementById('grado_actual').value = grado;
-        document.getElementById('seccion_actual_id').value = 0;
-        document.getElementById('peso_actual').value = peso;
-        document.getElementById('talla_actual').value = talla;
-        document.getElementById('ano_escolar_actual').value = ano;
-    }
-
-    function mostrarMensaje(texto) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
-        alertDiv.innerHTML = `
-            <i class="fas fa-check-circle me-2"></i>
-            <strong>${texto}</strong>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        
-        const tabla = document.getElementById('tablaHistorial');
-        const container = tabla.parentElement;
-        const existingAlert = container.querySelector('.alert-success');
-        if (existingAlert) existingAlert.remove();
-        container.insertBefore(alertDiv, tabla.nextSibling);
-        
-        setTimeout(() => {
-            if (alertDiv.parentElement) {
-                alertDiv.classList.remove('show');
-                setTimeout(() => alertDiv.remove(), 300);
-            }
-        }, 5000);
-    }
-
     // ---------- TABLA DINÁMICA (agregar fila AL FINAL) ----------
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
@@ -803,10 +855,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         if (!ultimaFila) return;
         
-        // Clonar la última fila
         const newRow = ultimaFila.cloneNode(true);
         
-        // Limpiar valores
         newRow.querySelectorAll('input, select').forEach(inp => {
             if (inp.type === 'text' || inp.type === 'number' || inp.type === 'date') {
                 inp.value = '';
@@ -816,7 +866,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // 1. La antigua última fila pasa a ser HISTÓRICO
+        // Antigua última fila → HISTÓRICO
         const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
         if (celdaActualUltima) {
             celdaActualUltima.innerHTML = `
@@ -837,7 +887,7 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
         }
         
-        // 2. La NUEVA fila es ACTUAL
+        // Nueva fila → ACTUAL
         const celdaActualNueva = newRow.querySelector('td:nth-child(11)');
         if (celdaActualNueva) {
             celdaActualNueva.innerHTML = `
@@ -860,13 +910,11 @@ document.addEventListener('DOMContentLoaded', function() {
         newRow.dataset.esUltima = '1';
         historialBody.appendChild(newRow);
         
-        // Actualizar atributos
         const todasLasFilas = historialBody.querySelectorAll('.fila-historial');
         todasLasFilas.forEach((f, idx) => {
             f.dataset.esUltima = (idx === todasLasFilas.length - 1) ? '1' : '0';
         });
         
-        actualizarDatosActual();
         mostrarMensaje('Nuevo año agregado. Complete los datos del nuevo año actual (la última fila).');
     }
 
@@ -912,8 +960,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                     ultimaFila.dataset.esUltima = '1';
                 }
-                
-                actualizarDatosActual();
             } else {
                 alert('Debe haber al menos un registro escolar (el año actual).');
             }
@@ -924,14 +970,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const wizardForm = document.getElementById('wizardForm');
     if (wizardForm) {
         wizardForm.addEventListener('submit', function(e) {
-            const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
-            if (actuales.length === 0) {
-                e.preventDefault();
-                alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
-                showStep(3);
-                return;
-            }
-            
             if (!this.checkValidity()) {
                 e.preventDefault();
                 const primerInvalido = this.querySelector(':invalid');
@@ -946,8 +984,29 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
-    
-    setTimeout(actualizarDatosActual, 100);
+
+    function mostrarMensaje(texto) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
+        alertDiv.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>${texto}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        const tabla = document.getElementById('tablaHistorial');
+        const container = tabla.parentElement;
+        const existingAlert = container.querySelector('.alert-success');
+        if (existingAlert) existingAlert.remove();
+        container.insertBefore(alertDiv, tabla.nextSibling);
+        
+        setTimeout(() => {
+            if (alertDiv.parentElement) {
+                alertDiv.classList.remove('show');
+                setTimeout(() => alertDiv.remove(), 300);
+            }
+        }, 5000);
+    }
 });
 </script>
 

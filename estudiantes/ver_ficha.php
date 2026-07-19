@@ -7,6 +7,23 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 
 require_once '../config/conexion.php';
 
+// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
+function verificarCamposCompletos($datos) {
+    $obligatorios = [
+        'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar',
+        'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'
+    ];
+    foreach ($obligatorios as $campo) {
+        if (empty($datos[$campo])) {
+            return false;
+        }
+    }
+    if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
+        return false;
+    }
+    return true;
+}
+
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 if ($id == 0) {
     header("Location: listado.php");
@@ -247,7 +264,28 @@ include '../includes/header.php';
                     <div class="row-dato">
                         <span class="info-label">Inscripción Completa:</span>
                         <span class="info-value">
-                            <?= ($estudiante['inscripcion_completa'] == 1) ? '<span class="text-success"><i class="fas fa-check-circle"></i> Sí</span>' : '<span class="text-danger"><i class="fas fa-times-circle"></i> No</span>' ?>
+                            <?php 
+                            $datos_verificar = [
+                                'nombre' => $estudiante['nombre'],
+                                'apellido' => $estudiante['apellido'],
+                                'fecha_nacimiento' => $estudiante['fecha_nacimiento'],
+                                'genero' => $estudiante['genero'],
+                                'cedula_escolar' => $estudiante['cedula_escolar'],
+                                'rep_nombre' => $estudiante['rep_nombre'],
+                                'rep_cedula' => $estudiante['rep_cedula'],
+                                'rep_telefono' => $estudiante['rep_telefono'],
+                                'sala' => $estudiante['sala'],
+                                'seccion_id' => $estudiante['seccion_id'],
+                                'madre_nombre' => $estudiante['madre_nombre'],
+                                'padre_nombre' => $estudiante['padre_nombre'],
+                            ];
+                            $completa = verificarCamposCompletos($datos_verificar);
+                            if ($completa) {
+                                echo '<span class="text-success"><i class="fas fa-check-circle"></i> Sí</span>';
+                            } else {
+                                echo '<span class="text-danger"><i class="fas fa-times-circle"></i> No</span>';
+                            }
+                            ?>
                         </span>
                     </div>
                 </div>
@@ -350,7 +388,7 @@ include '../includes/header.php';
     </div>
     <?php endif; ?>
 
-    <!-- Historial Escolar (SIN columna "Funcionario") -->
+    <!-- Historial Escolar (con ancho mejorado) -->
     <div class="card card-ficha">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0"><i class="fas fa-history me-2"></i> Historial Escolar</h6>
@@ -359,10 +397,11 @@ include '../includes/header.php';
         <div class="card-body p-0">
             <?php if ($historial && $historial->num_rows > 0): ?>
             <div class="table-responsive">
-                <table class="table table-hover table-ficha mb-0">
+                <table class="table table-hover table-ficha mb-0" style="table-layout:auto;">
                     <thead>
                         <tr>
-                            <th>Año Escolar</th>
+                            <th style="min-width:130px;">Año Escolar</th>
+                            <th>Grado y Sección</th>
                             <th>Reg.</th>
                             <th>Rep</th>
                             <th>C</th>
@@ -377,6 +416,7 @@ include '../includes/header.php';
                         <?php while ($row = $historial->fetch_assoc()): ?>
                         <tr>
                             <td><strong><?= htmlspecialchars($row['ano_escolar']) ?></strong></td>
+                            <td><?= htmlspecialchars($row['grado_seccion'] ?? '') ?></td>
                             <td><?= htmlspecialchars($row['registro'] ?? '') ?></td>
                             <td><?= htmlspecialchars($row['repite'] ?? 'No') ?></td>
                             <td><?= htmlspecialchars($row['c'] ?? '') ?></td>
