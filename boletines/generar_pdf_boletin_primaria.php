@@ -21,22 +21,19 @@ $docente = mb_strtoupper(htmlspecialchars($_SESSION['docente'] ?? ''), 'UTF-8');
 $representante = mb_strtoupper(htmlspecialchars($_SESSION['representante'] ?? ''), 'UTF-8');
 $observacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['observacion'] ?? ''), 'UTF-8'));
 
-// === LAPSO 1 ===
+// === LAPSO 1 (CORREGIDO: usar l1_analisis) ===
 $l1_proyecto = mb_strtoupper(htmlspecialchars($_SESSION['l1_proyecto'] ?? ''), 'UTF-8');
-$l1_formacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l1_formacion'] ?? ''), 'UTF-8'));
-$l1_relacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l1_relacion'] ?? ''), 'UTF-8'));
+$l1_analisis = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l1_analisis'] ?? ''), 'UTF-8'));
 $l1_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l1_sugerencias'] ?? ''), 'UTF-8'));
 
-// === LAPSO 2 ===
+// === LAPSO 2 (CORREGIDO) ===
 $l2_proyecto = mb_strtoupper(htmlspecialchars($_SESSION['l2_proyecto'] ?? ''), 'UTF-8');
-$l2_formacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l2_formacion'] ?? ''), 'UTF-8'));
-$l2_relacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l2_relacion'] ?? ''), 'UTF-8'));
+$l2_analisis = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l2_analisis'] ?? ''), 'UTF-8'));
 $l2_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l2_sugerencias'] ?? ''), 'UTF-8'));
 
-// === LAPSO 3 ===
+// === LAPSO 3 (CORREGIDO) ===
 $l3_proyecto = mb_strtoupper(htmlspecialchars($_SESSION['l3_proyecto'] ?? ''), 'UTF-8');
-$l3_formacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_formacion'] ?? ''), 'UTF-8'));
-$l3_relacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_relacion'] ?? ''), 'UTF-8'));
+$l3_analisis = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_analisis'] ?? ''), 'UTF-8'));
 $l3_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_sugerencias'] ?? ''), 'UTF-8'));
 
 // === RESULTADO FINAL ===
@@ -47,7 +44,6 @@ $literal_final = mb_strtoupper(htmlspecialchars($_SESSION['literal_final'] ?? ''
 $logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
 $logo_html = '';
 
-// Verificar si la extensión GD está cargada
 if (extension_loaded('gd')) {
     if (file_exists($logo_path)) {
         try {
@@ -377,8 +373,7 @@ ob_start();
             <div class="espacio-proyecto"><?php echo $l1_proyecto; ?></div>
             <div class="etiqueta-area" style="text-align: center; margin-bottom: 5px;">ANÁLISIS CUALITATIVO</div>
             <div class="espacio-aprendizaje">
-                <?php echo $l1_formacion; ?>
-                <?php if($l1_relacion) echo '<br><br>' . $l1_relacion; ?>
+                <?php echo $l1_analisis; ?>
             </div>
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $l1_sugerencias; ?></div>
@@ -414,8 +409,7 @@ ob_start();
             <div class="espacio-proyecto"><?php echo $l2_proyecto; ?></div>
             <div class="etiqueta-area" style="text-align: center; margin-bottom: 5px;">ANÁLISIS CUALITATIVO</div>
             <div class="espacio-aprendizaje">
-                <?php echo $l2_formacion; ?>
-                <?php if($l2_relacion) echo '<br><br>' . $l2_relacion; ?>
+                <?php echo $l2_analisis; ?>
             </div>
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $l2_sugerencias; ?></div>
@@ -451,8 +445,7 @@ ob_start();
             <div class="espacio-proyecto"><?php echo $l3_proyecto; ?></div>
             <div class="etiqueta-area" style="text-align: center; margin-bottom: 5px;">ANÁLISIS CUALITATIVO</div>
             <div class="espacio-aprendizaje">
-                <?php echo $l3_formacion; ?>
-                <?php if($l3_relacion) echo '<br><br>' . $l3_relacion; ?>
+                <?php echo $l3_analisis; ?>
             </div>
             <div class="etiqueta-area">SUGERENCIAS</div>
             <div class="espacio-sugerencia"><?php echo $l3_sugerencias; ?></div>
@@ -525,18 +518,15 @@ if ($estudiante_id) {
     $obs = $_SESSION['observacion'] ?? '';
     
     $l1_proyecto_db = $_SESSION['l1_proyecto'] ?? '';
-    $l1_formacion_db = $_SESSION['l1_formacion'] ?? '';
-    $l1_relacion_db = $_SESSION['l1_relacion'] ?? '';
+    $l1_analisis_db = $_SESSION['l1_analisis'] ?? '';
     $l1_sugerencias_db = $_SESSION['l1_sugerencias'] ?? '';
     
     $l2_proyecto_db = $_SESSION['l2_proyecto'] ?? '';
-    $l2_formacion_db = $_SESSION['l2_formacion'] ?? '';
-    $l2_relacion_db = $_SESSION['l2_relacion'] ?? '';
+    $l2_analisis_db = $_SESSION['l2_analisis'] ?? '';
     $l2_sugerencias_db = $_SESSION['l2_sugerencias'] ?? '';
     
     $l3_proyecto_db = $_SESSION['l3_proyecto'] ?? '';
-    $l3_formacion_db = $_SESSION['l3_formacion'] ?? '';
-    $l3_relacion_db = $_SESSION['l3_relacion'] ?? '';
+    $l3_analisis_db = $_SESSION['l3_analisis'] ?? '';
     $l3_sugerencias_db = $_SESSION['l3_sugerencias'] ?? '';
     
     $resultado_final_db = $_SESSION['resultado_final'] ?? '';
@@ -544,19 +534,19 @@ if ($estudiante_id) {
     
     $stmt_bol = $conexion->prepare("INSERT INTO boletines 
         (estudiante_id, periodo, tipo_boletin, observacion, 
-         m1_proyecto, m1_formacion, m1_relacion, m1_sugerencias,
-         m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
-         m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias,
+         m1_proyecto, m1_formacion, m1_sugerencias,
+         m2_proyecto, m2_formacion, m2_sugerencias,
+         m3_proyecto, m3_formacion, m3_sugerencias,
          resultado_final, literal_final)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         
     if ($stmt_bol) {
-        $tipos = 'i' . str_repeat('s', 17);
+        $tipos = 'i' . str_repeat('s', 14);
         $stmt_bol->bind_param($tipos, 
             $estudiante_id, $periodo_escolar, $tipo, $obs,
-            $l1_proyecto_db, $l1_formacion_db, $l1_relacion_db, $l1_sugerencias_db,
-            $l2_proyecto_db, $l2_formacion_db, $l2_relacion_db, $l2_sugerencias_db,
-            $l3_proyecto_db, $l3_formacion_db, $l3_relacion_db, $l3_sugerencias_db,
+            $l1_proyecto_db, $l1_analisis_db, $l1_sugerencias_db,
+            $l2_proyecto_db, $l2_analisis_db, $l2_sugerencias_db,
+            $l3_proyecto_db, $l3_analisis_db, $l3_sugerencias_db,
             $resultado_final_db, $literal_final_db
         );
         $stmt_bol->execute();

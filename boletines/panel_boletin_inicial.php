@@ -12,7 +12,6 @@ require_once '../config/conexion.php';
 if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
     $id_editar = intval($_GET['editar_id']);
     
-    // Verificar que el boletín existe y es de tipo inicial
     $stmt = $conexion->prepare("SELECT * FROM boletines WHERE id = ? AND tipo_boletin = 'inicial'");
     $stmt->bind_param("i", $id_editar);
     $stmt->execute();
@@ -20,7 +19,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
     $stmt->close();
     
     if ($boletin) {
-        // Obtener datos del estudiante asociado
         $stmt_est = $conexion->prepare("SELECT e.nombre, e.apellido, e.cedula_escolar, e.sala, r.nombre_completo AS rep_nombre, p.nombre AS doc_nombre
                                         FROM estudiantes e
                                         LEFT JOIN representantes r ON e.representante_id = r.id
@@ -33,7 +31,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
         $stmt_est->close();
         
         if ($estudiante) {
-            // Cargar en sesión para que el panel los muestre
             $_SESSION['estudiante'] = $estudiante['nombre'] . ' ' . $estudiante['apellido'];
             $_SESSION['ce'] = $estudiante['cedula_escolar'];
             $_SESSION['grupo'] = $estudiante['sala'];
@@ -42,7 +39,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
             $_SESSION['representante'] = $estudiante['rep_nombre'] ?? 'No registrado';
             $_SESSION['estudiante_id'] = $boletin['estudiante_id'];
             
-            // Cargar datos del boletín
             $_SESSION['observacion'] = $boletin['observacion'] ?? '';
             $_SESSION['m1_proyecto'] = $boletin['m1_proyecto'] ?? '';
             $_SESSION['m1_formacion'] = $boletin['m1_formacion'] ?? '';
@@ -71,9 +67,10 @@ $obs_completada = !empty($_SESSION['observacion']);
 $m1_completado = !empty($_SESSION['m1_proyecto']) && !empty($_SESSION['m1_formacion']);
 $m2_completado = !empty($_SESSION['m2_proyecto']) && !empty($_SESSION['m2_formacion']);
 $m3_completado = !empty($_SESSION['m3_proyecto']) && !empty($_SESSION['m3_formacion']);
-$todo_completo = $obs_completada && $m1_completado && $m2_completado && $m3_completado;
 
-// ========== MODO EDICIÓN ==========
+// NUEVA CONDICIÓN: observación + al menos un momento completado
+$puede_generar_pdf = $obs_completada && ($m1_completado || $m2_completado || $m3_completado);
+
 $modo_edicion = isset($_GET['editar_id']) ? true : false;
 ?>
 
@@ -85,7 +82,7 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
     <title>Panel de Control - Boletín Inicial</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        /* ===== ESTILOS DEL SISTEMA ===== */
+        /* ===== ESTILOS (idénticos a la versión anterior, solo cambio la variable $todo_completo) ===== */
         :root {
             --primary: #1a237e;
             --primary-dark: #0d1555;
@@ -439,7 +436,6 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
 <body>
     <div class="panel-container">
         <div class="panel-card">
-            <!-- ===== HEADER ===== -->
             <div class="panel-header">
                 <h2>
                     <i class="fas fa-clipboard-list"></i>
@@ -453,7 +449,6 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                 </span>
             </div>
 
-            <!-- ===== INFO ESTUDIANTE ===== -->
             <div class="estudiante-info">
                 <div><i class="fas fa-user"></i> <strong>Estudiante:</strong> <?php echo htmlspecialchars($_SESSION['estudiante']); ?></div>
                 <div><i class="fas fa-id-card"></i> <strong>C.E:</strong> <?php echo htmlspecialchars($_SESSION['ce']); ?></div>
@@ -463,7 +458,6 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                 <div><i class="fas fa-user-tie"></i> <strong>Representante:</strong> <?php echo htmlspecialchars($_SESSION['representante']); ?></div>
             </div>
 
-            <!-- ===== GRID DE CARDS ===== -->
             <div class="grid-cards">
                 <!-- OBSERVACIÓN GENERAL -->
                 <div class="card-item" style="--card-color: var(--primary);">
@@ -550,22 +544,20 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                 </div>
             </div>
 
-            <!-- ===== ACCIONES GENERALES ===== -->
             <div class="acciones-generales">
-                <?php if ($todo_completo): ?>
+                <?php if ($puede_generar_pdf): ?>
                     <a href="generar_pdf_boletin.php" target="_blank" class="btn btn-success btn-lg">
-                        <i class="fas fa-file-pdf"></i> 🖨️ Generar Boletín Completo
+                        <i class="fas fa-file-pdf"></i> 🖨️ Generar Boletín
                     </a>
                 <?php else: 
                     $faltantes = [];
                     if (!$obs_completada) $faltantes[] = 'Observación General';
-                    if (!$m1_completado) $faltantes[] = 'Momento 1';
-                    if (!$m2_completado) $faltantes[] = 'Momento 2';
-                    if (!$m3_completado) $faltantes[] = 'Momento 3';
+                    if (!$m1_completado && !$m2_completado && !$m3_completado) $faltantes[] = 'Al menos un momento completado';
                 ?>
                     <div class="alerta-pendiente">
                         <strong><i class="fas fa-exclamation-triangle"></i> ¡Atención! Faltan datos para generar el boletín</strong>
                         <span class="faltantes">Faltan: <?php echo implode(', ', $faltantes); ?></span>
+                        <br><small>Se requiere la observación general y al menos un momento completado.</small>
                     </div>
                 <?php endif; ?>
 

@@ -66,12 +66,10 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
     }
 } else {
     // ========== SI NO VIENE editar_id, CARGAR DESDE BD SI EXISTE, O LIMPIAR SESIÓN ==========
-    // Verificar que tenemos estudiante_id en sesión
     if (isset($_SESSION['estudiante_id']) && isset($_SESSION['ano_escolar'])) {
         $estudiante_id = $_SESSION['estudiante_id'];
         $periodo = $_SESSION['ano_escolar'];
         
-        // Buscar boletín de primaria para este estudiante y período
         $stmt = $conexion->prepare("SELECT * FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = 'primaria'");
         $stmt->bind_param("is", $estudiante_id, $periodo);
         $stmt->execute();
@@ -79,38 +77,25 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
         $stmt->close();
         
         if ($boletin) {
-            // Si existe, cargar los datos en sesión (sobrescribiendo cualquier dato de inicial)
             $_SESSION['observacion'] = $boletin['observacion'] ?? '';
-            
             $_SESSION['l1_proyecto'] = $boletin['m1_proyecto'] ?? '';
             $_SESSION['l1_analisis'] = $boletin['m1_formacion'] ?? '';
             $_SESSION['l1_sugerencias'] = $boletin['m1_sugerencias'] ?? '';
-            
             $_SESSION['l2_proyecto'] = $boletin['m2_proyecto'] ?? '';
             $_SESSION['l2_analisis'] = $boletin['m2_formacion'] ?? '';
             $_SESSION['l2_sugerencias'] = $boletin['m2_sugerencias'] ?? '';
-            
             $_SESSION['l3_proyecto'] = $boletin['m3_proyecto'] ?? '';
             $_SESSION['l3_analisis'] = $boletin['m3_formacion'] ?? '';
             $_SESSION['l3_sugerencias'] = $boletin['m3_sugerencias'] ?? '';
-            
             $_SESSION['resultado_final'] = $boletin['resultado_final'] ?? '';
             $_SESSION['literal_final'] = $boletin['literal_final'] ?? '';
         } else {
-            // ========== SI NO EXISTE, LIMPIAR TODAS LAS VARIABLES DE SESIÓN DE BOLETÍN ==========
-            // Esto evita que queden datos de inicial
+            // Limpiar variables de primaria
             unset($_SESSION['observacion']);
-            unset($_SESSION['l1_proyecto']);
-            unset($_SESSION['l1_analisis']);
-            unset($_SESSION['l1_sugerencias']);
-            unset($_SESSION['l2_proyecto']);
-            unset($_SESSION['l2_analisis']);
-            unset($_SESSION['l2_sugerencias']);
-            unset($_SESSION['l3_proyecto']);
-            unset($_SESSION['l3_analisis']);
-            unset($_SESSION['l3_sugerencias']);
-            unset($_SESSION['resultado_final']);
-            unset($_SESSION['literal_final']);
+            unset($_SESSION['l1_proyecto'], $_SESSION['l1_analisis'], $_SESSION['l1_sugerencias']);
+            unset($_SESSION['l2_proyecto'], $_SESSION['l2_analisis'], $_SESSION['l2_sugerencias']);
+            unset($_SESSION['l3_proyecto'], $_SESSION['l3_analisis'], $_SESSION['l3_sugerencias']);
+            unset($_SESSION['resultado_final'], $_SESSION['literal_final']);
         }
     }
 }
@@ -126,7 +111,9 @@ $obs_completada = isset($_SESSION['observacion']) && !empty($_SESSION['observaci
 $l1_completado = !empty($_SESSION['l1_proyecto']) && !empty($_SESSION['l1_analisis']);
 $l2_completado = !empty($_SESSION['l2_proyecto']) && !empty($_SESSION['l2_analisis']);
 $l3_completado = !empty($_SESSION['l3_proyecto']) && !empty($_SESSION['l3_analisis']) && !empty($_SESSION['resultado_final']);
-$todo_completo = $obs_completada && $l1_completado && $l2_completado && $l3_completado;
+
+// NUEVA CONDICIÓN: se requiere observación + al menos un lapso completo
+$puede_generar_pdf = $obs_completada && ($l1_completado || $l2_completado || $l3_completado);
 
 $modo_edicion = isset($_GET['editar_id']) ? true : false;
 ?>
@@ -620,20 +607,19 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
             </div>
 
             <div class="acciones-generales">
-                <?php if ($todo_completo): ?>
+                <?php if ($puede_generar_pdf): ?>
                     <a href="generar_pdf_boletin_primaria.php" target="_blank" class="btn btn-success btn-lg">
-                        <i class="fas fa-file-pdf"></i> Generar Boletín Completo
+                        <i class="fas fa-file-pdf"></i> Generar Boletín
                     </a>
                 <?php else: 
                     $faltantes = [];
                     if (!$obs_completada) $faltantes[] = 'Observación General';
-                    if (!$l1_completado) $faltantes[] = 'Lapso 1';
-                    if (!$l2_completado) $faltantes[] = 'Lapso 2';
-                    if (!$l3_completado) $faltantes[] = 'Lapso 3 + Resultado Final';
+                    if (!$l1_completado && !$l2_completado && !$l3_completado) $faltantes[] = 'Al menos un lapso completado';
                 ?>
                     <div class="alerta-pendiente">
                         <strong><i class="fas fa-exclamation-triangle"></i> ¡Atención! Faltan datos para generar el boletín</strong>
                         <span class="faltantes">Faltan: <?php echo implode(', ', $faltantes); ?></span>
+                        <br><small>Se requiere la observación general y al menos un lapso completado.</small>
                     </div>
                 <?php endif; ?>
 

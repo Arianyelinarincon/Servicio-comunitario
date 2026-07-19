@@ -15,7 +15,8 @@ $tipo = trim($_GET['tipo'] ?? '');
 // ========== CONSULTA PRINCIPAL ==========
 $sql = "SELECT b.*, 
                CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante,
-               e.cedula_escolar
+               e.cedula_escolar,
+               e.sala
         FROM boletines b
         JOIN estudiantes e ON b.estudiante_id = e.id
         WHERE 1=1";
@@ -53,6 +54,18 @@ $res_periodos = $conexion->query("SELECT DISTINCT periodo FROM boletines ORDER B
 while ($row = $res_periodos->fetch_assoc()) {
     $periodos_disponibles[] = $row['periodo'];
 }
+
+// ========== MAPEO DE SALAS A NOMBRES LEGIBLES ==========
+$nombres_salas = [
+    'sala4' => 'Sala 4 Años',
+    'sala5' => 'Sala 5 Años',
+    '1ro'   => '1er Grado',
+    '2do'   => '2do Grado',
+    '3ro'   => '3er Grado',
+    '4to'   => '4to Grado',
+    '5to'   => '5to Grado',
+    '6to'   => '6to Grado'
+];
 ?>
 
 <style>
@@ -123,13 +136,55 @@ while ($row = $res_periodos->fetch_assoc()) {
         background: var(--primary-gradient);
         border-color: transparent;
     }
-    /* Buscador en tiempo real */
     #busquedaInput {
         transition: all 0.3s ease;
     }
     #busquedaInput:focus {
         border-color: #002d54;
         box-shadow: 0 0 0 3px rgba(0,45,84,0.15);
+    }
+
+    /* ===== PUNTOS INDICADORES DE LAPSOS ===== */
+    .puntos-lapsos {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        align-items: center;
+    }
+    .punto {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background-color: #e9ecef;
+        border: 1.5px solid #adb5bd;
+        transition: all 0.3s ease;
+        display: inline-block;
+    }
+    .punto.completado {
+        background-color: #28a745;
+        border-color: #1e7e34;
+        box-shadow: 0 0 8px rgba(40, 167, 69, 0.5);
+    }
+    .punto.incompleto {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+        opacity: 0.5;
+    }
+    .punto-label {
+        font-size: 0.6rem;
+        color: #6c757d;
+        text-align: center;
+        margin-top: 2px;
+    }
+
+    .badge-sala {
+        background-color: #e9ecef;
+        color: #002d54;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        white-space: nowrap;
     }
 </style>
 
@@ -151,7 +206,7 @@ while ($row = $res_periodos->fetch_assoc()) {
         <div class="card-body p-4">
             <form method="GET" action="historial_boletines.php" id="filtroForm" autocomplete="off">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="small fw-bold text-muted"><i class="fas fa-user-graduate me-1"></i> Buscar estudiante / C.E</label>
                         <input type="text" name="estudiante" id="busquedaInput" class="form-control shadow-none" placeholder="Nombre, apellido o cédula escolar..." value="<?= htmlspecialchars($buscar_estudiante) ?>">
                     </div>
@@ -172,7 +227,7 @@ while ($row = $res_periodos->fetch_assoc()) {
                             <option value="primaria" <?= ($tipo == 'primaria') ? 'selected' : '' ?>>Primaria</option>
                         </select>
                     </div>
-                    <div class="col-md-2 text-end">
+                    <div class="col-md-3 text-end">
                         <span class="text-muted small"><i class="fas fa-info-circle me-1"></i> Filtro automático</span>
                     </div>
                 </div>
@@ -191,12 +246,14 @@ while ($row = $res_periodos->fetch_assoc()) {
                 <table class="table table-hover table-boletines mb-0">
                     <thead>
                         <tr>
-                            <th style="width:20%">Estudiante</th>
-                            <th style="width:12%">C.E. Escolar</th>
-                            <th style="width:12%">Año Escolar</th>
-                            <th style="width:10%">Tipo</th>
-                            <th style="width:15%">Fecha Emisión</th>
-                            <th style="width:15%">Acciones</th>
+                            <th style="width:14%">Estudiante</th>
+                            <th style="width:9%">C.E. Escolar</th>
+                            <th style="width:9%">Sala / Grado</th>
+                            <th style="width:9%">Año Escolar</th>
+                            <th style="width:7%">Tipo</th>
+                            <th style="width:11%">Fecha Emisión</th>
+                            <th style="width:12%">Lapsos Completos</th>
+                            <th style="width:12%">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -204,13 +261,32 @@ while ($row = $res_periodos->fetch_assoc()) {
                             <?php while ($row = $result->fetch_assoc()): 
                                 $tipo_clase = ($row['tipo_boletin'] == 'inicial') ? 'badge-inicial' : 'badge-primaria';
                                 $tipo_nombre = ($row['tipo_boletin'] == 'inicial') ? 'Inicial' : 'Primaria';
+                                
+                                // Obtener nombre legible de la sala
+                                $sala_nombre = $nombres_salas[$row['sala']] ?? $row['sala'];
+                                
+                                // ===== CONTAR LAPSOS COMPLETOS =====
+                                $lapsos_completos = 0;
+                                if (!empty($row['m1_formacion'])) $lapsos_completos++;
+                                if (!empty($row['m2_formacion'])) $lapsos_completos++;
+                                if (!empty($row['m3_formacion'])) $lapsos_completos++;
                             ?>
                             <tr>
                                 <td><strong><?= htmlspecialchars($row['nombre_estudiante']) ?></strong></td>
                                 <td><span class="font-monospace"><?= htmlspecialchars($row['cedula_escolar'] ?? '') ?></span></td>
+                                <td><span class="badge-sala"><?= htmlspecialchars($sala_nombre) ?></span></td>
                                 <td><?= htmlspecialchars($row['periodo']) ?></td>
                                 <td><span class="badge-tipo <?= $tipo_clase ?>"><?= $tipo_nombre ?></span></td>
                                 <td><?= date('d/m/Y H:i', strtotime($row['fecha_emision'])) ?></td>
+                                <td>
+                                    <div class="puntos-lapsos">
+                                        <?php for ($i = 1; $i <= 3; $i++): ?>
+                                            <span class="punto <?= ($i <= $lapsos_completos) ? 'completado' : 'incompleto' ?>" 
+                                                  title="Lapso <?= $i ?> <?= ($i <= $lapsos_completos) ? 'completado' : 'pendiente' ?>"></span>
+                                        <?php endfor; ?>
+                                        <span class="punto-label"><?= $lapsos_completos ?>/3</span>
+                                    </div>
+                                </td>
                                 <td class="text-nowrap">
                                     <a href="ver_boletin_guardado.php?id=<?= $row['id'] ?>" class="btn btn-sm btn-info btn-accion" target="_blank" title="Ver boletín"><i class="fas fa-eye"></i></a>
                                     <?php if ($row['tipo_boletin'] == 'inicial'): ?>
@@ -222,7 +298,7 @@ while ($row = $res_periodos->fetch_assoc()) {
                             </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
-                            <tr><td colspan="6" class="text-center py-4"><i class="fas fa-inbox fa-2x text-muted mb-2 d-block"></i>No hay boletines guardados.</td></tr>
+                            <tr><td colspan="8" class="text-center py-4"><i class="fas fa-inbox fa-2x text-muted mb-2 d-block"></i>No hay boletines guardados.</td></tr>
                         <?php endif; ?>
                     </tbody>
                 </table>
@@ -246,11 +322,9 @@ document.addEventListener('DOMContentLoaded', function() {
             timeoutId = setTimeout(() => {
                 document.getElementById('filtroForm').submit();
             }, 400);
-            // Mantener el foco
             this.focus();
         });
 
-        // Mantener el foco después de recargar
         busquedaInput.focus();
         const length = busquedaInput.value.length;
         busquedaInput.setSelectionRange(length, length);
