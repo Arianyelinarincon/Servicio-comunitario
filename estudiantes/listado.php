@@ -6,24 +6,104 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'a
 }
 require_once '../config/conexion.php';
 
-// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
+// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS (MEJORADA) ==========
 function verificarCamposCompletos($datos) {
-    $obligatorios = [
-        'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar',
-        'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'
+    $faltantes = [];
+    
+    // Campos del estudiante (obligatorios)
+    $campos_estudiante = [
+        'nombre' => 'Nombre',
+        'apellido' => 'Apellido',
+        'fecha_nacimiento' => 'Fecha Nac.',
+        'genero' => 'Sexo',
+        'cedula_escolar' => 'Cédula Escolar',
     ];
-    foreach ($obligatorios as $campo) {
-        if (empty($datos[$campo])) {
-            return false;
+    
+    // Campos del representante (obligatorios)
+    $campos_representante = [
+        'rep_nombre' => 'Nombre',
+        'rep_cedula' => 'Cédula',
+        'rep_telefono' => 'Teléfono',
+    ];
+    
+    // Sala y sección
+    $campos_sala = [
+        'sala' => 'Sala/Grado',
+        'seccion_id' => 'Sección',
+    ];
+    
+    // Padres (al menos uno)
+    $campos_padres = [
+        'madre_nombre' => 'Madre (nombre)',
+        'padre_nombre' => 'Padre (nombre)',
+    ];
+    
+    // Condicionales (enfermedad, educación física, alergia)
+    $campos_condicionales = [];
+    if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si') {
+        $campos_condicionales['enfermedad_cual'] = 'Enfermedad (cuál)';
+    }
+    if (!empty($datos['educacion_fisica']) && $datos['educacion_fisica'] === 'No') {
+        $campos_condicionales['educacion_fisica_porque'] = 'Ed. Física (por qué no)';
+    }
+    if (!empty($datos['alergia']) && $datos['alergia'] === 'Si') {
+        $campos_condicionales['alergia_cual'] = 'Alergia (cuál)';
+    }
+    
+    // Verificar cada grupo
+    $faltantes_por_grupo = [];
+    
+    // Estudiante
+    foreach ($campos_estudiante as $campo => $label) {
+        if (empty($datos[$campo]) && $datos[$campo] !== '0') {
+            $faltantes_por_grupo['Estudiante'][] = $label;
         }
     }
-    if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
-        return false;
+    
+    // Representante
+    foreach ($campos_representante as $campo => $label) {
+        if (empty($datos[$campo]) && $datos[$campo] !== '0') {
+            $faltantes_por_grupo['Representante'][] = $label;
+        }
     }
-    return true;
+    
+    // Sala / Sección
+    foreach ($campos_sala as $campo => $label) {
+        if (!isset($datos[$campo]) || $datos[$campo] === '' || $datos[$campo] === NULL) {
+            $faltantes_por_grupo['Sala/Sección'][] = $label;
+        }
+    }
+    
+    // Padres (al menos uno)
+    $madre = !empty($datos['madre_nombre']);
+    $padre = !empty($datos['padre_nombre']);
+    if (!$madre && !$padre) {
+        $faltantes_por_grupo['Padres'][] = 'Madre o Padre (al menos uno)';
+    }
+    
+    // Condicionales
+    foreach ($campos_condicionales as $campo => $label) {
+        if (empty($datos[$campo])) {
+            $faltantes_por_grupo['Condicionales'][] = $label;
+        }
+    }
+    
+    // Construir array plano para tooltip simple
+    $faltantes_plano = [];
+    foreach ($faltantes_por_grupo as $grupo => $items) {
+        foreach ($items as $item) {
+            $faltantes_plano[] = $grupo . ': ' . $item;
+        }
+    }
+    
+    return [
+        'por_grupo' => $faltantes_por_grupo,
+        'plano' => $faltantes_plano,
+        'total' => count($faltantes_plano)
+    ];
 }
 
-// CSRF token (para eliminación)
+// CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -36,6 +116,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     $sql = "
         SELECT DISTINCT e.*, 
                r.nombre_completo AS rep_nombre,
+               r.cedula AS rep_cedula,
+               r.telefono AS rep_telefono,
                s.nombre AS seccion_nombre,
                p.nombre AS profesor_nombre,
                (SELECT ano_escolar FROM inscripciones WHERE estudiante_id = e.id ORDER BY fecha_inscripcion DESC LIMIT 1) AS ano_escolar_actual
@@ -71,7 +153,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     $stmt->execute();
     $result = $stmt->get_result();
 
-    // Generar HTML de la tabla
     ob_start();
     ?>
     <div class="table-responsive">
@@ -94,44 +175,57 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                 <?php if ($result && $result->num_rows > 0): 
                     $contador = 1;
                     while($e = $result->fetch_assoc()): 
+                        $datos_verificar = [
+                            'nombre' => $e['nombre'],
+                            'apellido' => $e['apellido'],
+                            'fecha_nacimiento' => $e['fecha_nacimiento'],
+                            'genero' => $e['genero'],
+                            'cedula_escolar' => $e['cedula_escolar'],
+                            'rep_nombre' => $e['rep_nombre'],
+                            'rep_cedula' => $e['rep_cedula'],
+                            'rep_telefono' => $e['rep_telefono'],
+                            'sala' => $e['sala'],
+                            'seccion_id' => $e['seccion_id'],
+                            'madre_nombre' => $e['madre_nombre'],
+                            'padre_nombre' => $e['padre_nombre'],
+                            'enfermedad' => $e['enfermedad'],
+                            'enfermedad_cual' => $e['enfermedad_cual'],
+                            'educacion_fisica' => $e['educacion_fisica'],
+                            'educacion_fisica_porque' => $e['educacion_fisica_porque'],
+                            'alergia' => $e['alergia'],
+                            'alergia_cual' => $e['alergia_cual'],
+                        ];
+                        $resultado_verificacion = verificarCamposCompletos($datos_verificar);
+                        $faltantes_plano = $resultado_verificacion['plano'];
+                        $faltantes_por_grupo = $resultado_verificacion['por_grupo'];
+                        $completa = ($resultado_verificacion['total'] == 0);
                 ?>
                     <tr>
                         <td class="text-center fw-bold text-muted"><?= $contador++ ?></td>
                         <td><strong><?= htmlspecialchars($e['nombre'] . ' ' . $e['apellido']) ?></strong></td>
                         <td>
-                            <?php
-                            $datos_verificar = [
-                                'nombre' => $e['nombre'],
-                                'apellido' => $e['apellido'],
-                                'fecha_nacimiento' => $e['fecha_nacimiento'],
-                                'genero' => $e['genero'],
-                                'cedula_escolar' => $e['cedula_escolar'],
-                                'rep_nombre' => $e['rep_nombre'],
-                                'rep_cedula' => $e['rep_cedula'],
-                                'rep_telefono' => $e['rep_telefono'],
-                                'sala' => $e['sala'],
-                                'seccion_id' => $e['seccion_id'],
-                                'madre_nombre' => $e['madre_nombre'],
-                                'padre_nombre' => $e['padre_nombre'],
-                            ];
-                            $completa = verificarCamposCompletos($datos_verificar);
-                            if ($completa) {
-                                echo '<span class="text-success" title="Inscripción completa"><i class="fas fa-check-circle fa-lg"></i></span>';
-                            } else {
-                                // Obtener lista de campos faltantes para el tooltip
-                                $faltantes = [];
-                                $obligatorios = ['nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar', 'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'];
-                                foreach ($obligatorios as $campo) {
-                                    if (empty($e[$campo])) {
-                                        $faltantes[] = $campo;
-                                    }
-                                }
-                                if (empty($e['madre_nombre']) && empty($e['padre_nombre'])) {
-                                    $faltantes[] = 'madre/padre';
-                                }
-                                echo '<span class="text-warning" title="Faltan: ' . implode(', ', $faltantes) . '"><i class="fas fa-exclamation-triangle fa-lg"></i></span>';
-                            }
-                            ?>
+                            <?php if ($completa): ?>
+                                <span class="text-success" title="✅ Inscripción completa">
+                                    <i class="fas fa-check-circle fa-lg"></i>
+                                </span>
+                            <?php else: ?>
+                                <!-- Icono + tooltip mejorado -->
+                                <span class="text-warning estado-icono" 
+                                      style="cursor:help; position:relative;"
+                                      data-bs-toggle="popover"
+                                      data-bs-placement="left"
+                                      data-bs-trigger="hover focus"
+                                      data-bs-html="true"
+                                      data-bs-content="<?= htmlspecialchars(construirContenidoPopover($faltantes_por_grupo)) ?>"
+                                      title="❌ Inscripción incompleta">
+                                    <i class="fas fa-exclamation-triangle fa-lg"></i>
+                                    <span class="badge bg-danger rounded-pill ms-1" style="font-size:0.6rem;">
+                                        <?= $resultado_verificacion['total'] ?>
+                                    </span>
+                                </span>
+                                <!-- Tooltip simple como respaldo -->
+                                <span class="d-none" data-faltantes="<?= htmlspecialchars(implode(' | ', $faltantes_plano)) ?>"></span>
+                            <?php endif; ?>
                         </td>
                         <td><span class="font-monospace"><?= htmlspecialchars($e['cedula_escolar']) ?></span></td>
                         <td><span class="badge-sala"><?= htmlspecialchars($e['sala']) ?></span></td>
@@ -163,6 +257,19 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     $html = ob_get_clean();
     echo $html;
     exit;
+}
+
+// ========== FUNCIÓN PARA CONSTRUIR EL CONTENIDO DEL POPOVER ==========
+function construirContenidoPopover($faltantes_por_grupo) {
+    $html = '<div style="font-size:0.8rem; max-width:300px;">';
+    $html .= '<strong class="text-danger">⚠️ Faltan datos:</strong><ul style="padding-left:15px; margin-top:5px; margin-bottom:0;">';
+    foreach ($faltantes_por_grupo as $grupo => $items) {
+        if (!empty($items)) {
+            $html .= '<li><strong>' . htmlspecialchars($grupo) . ':</strong> ' . htmlspecialchars(implode(', ', $items)) . '</li>';
+        }
+    }
+    $html .= '</ul></div>';
+    return $html;
 }
 
 // ========== MANEJAR ELIMINACIÓN (POST) ==========
@@ -261,6 +368,23 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
     #busquedaInput:focus {
         border-color: #002d54;
         box-shadow: 0 0 0 3px rgba(0,45,84,0.15);
+    }
+    /* Estilo para el popover */
+    .popover {
+        max-width: 350px;
+        font-size: 0.85rem;
+    }
+    .popover-body {
+        padding: 10px 14px;
+    }
+    .popover-body ul {
+        margin-bottom: 0;
+    }
+    .estado-icono {
+        transition: transform 0.2s;
+    }
+    .estado-icono:hover {
+        transform: scale(1.1);
     }
 </style>
 
@@ -369,6 +493,18 @@ function cargarTabla() {
             const total = filas.length;
             contadorTotal.textContent = total;
             contadorFooter.textContent = total;
+            
+            // Inicializar popovers de Bootstrap para los iconos de estado
+            if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
+                const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+                popoverTriggerList.map(function (popoverTriggerEl) {
+                    return new bootstrap.Popover(popoverTriggerEl, {
+                        trigger: 'hover focus',
+                        html: true,
+                        container: 'body'
+                    });
+                });
+            }
         })
         .catch(() => {
             tablaContainer.innerHTML = `

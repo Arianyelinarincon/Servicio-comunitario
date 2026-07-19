@@ -21,6 +21,15 @@ function verificarCamposCompletos($datos) {
     if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
         return false;
     }
+    if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si' && empty($datos['enfermedad_cual'])) {
+        return false;
+    }
+    if (!empty($datos['educacion_fisica']) && $datos['educacion_fisica'] === 'No' && empty($datos['educacion_fisica_porque'])) {
+        return false;
+    }
+    if (!empty($datos['alergia']) && $datos['alergia'] === 'Si' && empty($datos['alergia_cual'])) {
+        return false;
+    }
     return true;
 }
 
@@ -184,6 +193,11 @@ include '../includes/header.php';
     .row-dato:last-child {
         border-bottom: none;
     }
+    #tablaHistorial th:first-child,
+    #tablaHistorial td:first-child {
+        min-width: 130px;
+        white-space: nowrap;
+    }
 </style>
 
 <div class="container-fluid px-4">
@@ -278,6 +292,12 @@ include '../includes/header.php';
                                 'seccion_id' => $estudiante['seccion_id'],
                                 'madre_nombre' => $estudiante['madre_nombre'],
                                 'padre_nombre' => $estudiante['padre_nombre'],
+                                'enfermedad' => $estudiante['enfermedad'],
+                                'enfermedad_cual' => $estudiante['enfermedad_cual'],
+                                'educacion_fisica' => $estudiante['educacion_fisica'],
+                                'educacion_fisica_porque' => $estudiante['educacion_fisica_porque'],
+                                'alergia' => $estudiante['alergia'],
+                                'alergia_cual' => $estudiante['alergia_cual'],
                             ];
                             $completa = verificarCamposCompletos($datos_verificar);
                             if ($completa) {
