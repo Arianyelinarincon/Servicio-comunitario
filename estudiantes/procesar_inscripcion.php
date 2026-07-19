@@ -2,25 +2,22 @@
 session_start();
 require_once '../config/conexion.php';
 
-ini_set('display_errors', 1);
-ini_set('log_errors', 1);
-error_reporting(E_ALL);
-
-// ========== FUNCIÓN DE AUDITORÍA (si no está definida) ==========
+// ========== FUNCIÓN DE AUDITORÍA ==========
 if (!function_exists('registrarAuditoria')) {
     function registrarAuditoria($conexion, $usuario_id, $accion, $tabla, $registro_id, $detalles = null) {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
         $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
         $stmt = $conexion->prepare("INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, detalles, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)");
         if ($stmt) {
-            $stmt->bind_param("ississ", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
+            $stmt->bind_param("ississs", $usuario_id, $accion, $tabla, $registro_id, $detalles, $ip, $user_agent);
             $stmt->execute();
             $stmt->close();
         }
     }
 }
 
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+// ========== VERIFICAR AUTENTICACIÓN ==========
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
@@ -45,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $conexion->begin_transaction();
     try {
-        // ========== Verificar estudiante duplicado ==========
+        // ========== Generar Cédula Escolar ==========
         $año = date('Y', strtotime($fecha_nac));
         $año2Dig = substr($año, -2);
         $cedulaLimpia = preg_replace('/\D/', '', $madre_cedula);
@@ -57,40 +54,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $cedula_escolar = str_pad($cedula_escolar, 11, '0', STR_PAD_RIGHT);
         }
 
-        // Verificar por Cédula Escolar
-        $stmt_check = $conexion->prepare("SELECT id, nombre, apellido, estatus FROM estudiantes WHERE cedula_escolar = ?");
+        // ==================== BUSCAR ESTUDIANTE EXISTENTE ====================
+        $stmt_check = $conexion->prepare("SELECT id, inscripcion_completa, representante_id FROM estudiantes WHERE cedula_escolar = ?");
         $stmt_check->bind_param("s", $cedula_escolar);
         $stmt_check->execute();
         $result_check = $stmt_check->get_result();
-        
-        if ($result_check->num_rows > 0) {
-            $duplicado = $result_check->fetch_assoc();
-            $estado = ($duplicado['estatus'] == 'Activo') ? 'activo' : 'inactivo';
-            $nombre_duplicado = $duplicado['nombre'] . ' ' . $duplicado['apellido'];
-            $stmt_check->close();
-            
-            $mensaje = urlencode("El estudiante con Cédula Escolar $cedula_escolar ya existe en el sistema. Nombre: $nombre_duplicado (Estado: $estado)");
-            header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
-            exit();
-        }
+        $estudiante_existente = $result_check->fetch_assoc();
         $stmt_check->close();
 
-        // Verificar por Nombre + Apellido + Fecha Nacimiento
-        $stmt_check2 = $conexion->prepare("SELECT id, nombre, apellido, cedula_escolar, estatus FROM estudiantes WHERE nombre = ? AND apellido = ? AND fecha_nacimiento = ?");
-        $stmt_check2->bind_param("sss", $nombre, $apellido, $fecha_nac);
-        $stmt_check2->execute();
-        $result_check2 = $stmt_check2->get_result();
-        
-        if ($result_check2->num_rows > 0) {
-            $duplicado2 = $result_check2->fetch_assoc();
-            $estado2 = ($duplicado2['estatus'] == 'Activo') ? 'activo' : 'inactivo';
+        if (!$estudiante_existente) {
+            $stmt_check2 = $conexion->prepare("SELECT id, inscripcion_completa, representante_id FROM estudiantes WHERE nombre = ? AND apellido = ? AND fecha_nacimiento = ?");
+            $stmt_check2->bind_param("sss", $nombre, $apellido, $fecha_nac);
+            $stmt_check2->execute();
+            $result_check2 = $stmt_check2->get_result();
+            $estudiante_existente = $result_check2->fetch_assoc();
             $stmt_check2->close();
-            
-            $mensaje = urlencode("Ya existe un estudiante con el mismo nombre ($nombre $apellido) y fecha de nacimiento. Cédula Escolar: " . $duplicado2['cedula_escolar'] . " (Estado: $estado2)");
-            header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
-            exit();
         }
-        $stmt_check2->close();
+
+        if ($estudiante_existente) {
+            if ($estudiante_existente['inscripcion_completa'] == 1) {
+                $mensaje = urlencode("El estudiante ya se encuentra inscrito (inscripción completa). No se puede volver a inscribir.");
+                header("Location: inscripcion.php?error=duplicado&mensaje=$mensaje");
+                exit();
+            }
+            $estudiante_id = $estudiante_existente['id'];
+            $representante_existente_id = $estudiante_existente['representante_id'];
+            $es_nuevo = false;
+        } else {
+            $estudiante_id = 0;
+            $representante_existente_id = 0;
+            $es_nuevo = true;
+        }
 
         // ==================== 1. REPRESENTANTE ====================
         $rep_nombre = trim($_POST['rep_nombre']);
@@ -109,18 +103,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rep_parroquia = $_POST['rep_parroquia'] ?? '';
         $rep_ciudad = $_POST['rep_ciudad'] ?? '';
 
-        $stmt = $conexion->prepare("INSERT INTO representantes 
-            (nombre_completo, cedula, telefono, fecha_nacimiento, estado_civil, afinidad, sexo, 
-             pais_nacimiento, estado_nacimiento, nacionalidad, direccion, estado_residencia, 
-             municipio, parroquia, ciudad, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        $stmt->bind_param("sssssssssssssss", 
-            $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil, 
-            $rep_afinidad, $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad, 
-            $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad);
-        $stmt->execute();
-        $representante_id = $conexion->insert_id;
-        $stmt->close();
+        if ($representante_existente_id > 0) {
+            $stmt_rep = $conexion->prepare("UPDATE representantes SET 
+                nombre_completo = ?, cedula = ?, telefono = ?, fecha_nacimiento = ?, 
+                estado_civil = ?, afinidad = ?, sexo = ?, pais_nacimiento = ?, 
+                estado_nacimiento = ?, nacionalidad = ?, direccion = ?, 
+                estado_residencia = ?, municipio = ?, parroquia = ?, ciudad = ? 
+                WHERE id = ?");
+            $stmt_rep->bind_param("sssssssssssssssi", 
+                $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, 
+                $rep_estado_civil, $rep_afinidad, $rep_sexo, $rep_pais_nac, 
+                $rep_estado_nac, $rep_nacionalidad, $rep_direccion, 
+                $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad, 
+                $representante_existente_id);
+            $stmt_rep->execute();
+            $stmt_rep->close();
+            $representante_id = $representante_existente_id;
+        } else {
+            $stmt_rep = $conexion->prepare("INSERT INTO representantes 
+                (nombre_completo, cedula, telefono, fecha_nacimiento, estado_civil, afinidad, sexo, 
+                 pais_nacimiento, estado_nacimiento, nacionalidad, direccion, estado_residencia, 
+                 municipio, parroquia, ciudad, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+            $stmt_rep->bind_param("sssssssssssssss", 
+                $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil, 
+                $rep_afinidad, $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad, 
+                $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad);
+            $stmt_rep->execute();
+            $representante_id = $conexion->insert_id;
+            $stmt_rep->close();
+        }
 
         // ==================== 2. ESTUDIANTE ====================
         $nacionalidad = $_POST['nacionalidad'] ?? 'Venezolana';
@@ -142,36 +154,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $padre_nombre = $_POST['padre_nombre'] ?? '';
         $padre_cedula = $_POST['padre_cedula'] ?? '';
         $padre_telefono = $_POST['padre_telefono'] ?? '';
-        $sala = ''; // Se actualizará después
+        $sala = '';
 
-        // ========== CORRECCIÓN: tipos y variables coinciden ==========
-        $stmt = $conexion->prepare("INSERT INTO estudiantes 
-            (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, 
-             representante_id, nacionalidad, pais_nacimiento, estado_nacimiento, direccion, 
-             estado_residencia, municipio, parroquia, ciudad, enfermedad, enfermedad_cual, 
-             educacion_fisica, educacion_fisica_porque, alergia, alergia_cual, 
-             madre_nombre, madre_cedula, madre_telefono, padre_nombre, padre_cedula, padre_telefono, 
-             orden_nacimiento, estatus, created_at, inscripcion_completa) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW(), ?)");
-
-        // 26 strings + 3 enteros = 29 placeholders
-        $types = str_repeat('s', 26) . 'iii'; // 26 strings: nombre hasta padre_telefono, 3 ints: representante_id, orden_nacimiento, inscripcion_completa
-
-        $inscripcion_completa = 1; // Marcar como inscripción completa
-
-        $stmt->bind_param($types, 
-            $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
-            $nacionalidad, $pais_nac, $estado_nac, $direccion, $estado_res, $municipio, $parroquia, $ciudad,
-            $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
-            $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
-            $padre_nombre, $padre_cedula, $padre_telefono, $orden_nacimiento, $inscripcion_completa
-        );
-        $stmt->execute();
-        $estudiante_id = $conexion->insert_id;
-        $stmt->close();
+        if ($es_nuevo) {
+            $stmt_est = $conexion->prepare("INSERT INTO estudiantes 
+                (nombre, apellido, cedula_escolar, fecha_nacimiento, genero, sala, 
+                 representante_id, nacionalidad, pais_nacimiento, estado_nacimiento, direccion, 
+                 estado_residencia, municipio, parroquia, ciudad, enfermedad, enfermedad_cual, 
+                 educacion_fisica, educacion_fisica_porque, alergia, alergia_cual, 
+                 madre_nombre, madre_cedula, madre_telefono, padre_nombre, padre_cedula, padre_telefono, 
+                 orden_nacimiento, estatus, created_at) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Activo', NOW())");
+            $types = str_repeat('s', 6) . 'i' . str_repeat('s', 20) . 'i';
+            $stmt_est->bind_param($types, 
+                $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, $sala, $representante_id,
+                $nacionalidad, $pais_nac, $estado_nac, $direccion, $estado_res, $municipio, $parroquia, $ciudad,
+                $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
+                $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
+                $padre_nombre, $padre_cedula, $padre_telefono, $orden_nacimiento);
+            $stmt_est->execute();
+            $estudiante_id = $conexion->insert_id;
+            $stmt_est->close();
+        } else {
+            $stmt_est = $conexion->prepare("UPDATE estudiantes SET 
+                nombre = ?, apellido = ?, cedula_escolar = ?, fecha_nacimiento = ?, genero = ?, 
+                representante_id = ?, nacionalidad = ?, pais_nacimiento = ?, estado_nacimiento = ?, 
+                direccion = ?, estado_residencia = ?, municipio = ?, parroquia = ?, ciudad = ?, 
+                enfermedad = ?, enfermedad_cual = ?, educacion_fisica = ?, educacion_fisica_porque = ?, 
+                alergia = ?, alergia_cual = ?, madre_nombre = ?, madre_cedula = ?, madre_telefono = ?, 
+                padre_nombre = ?, padre_cedula = ?, padre_telefono = ?, orden_nacimiento = ? 
+                WHERE id = ?");
+            $stmt_est->bind_param("ssssssssssssssssssssssssssi", 
+                $nombre, $apellido, $cedula_escolar, $fecha_nac, $genero, 
+                $representante_id, $nacionalidad, $pais_nac, $estado_nac, 
+                $direccion, $estado_res, $municipio, $parroquia, $ciudad, 
+                $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque, 
+                $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono, 
+                $padre_nombre, $padre_cedula, $padre_telefono, $orden_nacimiento, 
+                $estudiante_id);
+            $stmt_est->execute();
+            $stmt_est->close();
+        }
 
         // ==================== 3. INSCRIPCIONES ====================
         $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
+        $grado_seccion_arr = $_POST['grado_seccion'] ?? [];
         $registro_arr = $_POST['registro'] ?? [];
         $repite_arr = $_POST['repite'] ?? [];
         $c_arr = $_POST['c'] ?? [];
@@ -183,6 +210,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fecha_inscripcion = date('Y-m-d');
         $funcionario = $_SESSION['nombre_profesor'] ?? $_SESSION['usuario'] ?? 'Sistema';
 
+        // Eliminar inscripciones anteriores
+        $stmt_del_ins = $conexion->prepare("DELETE FROM inscripciones WHERE estudiante_id = ?");
+        $stmt_del_ins->bind_param("i", $estudiante_id);
+        $stmt_del_ins->execute();
+        $stmt_del_ins->close();
+
         $stmt_ins = $conexion->prepare("INSERT INTO inscripciones 
             (estudiante_id, ano_escolar, grado_seccion, registro, repite, c, f, p, peso, talla, 
              firma_representante, fecha_inscripcion, funcionario) 
@@ -190,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         for ($i = 0; $i < count($ano_escolar_arr); $i++) {
             $ano = $ano_escolar_arr[$i] ?? '';
-            $grado = ''; // Ya no se usa, lo dejamos vacío
+            $grado = $grado_seccion_arr[$i] ?? '';
             $registro = $registro_arr[$i] ?? '';
             $repite = $repite_arr[$i] ?? 'No';
             $c = $c_arr[$i] ?? '';
@@ -206,36 +239,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $stmt_ins->close();
 
-        // ==================== 4. ACTUALIZAR SALA Y SECCIÓN DEL ESTUDIANTE ====================
-        // Obtener la sala y sección del último registro de inscripción (grado_seccion)
-        if (count($grado_seccion_arr ?? []) > 0) {
-            $ultimo_grado = end($grado_seccion_arr);
-            // Extraer sala del texto "sala4 - Sección U"
-            $partes = explode(' - ', $ultimo_grado);
-            $sala_actual = $partes[0] ?? '';
-            
-            // Obtener el ID de la sección
-            $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
-            $nombre_seccion = $partes[1] ?? '';
-            $stmt_sec->bind_param("ss", $sala_actual, $nombre_seccion);
-            $stmt_sec->execute();
-            $row_sec = $stmt_sec->get_result()->fetch_assoc();
-            $seccion_id = $row_sec['id'] ?? null;
-            $stmt_sec->close();
+        // ==================== 4. ELIMINAR DE INGRESOS (CORREGIDO) ====================
+        // Verificar si existe el registro en ingresos antes de eliminar
+        $stmt_check_ingreso = $conexion->prepare("SELECT id FROM ingresos WHERE id = ?");
+        $stmt_check_ingreso->bind_param("i", $estudiante_id);
+        $stmt_check_ingreso->execute();
+        $existe_ingreso = $stmt_check_ingreso->get_result()->fetch_assoc();
+        $stmt_check_ingreso->close();
 
-            if ($seccion_id) {
-                $stmt_upd = $conexion->prepare("UPDATE estudiantes SET sala = ?, seccion_id = ? WHERE id = ?");
-                $stmt_upd->bind_param("sii", $sala_actual, $seccion_id, $estudiante_id);
+        if ($existe_ingreso) {
+            $stmt_delete_ingreso = $conexion->prepare("DELETE FROM ingresos WHERE id = ?");
+            $stmt_delete_ingreso->bind_param("i", $estudiante_id);
+            $stmt_delete_ingreso->execute();
+            $filas_afectadas = $conexion->affected_rows;
+            $stmt_delete_ingreso->close();
+
+            // Registrar en el log si se eliminó correctamente
+            if ($filas_afectadas > 0) {
+                error_log("Ingreso eliminado correctamente para el estudiante ID: $estudiante_id");
+            } else {
+                error_log("ADVERTENCIA: No se pudo eliminar el ingreso para el estudiante ID: $estudiante_id (no se encontró el registro)");
+            }
+        } else {
+            error_log("No existe registro de ingreso para el estudiante ID: $estudiante_id (ya fue eliminado o nunca existió)");
+        }
+
+        // ==================== 5. ACTUALIZAR SALA ACTUAL ====================
+        $sala_actual = '';
+        if (count($grado_seccion_arr) > 0) {
+            $ultimo_grado = end($grado_seccion_arr);
+            $sala_actual = explode(' - ', $ultimo_grado)[0] ?? '';
+            if (!empty($sala_actual)) {
+                $stmt_upd = $conexion->prepare("UPDATE estudiantes SET sala = ? WHERE id = ?");
+                $stmt_upd->bind_param("si", $sala_actual, $estudiante_id);
                 $stmt_upd->execute();
                 $stmt_upd->close();
             }
         }
 
-        // ==================== 5. AUDITORÍA ====================
+        // ==================== 6. MARCAR INSCRIPCIÓN COMPLETA ====================
+        $stmt_completa = $conexion->prepare("UPDATE estudiantes SET inscripcion_completa = 1 WHERE id = ?");
+        $stmt_completa->bind_param("i", $estudiante_id);
+        $stmt_completa->execute();
+        $stmt_completa->close();
+
+        // ==================== 7. AUDITORÍA ====================
         $usuario_id = $_SESSION['usuario_id'] ?? 0;
         if ($usuario_id > 0) {
-            $detalles = "Nuevo estudiante: $nombre $apellido (Cédula Escolar: $cedula_escolar)";
-            registrarAuditoria($conexion, $usuario_id, 'INSCRIBIR_ESTUDIANTE', 'estudiantes', $estudiante_id, $detalles);
+            $accion = $es_nuevo ? 'INSCRIBIR_ESTUDIANTE' : 'ACTUALIZAR_INSCRIPCION';
+            $detalles = ($es_nuevo ? "Nuevo" : "Actualizado") . " estudiante: $nombre $apellido (Cédula Escolar: $cedula_escolar, Sala: $sala_actual)";
+            registrarAuditoria($conexion, $usuario_id, $accion, 'estudiantes', $estudiante_id, $detalles);
         }
 
         $conexion->commit();
@@ -245,7 +298,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
     } catch (Exception $e) {
         $conexion->rollback();
-        error_log("Error en inscripción: " . $e->getMessage());
+        error_log("Error en inscripción: " . $e->getMessage() . " en " . $e->getFile() . " línea " . $e->getLine());
         header("Location: inscripcion.php?error=1");
         exit();
     }

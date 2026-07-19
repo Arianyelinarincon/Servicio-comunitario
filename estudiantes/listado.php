@@ -62,12 +62,13 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             <thead>
                 <tr>
                     <th style="width:5%">#</th>
-                    <th style="width:18%">Nombre Completo</th>
+                    <th style="width:15%">Nombre Completo</th>
+                    <th style="width:8%">Estado</th>
                     <th style="width:10%">Cédula Escolar</th>
                     <th style="width:10%">Sala</th>
                     <th style="width:8%">Sección</th>
                     <th style="width:14%">Profesor</th>
-                    <th style="width:15%">Representante</th>
+                    <th style="width:12%">Representante</th>
                     <th style="width:10%">Año Escolar</th>
                     <th style="width:10%">Acciones</th>
                 </tr>
@@ -80,6 +81,29 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                     <tr>
                         <td class="text-center fw-bold text-muted"><?= $contador++ ?></td>
                         <td><strong><?= htmlspecialchars($e['nombre'] . ' ' . $e['apellido']) ?></strong></td>
+                        <td>
+                            <?php
+                            // Verificar campos faltantes
+                            $faltantes = [];
+                            if (empty($e['direccion'])) $faltantes[] = 'Dirección';
+                            if (empty($e['rep_cedula']) && empty($e['rep_nombre'])) $faltantes[] = 'Representante';
+                            if (empty($e['madre_cedula']) && empty($e['madre_nombre'])) $faltantes[] = 'Madre';
+                            if (empty($e['padre_cedula']) && empty($e['padre_nombre'])) $faltantes[] = 'Padre';
+                            if (empty($e['fecha_nacimiento'])) $faltantes[] = 'Fecha Nac.';
+                            if (empty($e['cedula_escolar'])) $faltantes[] = 'Cédula Escolar';
+                            // Puedes agregar más campos aquí (ej. telefono del representante, etc.)
+
+                            if (!empty($faltantes)) {
+                                echo '<span class="text-warning" title="Faltan datos: ' . implode(', ', $faltantes) . '">
+                                        <i class="fas fa-exclamation-triangle fa-lg"></i>
+                                      </span>';
+                            } else {
+                                echo '<span class="text-success" title="Todos los datos completos">
+                                        <i class="fas fa-check-circle fa-lg"></i>
+                                      </span>';
+                            }
+                            ?>
+                        </td>
                         <td><span class="font-monospace"><?= htmlspecialchars($e['cedula_escolar']) ?></span></td>
                         <td><span class="badge-sala"><?= htmlspecialchars($e['sala']) ?></span></td>
                         <td><?= htmlspecialchars($e['seccion_nombre'] ?? 'N/A') ?></td>
@@ -101,7 +125,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                     </tr>
                 <?php endwhile; ?>
                 <?php else: ?>
-                    <tr><td colspan="9" class="text-center py-4"><i class="fas fa-inbox fa-2x text-muted mb-2 d-block"></i>No se encontraron estudiantes inscritos.</td></tr>
+                    <tr><td colspan="10" class="text-center py-4"><i class="fas fa-inbox fa-2x text-muted mb-2 d-block"></i>No se encontraron estudiantes inscritos.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
