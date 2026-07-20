@@ -7,6 +7,10 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 
 include '../includes/header.php';
 require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
+
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 
 // ========== SI VIENE CON editar_id, CARGAR DATOS DESDE LA BD ==========
 if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
@@ -19,7 +23,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
     $stmt->close();
     
     if ($boletin) {
-        // Obtener datos del estudiante
         $stmt_est = $conexion->prepare("SELECT e.nombre, e.apellido, e.cedula_escolar, e.sala, r.nombre_completo AS rep_nombre, p.nombre AS doc_nombre
                                         FROM estudiantes e
                                         LEFT JOIN representantes r ON e.representante_id = r.id
@@ -32,7 +35,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
         $stmt_est->close();
         
         if ($estudiante) {
-            // Asignar sesión
             $_SESSION['estudiante'] = $estudiante['nombre'] . ' ' . $estudiante['apellido'];
             $_SESSION['ce'] = $estudiante['cedula_escolar'];
             $_SESSION['grado'] = $estudiante['sala'];
@@ -41,25 +43,16 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
             $_SESSION['representante'] = $estudiante['rep_nombre'] ?? 'No registrado';
             $_SESSION['estudiante_id'] = $boletin['estudiante_id'];
             
-            // Cargar datos del boletín (mapeo a variables de sesión)
             $_SESSION['observacion'] = $boletin['observacion'] ?? '';
-            
-            // Lapso 1
             $_SESSION['l1_proyecto'] = $boletin['m1_proyecto'] ?? '';
             $_SESSION['l1_analisis'] = $boletin['m1_formacion'] ?? '';
             $_SESSION['l1_sugerencias'] = $boletin['m1_sugerencias'] ?? '';
-            
-            // Lapso 2
             $_SESSION['l2_proyecto'] = $boletin['m2_proyecto'] ?? '';
             $_SESSION['l2_analisis'] = $boletin['m2_formacion'] ?? '';
             $_SESSION['l2_sugerencias'] = $boletin['m2_sugerencias'] ?? '';
-            
-            // Lapso 3
             $_SESSION['l3_proyecto'] = $boletin['m3_proyecto'] ?? '';
             $_SESSION['l3_analisis'] = $boletin['m3_formacion'] ?? '';
             $_SESSION['l3_sugerencias'] = $boletin['m3_sugerencias'] ?? '';
-            
-            // Resultado Final
             $_SESSION['resultado_final'] = $boletin['resultado_final'] ?? '';
             $_SESSION['literal_final'] = $boletin['literal_final'] ?? '';
         }
@@ -90,7 +83,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
             $_SESSION['resultado_final'] = $boletin['resultado_final'] ?? '';
             $_SESSION['literal_final'] = $boletin['literal_final'] ?? '';
         } else {
-            // Limpiar variables de primaria
             unset($_SESSION['observacion']);
             unset($_SESSION['l1_proyecto'], $_SESSION['l1_analisis'], $_SESSION['l1_sugerencias']);
             unset($_SESSION['l2_proyecto'], $_SESSION['l2_analisis'], $_SESSION['l2_sugerencias']);
@@ -108,14 +100,38 @@ if (!isset($_SESSION['estudiante'])) {
 
 // ========== DEFINIR VARIABLES DE ESTADO ==========
 $obs_completada = isset($_SESSION['observacion']) && !empty($_SESSION['observacion']);
-$l1_completado = !empty($_SESSION['l1_proyecto']) && !empty($_SESSION['l1_analisis']);
-$l2_completado = !empty($_SESSION['l2_proyecto']) && !empty($_SESSION['l2_analisis']);
-$l3_completado = !empty($_SESSION['l3_proyecto']) && !empty($_SESSION['l3_analisis']) && !empty($_SESSION['resultado_final']);
 
-// NUEVA CONDICIÓN: se requiere observación + al menos un lapso completo
+// ===== CORRECCIÓN: CRITERIO UNIFICADO PARA PRIMARIA =====
+// Un lapso está completo si tiene: proyecto, analisis y sugerencias
+$l1_completado = !empty($_SESSION['l1_proyecto']) && !empty($_SESSION['l1_analisis']) && !empty($_SESSION['l1_sugerencias']);
+$l2_completado = !empty($_SESSION['l2_proyecto']) && !empty($_SESSION['l2_analisis']) && !empty($_SESSION['l2_sugerencias']);
+$l3_completado = !empty($_SESSION['l3_proyecto']) && !empty($_SESSION['l3_analisis']) && !empty($_SESSION['l3_sugerencias']) && !empty($_SESSION['resultado_final']);
+
 $puede_generar_pdf = $obs_completada && ($l1_completado || $l2_completado || $l3_completado);
 
 $modo_edicion = isset($_GET['editar_id']) ? true : false;
+
+// ========== VARIABLES PARA EL HTML ==========
+$estudiante = htmlspecialchars($_SESSION['estudiante']);
+$ce = htmlspecialchars($_SESSION['ce']);
+$grado = htmlspecialchars($_SESSION['grado']);
+$ano_escolar = htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual);
+$docente = htmlspecialchars($_SESSION['docente']);
+$representante = htmlspecialchars($_SESSION['representante']);
+
+// ===== CORRECCIÓN: OBSERVACIÓN SOLO SI EXISTE =====
+$observacion = htmlspecialchars($_SESSION['observacion'] ?? '');
+$l1_proyecto = htmlspecialchars($_SESSION['l1_proyecto'] ?? '');
+$l1_analisis = htmlspecialchars($_SESSION['l1_analisis'] ?? '');
+$l1_sugerencias = htmlspecialchars($_SESSION['l1_sugerencias'] ?? '');
+$l2_proyecto = htmlspecialchars($_SESSION['l2_proyecto'] ?? '');
+$l2_analisis = htmlspecialchars($_SESSION['l2_analisis'] ?? '');
+$l2_sugerencias = htmlspecialchars($_SESSION['l2_sugerencias'] ?? '');
+$l3_proyecto = htmlspecialchars($_SESSION['l3_proyecto'] ?? '');
+$l3_analisis = htmlspecialchars($_SESSION['l3_analisis'] ?? '');
+$l3_sugerencias = htmlspecialchars($_SESSION['l3_sugerencias'] ?? '');
+$resultado_final = htmlspecialchars($_SESSION['resultado_final'] ?? '');
+$literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
 ?>
 
 <!DOCTYPE html>
@@ -494,12 +510,12 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
             </div>
 
             <div class="estudiante-info">
-                <div><i class="fas fa-user"></i> <strong>Estudiante:</strong> <?php echo htmlspecialchars($_SESSION['estudiante']); ?></div>
-                <div><i class="fas fa-id-card"></i> <strong>C.E:</strong> <?php echo htmlspecialchars($_SESSION['ce']); ?></div>
-                <div><i class="fas fa-users"></i> <strong>Grado:</strong> <?php echo htmlspecialchars($_SESSION['grado']); ?></div>
-                <div><i class="fas fa-calendar-alt"></i> <strong>Año Escolar:</strong> <?php echo htmlspecialchars($_SESSION['ano_escolar']); ?></div>
-                <div><i class="fas fa-chalkboard-teacher"></i> <strong>Docente:</strong> <?php echo htmlspecialchars($_SESSION['docente']); ?></div>
-                <div><i class="fas fa-user-tie"></i> <strong>Representante:</strong> <?php echo htmlspecialchars($_SESSION['representante']); ?></div>
+                <div><i class="fas fa-user"></i> <strong>Estudiante:</strong> <?php echo $estudiante; ?></div>
+                <div><i class="fas fa-id-card"></i> <strong>C.E:</strong> <?php echo $ce; ?></div>
+                <div><i class="fas fa-users"></i> <strong>Grado:</strong> <?php echo $grado; ?></div>
+                <div><i class="fas fa-calendar-alt"></i> <strong>Año Escolar:</strong> <?php echo $ano_escolar; ?></div>
+                <div><i class="fas fa-chalkboard-teacher"></i> <strong>Docente:</strong> <?php echo $docente; ?></div>
+                <div><i class="fas fa-user-tie"></i> <strong>Representante:</strong> <?php echo $representante; ?></div>
             </div>
 
             <div class="grid-cards">
@@ -514,7 +530,7 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                     </span>
                     <div class="lapso-preview">
                         <?php if ($obs_completada): ?>
-                            <?php echo substr(htmlspecialchars($_SESSION['observacion']), 0, 80) . (strlen($_SESSION['observacion']) > 80 ? '...' : ''); ?>
+                            <?php echo substr($observacion, 0, 80) . (strlen($observacion) > 80 ? '...' : ''); ?>
                         <?php else: ?>
                             <span class="vacio">Sin observación registrada</span>
                         <?php endif; ?>
@@ -535,13 +551,13 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                     </span>
                     <div class="lapso-preview">
                         <div class="label">PROYECTOS DE APRENDIZAJES</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l1_proyecto']) ? htmlspecialchars($_SESSION['l1_proyecto']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l1_proyecto) ? $l1_proyecto : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">ANÁLISIS CUALITATIVO</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l1_analisis']) ? htmlspecialchars($_SESSION['l1_analisis']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l1_analisis) ? $l1_analisis : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">SUGERENCIAS</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l1_sugerencias']) ? htmlspecialchars($_SESSION['l1_sugerencias']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l1_sugerencias) ? $l1_sugerencias : '<span class="vacio">Sin datos</span>'; ?></div>
                     </div>
                     <a href="editar_lapso1_primaria.php" class="btn <?php echo $l1_completado ? 'btn-warning' : 'btn-success'; ?> btn-sm">
                         <?php echo $l1_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
@@ -559,13 +575,13 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                     </span>
                     <div class="lapso-preview">
                         <div class="label">PROYECTOS DE APRENDIZAJES</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l2_proyecto']) ? htmlspecialchars($_SESSION['l2_proyecto']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l2_proyecto) ? $l2_proyecto : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">ANÁLISIS CUALITATIVO</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l2_analisis']) ? htmlspecialchars($_SESSION['l2_analisis']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l2_analisis) ? $l2_analisis : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">SUGERENCIAS</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l2_sugerencias']) ? htmlspecialchars($_SESSION['l2_sugerencias']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l2_sugerencias) ? $l2_sugerencias : '<span class="vacio">Sin datos</span>'; ?></div>
                     </div>
                     <a href="editar_lapso2_primaria.php" class="btn <?php echo $l2_completado ? 'btn-warning' : 'btn-info'; ?> btn-sm">
                         <?php echo $l2_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
@@ -583,18 +599,18 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                     </span>
                     <div class="lapso-preview">
                         <div class="label">PROYECTOS DE APRENDIZAJES</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l3_proyecto']) ? htmlspecialchars($_SESSION['l3_proyecto']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l3_proyecto) ? $l3_proyecto : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">ANÁLISIS CUALITATIVO</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l3_analisis']) ? htmlspecialchars($_SESSION['l3_analisis']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l3_analisis) ? $l3_analisis : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">SUGERENCIAS</div>
-                        <div class="texto"><?php echo !empty($_SESSION['l3_sugerencias']) ? htmlspecialchars($_SESSION['l3_sugerencias']) : '<span class="vacio">Sin datos</span>'; ?></div>
+                        <div class="texto"><?php echo !empty($l3_sugerencias) ? $l3_sugerencias : '<span class="vacio">Sin datos</span>'; ?></div>
                         <div class="separador"></div>
                         <div class="label">RESULTADO FINAL</div>
                         <div class="texto">
-                            <?php if (!empty($_SESSION['resultado_final'])): ?>
-                                <strong><?php echo htmlspecialchars($_SESSION['resultado_final']); ?></strong> (Literal <?php echo htmlspecialchars($_SESSION['literal_final'] ?? 'N/A'); ?>)
+                            <?php if (!empty($resultado_final)): ?>
+                                <strong><?php echo $resultado_final; ?></strong> (Literal <?php echo $literal_final ?: 'N/A'; ?>)
                             <?php else: ?>
                                 <span class="vacio">Sin resultado registrado</span>
                             <?php endif; ?>

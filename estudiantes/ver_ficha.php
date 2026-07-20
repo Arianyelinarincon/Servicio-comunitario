@@ -67,8 +67,8 @@ if (!$estudiante) {
     exit();
 }
 
-// ========== OBTENER HISTORIAL ESCOLAR ==========
-$sql_historial = "SELECT * FROM inscripciones WHERE estudiante_id = ? ORDER BY ano_escolar DESC";
+// ========== OBTENER HISTORIAL ESCOLAR - ORDEN ASC (más antiguo primero) ==========
+$sql_historial = "SELECT * FROM inscripciones WHERE estudiante_id = ? ORDER BY ano_escolar ASC";
 $stmt_hist = $conexion->prepare($sql_historial);
 $stmt_hist->bind_param("i", $id);
 $stmt_hist->execute();
@@ -186,6 +186,34 @@ include '../includes/header.php';
         background-color: #138496;
         color: white;
     }
+    .btn-pasar-anio {
+        background-color: #28a745;
+        color: white;
+        border: none;
+        padding: 7px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        transition: background 0.3s;
+        text-decoration: none;
+    }
+    .btn-pasar-anio:hover {
+        background-color: #1e7e34;
+        color: white;
+    }
+    .btn-eliminar {
+        background-color: #dc3545;
+        color: white;
+        border: none;
+        padding: 7px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        transition: background 0.3s;
+        text-decoration: none;
+    }
+    .btn-eliminar:hover {
+        background-color: #bd2130;
+        color: white;
+    }
     .row-dato {
         padding: 4px 0;
         border-bottom: 1px solid #e9ecef;
@@ -198,10 +226,63 @@ include '../includes/header.php';
         min-width: 130px;
         white-space: nowrap;
     }
+    .acciones-botones {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .acciones-botones .btn {
+        margin: 0;
+    }
+    .alert-historial-pendiente {
+        border-left: 4px solid #856404;
+    }
+    .alert-historial-pendiente .btn-editar-historial {
+        background: #856404;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: bold;
+        transition: background 0.3s;
+    }
+    .alert-historial-pendiente .btn-editar-historial:hover {
+        background: #6d4c00;
+        color: white;
+    }
 </style>
 
 <div class="container-fluid px-4">
     
+    <!-- ===== AVISO DE HISTORIAL PENDIENTE ===== -->
+    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'promovido' && isset($_GET['historial'])): ?>
+        <div class="alert alert-warning alert-dismissible fade show alert-historial-pendiente">
+            <div class="d-flex align-items-center">
+                <div>
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i> ¡Estudiante promovido exitosamente!</h5>
+                    <p class="mb-1">
+                        <strong>El estudiante ha sido pasado de año correctamente.</strong><br>
+                        Por favor, complete los datos del <strong>historial escolar</strong> (Reg., C, F, P, Peso, Talla) 
+                        en la sección de <strong>Editar Ficha</strong>.
+                    </p>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i> 
+                        Puede editar estos datos haciendo clic en el botón <strong>"Editar"</strong> 
+                        en la ficha del estudiante o en el listado.
+                    </small>
+                </div>
+                <div class="ms-auto">
+                    <a href="editar_estudiantes.php?id=<?= $id ?>" class="btn-editar-historial">
+                        <i class="fas fa-edit me-1"></i> Editar Historial
+                    </a>
+                </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- Cabecera -->
     <div class="page-header d-flex flex-wrap justify-content-between align-items-center">
         <div>
@@ -209,15 +290,25 @@ include '../includes/header.php';
             <small class="opacity-75">Información completa del alumno</small>
         </div>
         <div class="mt-2 mt-md-0">
-            <a href="generar_ficha_pdf.php?id=<?= $id ?>&preview=1" target="_blank" class="btn-ver-ficha me-2">
-                <i class="fas fa-eye me-2"></i> Ver Ficha
-            </a>
-            <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn-descargar me-2">
-                <i class="fas fa-file-pdf me-2"></i> Descargar PDF
-            </a>
-            <a href="listado.php" class="btn-volver">
-                <i class="fas fa-arrow-left me-2"></i> Volver al Listado
-            </a>
+            <div class="acciones-botones">
+                <a href="generar_ficha_pdf.php?id=<?= $id ?>&preview=1" target="_blank" class="btn-ver-ficha">
+                    <i class="fas fa-eye me-2"></i> Ver Ficha
+                </a>
+                <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn-descargar">
+                    <i class="fas fa-file-pdf me-2"></i> Descargar PDF
+                </a>
+                <?php if ($_SESSION['rol'] === 'super_admin' || $_SESSION['rol'] === 'administrador' || $_SESSION['rol'] === 'directiva'): ?>
+                    <a href="pasar_anio.php?id=<?= $id ?>" class="btn-pasar-anio" title="Pasar de año al estudiante">
+                        <i class="fas fa-arrow-up me-2"></i> Pasar de Año
+                    </a>
+                    <a href="eliminar_estudiante_completo.php?id=<?= $id ?>" class="btn-eliminar" title="Eliminar estudiante" onclick="return confirm('¿Está seguro de eliminar este estudiante? Se eliminarán TODOS sus registros asociados (boletines, asistencia, inscripciones, rendimiento).')">
+                        <i class="fas fa-trash-alt me-2"></i> Eliminar
+                    </a>
+                <?php endif; ?>
+                <a href="listado.php" class="btn-volver">
+                    <i class="fas fa-arrow-left me-2"></i> Volver al Listado
+                </a>
+            </div>
         </div>
     </div>
 
@@ -408,7 +499,7 @@ include '../includes/header.php';
     </div>
     <?php endif; ?>
 
-    <!-- Historial Escolar (con ancho mejorado) -->
+    <!-- Historial Escolar -->
     <div class="card card-ficha">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0"><i class="fas fa-history me-2"></i> Historial Escolar</h6>
@@ -442,8 +533,8 @@ include '../includes/header.php';
                             <td><?= htmlspecialchars($row['c'] ?? '') ?></td>
                             <td><?= htmlspecialchars($row['f'] ?? '') ?></td>
                             <td><?= htmlspecialchars($row['p'] ?? '') ?></td>
-                            <td><?= $row['peso'] ? number_format($row['peso'], 2) : '' ?></td>
-                            <td><?= $row['talla'] ? number_format($row['talla'], 2) : '' ?></td>
+                            <td><?= $row['peso'] ? number_format($row['peso'], 0) : '' ?></td>
+                            <td><?= $row['talla'] ? number_format($row['talla'], 0) : '' ?></td>
                             <td><?= date('d/m/Y', strtotime($row['fecha_inscripcion'])) ?></td>
                         </tr>
                         <?php endwhile; ?>

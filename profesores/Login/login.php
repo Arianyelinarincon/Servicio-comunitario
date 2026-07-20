@@ -36,11 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             if ($row['estatus'] !== 'Activo') {
                 $error = 'Cuenta inactiva. Contacte al administrador.';
             } elseif (password_verify($password, $row['password'])) {
-                $_SESSION['usuario_id'] = $row['id'];
+                // ========== GUARDAR SESIÓN CON usuario_id ==========
+                $_SESSION['usuario_id'] = intval($row['id']);
                 $_SESSION['usuario'] = $row['usuario'];
                 $_SESSION['nombre_profesor'] = $row['nombre'];
                 $_SESSION['rol'] = $row['rol'];
                 $_SESSION['tipo_usuario'] = 'secretaria';
+                $_SESSION['usuario_auditoria_tipo'] = 'secretaria';
                 
                 header('Location: /servicio-comunitario/index.php');
                 exit();
@@ -59,11 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     if ($row2['estatus'] !== 'Activo') {
                         $error = 'Cuenta inactiva. Contacte al administrador.';
                     } elseif (password_verify($password, $row2['password']) || $password === $row2['password']) {
-                        $_SESSION['usuario_id'] = $row2['id'];
+                        $_SESSION['usuario_id'] = intval($row2['id']);
                         $_SESSION['usuario'] = $row2['usuario'];
                         $_SESSION['nombre_profesor'] = $row2['nombre'];
                         $_SESSION['rol'] = $row2['rol'];
                         $_SESSION['tipo_usuario'] = 'profesor';
+                        $_SESSION['usuario_auditoria_tipo'] = 'profesor';
                         
                         header('Location: /servicio-comunitario/index.php');
                         exit();
@@ -88,7 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Gestión Educativa - Login</title>
-    <!-- ========== SIN CSP PARA EVITAR BLOQUEOS ========== -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -143,12 +145,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .input-group i {
+        .input-group .input-icon {
             position: absolute;
             left: 12px;
             top: 38px;
             color: #777;
             font-size: 16px;
+            z-index: 5;
         }
         .input-group input {
             width: 100%;
@@ -173,7 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             cursor: pointer;
             color: #777;
             font-size: 16px;
-            transition: color 0.3s;
+            z-index: 10;
         }
         #togglePassword:hover {
             color: #003366;
@@ -238,7 +241,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?>
             </div>
             <script>
-                // Ocultar automáticamente después de 5 segundos
                 setTimeout(function() {
                     var err = document.getElementById('mensaje-error');
                     if (err) {
@@ -253,12 +255,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         <form action="" method="POST" autocomplete="off">
             <div class="input-group">
                 <label for="usuario"><i class="fas fa-user-circle" style="margin-right: 5px;"></i> USUARIO</label>
-                <i class="fas fa-user"></i>
+                <i class="fas fa-user input-icon"></i>
                 <input type="text" id="usuario" name="usuario" placeholder="Ingrese su usuario" required autofocus>
             </div>
             <div class="input-group">
                 <label for="password"><i class="fas fa-lock" style="margin-right: 5px;"></i> CONTRASEÑA</label>
-                <i class="fas fa-lock"></i>
+                <i class="fas fa-lock input-icon"></i>
                 <input type="password" id="password" name="password" placeholder="••••••••" required>
                 <i class="fas fa-eye" id="togglePassword"></i>
             </div>
@@ -272,7 +274,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     </div>
 
     <script>
-        // ========== MOSTRAR/OCULTAR CONTRASEÑA ==========
         const togglePassword = document.querySelector('#togglePassword');
         const password = document.querySelector('#password');
 
@@ -283,7 +284,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             this.classList.toggle('fa-eye-slash');
         });
 
-        // ========== ENFOQUE AUTOMÁTICO EN EL CAMPO DE USUARIO ==========
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('usuario').focus();
         });

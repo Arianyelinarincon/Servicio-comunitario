@@ -192,18 +192,18 @@ include "../includes/header.php";
             <p>PERÍODO ESCOLAR: <?= htmlspecialchars($periodo) ?></p>
         </div>
 
-        <div class="row mb-2">
-            <div class="col-8">
-                <strong>DOCENTE:</strong> <?= mb_strtoupper($nombre_profesor) ?> &nbsp;&nbsp;
-                <strong>GRADO:</strong> <?= htmlspecialchars($sala_seleccionada) ?> "<?= htmlspecialchars($nombre_seccion) ?>"
-            </div>
-            <div class="col-4">
-                <strong>VARONES:</strong> <?= $varones ?> &nbsp;
-                <strong>HEMBRAS:</strong> <?= $hembras ?> &nbsp;
-                <strong>TOTAL:</strong> <?= $total_alumnos ?>
-                <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
-            </div>
-        </div>
+     <div class="row mb-2">
+    <div class="col-8">
+        <strong>DOCENTE:</strong> <?= mb_strtoupper($nombre_profesor) ?> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <strong>GRADO:</strong> <?= htmlspecialchars($sala_seleccionada) ?> "<?= htmlspecialchars($nombre_seccion) ?>"
+    </div>
+    <div class="col-4">
+        <strong>VARONES:</strong> <?= $varones ?>&nbsp; &nbsp;
+        <strong>HEMBRAS:</strong> <?= $hembras ?> &nbsp;&nbsp;  
+        <strong>TOTAL:</strong> <?= $total_alumnos ?> 
+        <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
+    </div>
+</div>
 
         <form id="form-rendimiento">
             <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">

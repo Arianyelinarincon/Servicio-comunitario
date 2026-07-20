@@ -1,6 +1,7 @@
 <?php
 session_start();
-require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -85,7 +86,7 @@ while ($sec = $secciones->fetch_assoc()) {
             <form id="wizardForm" action="procesar_inscripcion.php" method="POST">
                 <!-- Campo oculto para el procesador -->
                 <input type="hidden" name="madre_cedula_temp" id="madre_cedula_temp">
-                <input type="hidden" name="fecha_ingreso_prefill" id="fecha_ingreso_prefill" value="<?= htmlspecialchars($prefill_data['fi'] ?? '') ?>">
+                <input type="hidden" name="fecha_ingreso_prefill" id="fecha_ingreso_prefill" value="<?= htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual) ?>">
                 
                 <ul class="nav nav-tabs nav-justified mb-4 border-0" id="stepTabs">
                     <li class="nav-item"><a class="nav-link active rounded-0" href="#step1" data-step="1">1. Datos del Alumno</a></li>
@@ -398,11 +399,13 @@ while ($sec = $secciones->fetch_assoc()) {
                                         <select name="ano_escolar[]" class="form-select form-select-sm" required>
                                             <option value="">Seleccione</option>
                                             <?php 
-                                            $ano_actual = date('Y');
-                                            for ($a = $ano_actual - 1; $a >= 2015; $a--): 
+                                            $anio_inicio = 2020;
+                                            $anio_fin = date('Y') + 2;
+                                            for ($a = $anio_fin; $a >= $anio_inicio; $a--): 
                                                 $periodo = $a . '-' . ($a + 1);
+                                                $selected = ($periodo == $periodo_escolar_actual) ? 'selected' : '';
                                             ?>
-                                                <option value="<?= htmlspecialchars($periodo) ?>"><?= htmlspecialchars($periodo) ?></option>
+                                                <option value="<?= htmlspecialchars($periodo) ?>" <?= $selected ?>><?= htmlspecialchars($periodo) ?></option>
                                             <?php endfor; ?>
                                         </select>
                                     </td>
@@ -411,7 +414,13 @@ while ($sec = $secciones->fetch_assoc()) {
                                             <?= $opciones_secciones ?>
                                         </select>
                                     </td>
-                                    <td><input type="text" name="registro[]" class="form-control form-control-sm" placeholder="Reg."></td>
+                                    <td>
+                                        <select name="registro[]" class="form-select form-select-sm">
+                                            <option value="">Seleccione</option>
+                                            <option value="Si">Si</option>
+                                            <option value="No">No</option>
+                                        </select>
+                                    </td>
                                     <td>
                                         <select name="repite[]" class="form-select form-select-sm">
                                             <option value="No">No</option>
@@ -421,8 +430,8 @@ while ($sec = $secciones->fetch_assoc()) {
                                     <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
                                     <td><input type="text" name="f[]" class="form-control form-control-sm" placeholder="F"></td>
                                     <td><input type="text" name="p[]" class="form-control form-control-sm" placeholder="P"></td>
-                                    <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm peso-input" placeholder="Peso"></td>
-                                    <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
+                                    <td><input type="number" step="1" name="peso[]" class="form-control form-control-sm peso-input" placeholder="Peso"></td>
+                                    <td><input type="number" step="1" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
                                     <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
                                     <td class="text-center">
                                         <span class="badge bg-success" style="font-size:0.75rem;">
@@ -449,7 +458,7 @@ while ($sec = $secciones->fetch_assoc()) {
                     </div>
                     <div class="text-end mt-4">
                         <button type="button" class="btn btn-secondary px-4 prev-step"><i class="fas fa-arrow-left me-1"></i> Anterior</button>
-                        <button type="submit" class="btn btn-success px-4"><i class="fas fa-save me-1"></i> Guardar Inscripción</button>
+                        <button type="button" class="btn btn-success px-4" id="btnGuardarInscripcion"><i class="fas fa-save me-1"></i> Guardar Inscripción</button>
                     </div>
                 </div>
             </form>
@@ -553,38 +562,51 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('cedula_escolar_hidden').value = ce;
     }
 
-    function sincronizarCedula() {
-        const tipo = document.getElementById('tipo_cedula_base')?.value;
-        const cedula = document.getElementById('cedula_base')?.value;
+    // ===== NUEVA FUNCIÓN: COPIAR CÉDULA A PADRES =====
+    function copiarCedulaAPadres() {
+        const tipo = document.getElementById('tipo_cedula_base').value;
+        const cedula = document.getElementById('cedula_base').value.trim();
         const inputMadre = document.getElementById('madre_cedula');
         const inputPadre = document.getElementById('padre_cedula');
-        if (inputMadre && inputPadre) {
-            if (tipo === 'madre') {
-                inputMadre.value = cedula;
-                if (inputPadre.value === cedula) inputPadre.value = '';
-            } else if (tipo === 'padre') {
-                inputPadre.value = cedula;
-                if (inputMadre.value === cedula) inputMadre.value = '';
+        if (tipo === 'madre' && inputMadre) {
+            inputMadre.value = cedula;
+            inputMadre.disabled = true;
+            if (inputPadre) {
+                inputPadre.disabled = false;
+                inputPadre.value = '';
             }
+        } else if (tipo === 'padre' && inputPadre) {
+            inputPadre.value = cedula;
+            inputPadre.disabled = true;
+            if (inputMadre) {
+                inputMadre.disabled = false;
+                inputMadre.value = '';
+            }
+        } else {
+            if (inputMadre) inputMadre.disabled = false;
+            if (inputPadre) inputPadre.disabled = false;
         }
     }
 
+    // Sincronizar eventos
     document.getElementById('cedula_base')?.addEventListener('input', function() {
         generarCedulaEscolar();
         sincronizarCedula();
+        copiarCedulaAPadres();
     });
-    document.getElementById('tipo_cedula_base')?.addEventListener('change', sincronizarCedula);
+    document.getElementById('tipo_cedula_base')?.addEventListener('change', function() {
+        sincronizarCedula();
+        copiarCedulaAPadres();
+    });
     document.getElementById('fecha_nacimiento')?.addEventListener('change', generarCedulaEscolar);
     document.getElementById('orden_nacimiento')?.addEventListener('input', generarCedulaEscolar);
-    document.getElementById('madre_cedula')?.addEventListener('input', function() {
-        const madreStep3 = this.value.trim();
-        const cedulaBase = document.getElementById('cedula_base');
-        const tipoCedula = document.getElementById('tipo_cedula_base');
-        if (cedulaBase && tipoCedula && tipoCedula.value === 'madre' && cedulaBase.value !== madreStep3) {
-            cedulaBase.value = madreStep3;
-            generarCedulaEscolar();
-        }
-    });
+
+    // Función original sincronizarCedula (para compatibilidad)
+    function sincronizarCedula() {
+        const tipo = document.getElementById('tipo_cedula_base')?.value;
+        const cedula = document.getElementById('cedula_base')?.value;
+        // No sobrescribir si ya está deshabilitado
+    }
 
     // ---------- VALIDACIÓN DE PADRES EN STEP 3 ----------
     document.getElementById('nextStep3')?.addEventListener('click', function(e) {
@@ -783,55 +805,61 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // ---------- VALIDACIÓN FINAL ----------
-    const wizardForm = document.getElementById('wizardForm');
-    if (wizardForm) {
-        wizardForm.addEventListener('submit', function(e) {
-            const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
-            if (actuales.length === 0) {
-                e.preventDefault();
-                alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
-                showStep(3);
-                return;
-            }
-            
-            generarCedulaEscolar();
-            if (!this.checkValidity()) {
-                e.preventDefault();
-                const primerInvalido = this.querySelector(':invalid');
-                if (primerInvalido) {
-                    const stepPadre = primerInvalido.closest('.step');
-                    const stepIndex = Array.from(steps).indexOf(stepPadre);
-                    if (stepIndex !== -1) {
-                        showStep(stepIndex);
-                        setTimeout(() => primerInvalido.reportValidity(), 100);
-                    }
+    // ---------- BOTÓN GUARDAR INSCRIPCIÓN ----------
+    document.getElementById('btnGuardarInscripcion')?.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        const form = document.getElementById('wizardForm');
+        
+        // 1. Verificar que haya al menos un año escolar marcado como actual
+        const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
+        if (actuales.length === 0) {
+            alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
+            showStep(3);
+            return;
+        }
+        
+        // 2. Verificar que los padres tengan al menos uno completado
+        const madreNombre = document.getElementById('madre_nombre')?.value.trim() || '';
+        const padreNombre = document.getElementById('padre_nombre')?.value.trim() || '';
+        if (!madreNombre && !padreNombre) {
+            alert('⚠️ Debe completar al menos el nombre de la madre o del padre.');
+            showStep(2);
+            return;
+        }
+        
+        // 3. Verificar validación del formulario
+        if (!form.checkValidity()) {
+            const primerInvalido = form.querySelector(':invalid');
+            if (primerInvalido) {
+                const stepPadre = primerInvalido.closest('.step');
+                const stepIndex = Array.from(steps).indexOf(stepPadre);
+                if (stepIndex !== -1) {
+                    showStep(stepIndex);
+                    setTimeout(() => primerInvalido.reportValidity(), 100);
                 }
             }
-        });
-    }
+            return;
+        }
+        
+        // 4. Generar cédula escolar antes de enviar
+        generarCedulaEscolar();
+        
+        // 5. Mostrar indicador de carga
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Guardando...';
+        
+        // 6. Enviar el formulario
+        form.submit();
+    });
 
-    function mostrarMensaje(texto) {
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
-        alertDiv.innerHTML = `
-            <i class="fas fa-check-circle me-2"></i>
-            <strong>${texto}</strong>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        
-        const tabla = document.getElementById('tablaHistorial');
-        const container = tabla.parentElement;
-        const existingAlert = container.querySelector('.alert-success');
-        if (existingAlert) existingAlert.remove();
-        container.insertBefore(alertDiv, tabla.nextSibling);
-        
-        setTimeout(() => {
-            if (alertDiv.parentElement) {
-                alertDiv.classList.remove('show');
-                setTimeout(() => alertDiv.remove(), 300);
-            }
-        }, 5000);
+    // ---------- VALIDACIÓN FINAL DEL FORMULARIO (respaldo) ----------
+    const wizardForm = document.getElementById('wizardForm');
+    if (wizardForm) {
+        // Remover eventos anteriores (si los hay)
+        wizardForm.removeEventListener('submit', wizardForm._submitHandler);
+        // No agregar nuevo submit, el botón maneja todo
     }
 
     // ============================================================================
@@ -1091,6 +1119,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
     inicializarGeografia();
     setTimeout(generarCedulaEscolar, 100);
+
+    function mostrarMensaje(texto) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
+        alertDiv.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            <strong>${texto}</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        const tabla = document.getElementById('tablaHistorial');
+        const container = tabla.parentElement;
+        const existingAlert = container.querySelector('.alert-success');
+        if (existingAlert) existingAlert.remove();
+        container.insertBefore(alertDiv, tabla.nextSibling);
+        
+        setTimeout(() => {
+            if (alertDiv.parentElement) {
+                alertDiv.classList.remove('show');
+                setTimeout(() => alertDiv.remove(), 300);
+            }
+        }, 5000);
+    }
+
+    // Ejecutar copia inicial de cédula si hay valor precargado
+    setTimeout(copiarCedulaAPadres, 200);
 });
 </script>
 

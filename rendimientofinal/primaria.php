@@ -1,139 +1,226 @@
 <?php
-require_once "../estadisticas/config_db.php";
-
-// ========== AJAX HANDLER ==========
-if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
-    if (session_status() === PHP_SESSION_NONE) session_start();
-    if (!isset($_SESSION['usuario'])) {
-        http_response_code(403);
-        echo json_encode(['error' => 'No autorizado']);
-        exit;
-    }
-    
-    header('Content-Type: application/json');
-    $action = $_POST['action'] ?? '';
-    
-    if ($action == 'cargar_secciones') {
-        $sala = $_POST['sala'] ?? '';
-        $stmt = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
-        $stmt->bind_param("s", $sala);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $secciones = [];
-        while($row = $result->fetch_assoc()) {
-            $secciones[] = ['id' => $row['id'], 'nombre' => $row['nombre']];
-        }
-        echo json_encode(['secciones' => $secciones]);
-        $stmt->close();
-        exit;
-    }
-    
-    // ========== CORRECCIÓN: FILTRAR SOLO PROFESORES ACTIVOS ==========
-    if ($action == 'cargar_docentes') {
-        $seccion = (int)$_POST['seccion'];
-        $stmt = $conexion->prepare("SELECT id, nombre FROM profesores WHERE seccion = ? AND estatus = 'Activo' ORDER BY nombre ASC");
-        $stmt->bind_param("i", $seccion);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $docentes = [];
-        while($row = $result->fetch_assoc()) {
-            $docentes[] = ['id' => $row['id'], 'nombre' => $row['nombre']];
-        }
-        echo json_encode(['docentes' => $docentes]);
-        $stmt->close();
-        exit;
-    }
-    exit;
+session_start();
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
 }
 
-include "../includes/header.php";
+include '../includes/header.php';
+require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
 
-// ========== Función para generar años ==========
-function generarOpcionesAnios() {
-    $anio_actual = date('Y');
-    $anio_inicio = $anio_actual - 5;
-    $anio_fin = $anio_actual + 5;
-    $opciones = '';
-    for ($i = $anio_inicio; $i <= $anio_fin; $i++) {
-        $periodo = $i . '-' . ($i + 1);
-        $selected = ($periodo == '2025-2026') ? 'selected' : '';
-        $opciones .= "<option value=\"$periodo\" $selected>$periodo</option>";
+$periodo_escolar_actual = obtenerPeriodoEscolar();
+
+// ========== OBTENER SALAS ==========
+$salas = ['1ro', '2do', '3ro', '4to', '5to', '6to'];
+$nombres_salas = [
+    '1ro' => 'Primer Grado',
+    '2do' => 'Segundo Grado',
+    '3ro' => 'Tercer Grado',
+    '4to' => 'Cuarto Grado',
+    '5to' => 'Quinto Grado',
+    '6to' => 'Sexto Grado'
+];
+
+// ========== OBTENER PERIODOS ==========
+$periodos = [];
+$res_periodos = $conexion->query("SELECT DISTINCT periodo FROM boletines WHERE tipo_boletin = 'primaria' ORDER BY periodo DESC");
+if ($res_periodos) {
+    while ($row = $res_periodos->fetch_assoc()) {
+        $periodos[] = $row['periodo'];
     }
-    return $opciones;
+}
+if (empty($periodos)) {
+    $periodos[] = $periodo_escolar_actual;
+}
+
+// ========== SI VIENE POR GET, MOSTRAR FORMULARIO ==========
+$sala_seleccionada = isset($_GET['sala']) ? trim($_GET['sala']) : '';
+$seccion_seleccionada = isset($_GET['seccion']) ? intval($_GET['seccion']) : 0;
+$periodo_seleccionado = isset($_GET['periodo']) ? trim($_GET['periodo']) : $periodo_escolar_actual;
+
+// ========== SI HAY SALA Y SECCIÓN, REDIRIGIR AL FORMULARIO ==========
+if (isset($_GET['accion']) && $_GET['accion'] === 'abrir' && $sala_seleccionada && $seccion_seleccionada) {
+    // Obtener el profesor automáticamente
+    $stmt_prof = $conexion->prepare("SELECT id FROM profesores WHERE seccion = ? AND sala = ? AND estatus = 'Activo' LIMIT 1");
+    $stmt_prof->bind_param("is", $seccion_seleccionada, $sala_seleccionada);
+    $stmt_prof->execute();
+    $profesor = $stmt_prof->get_result()->fetch_assoc();
+    $profesor_id = $profesor['id'] ?? 0;
+    $stmt_prof->close();
+    
+    header("Location: formularioprimaria.php?sala=" . urlencode($sala_seleccionada) . "&seccion=" . $seccion_seleccionada . "&profesor=" . $profesor_id . "&periodo=" . urlencode($periodo_seleccionado));
+    exit();
+}
+
+// ========== OBTENER SECCIONES PARA LA SALA SELECCIONADA ==========
+$secciones = [];
+if ($sala_seleccionada) {
+    $stmt_sec = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
+    $stmt_sec->bind_param("s", $sala_seleccionada);
+    $stmt_sec->execute();
+    $result_sec = $stmt_sec->get_result();
+    while ($row = $result_sec->fetch_assoc()) {
+        $secciones[] = $row;
+    }
+    $stmt_sec->close();
+}
+
+// ========== OBTENER PROFESOR ASIGNADO PARA MOSTRAR ==========
+$docente_asignado = 'No asignado';
+if ($sala_seleccionada && $seccion_seleccionada) {
+    $stmt_prof = $conexion->prepare("SELECT nombre FROM profesores WHERE seccion = ? AND sala = ? AND estatus = 'Activo' LIMIT 1");
+    $stmt_prof->bind_param("is", $seccion_seleccionada, $sala_seleccionada);
+    $stmt_prof->execute();
+    $profesor = $stmt_prof->get_result()->fetch_assoc();
+    if ($profesor) {
+        $docente_asignado = $profesor['nombre'];
+    }
+    $stmt_prof->close();
 }
 ?>
 
 <style>
-    :root { --navy: #002d54; }
-    .card { border-radius: 12px; border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-    .bg-navy { background-color: var(--navy) !important; color: white;}
-    .btn-volver {
-        background-color: #6c757d;
+    :root { --primary-gradient: linear-gradient(135deg, #002d54 0%, #004a7c 100%); --navy: #002d54; }
+    .page-header {
+        background: var(--primary-gradient);
+        color: white;
+        border-radius: 12px;
+        padding: 20px 28px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 20px rgba(0,45,84,0.2);
+    }
+    .card-generar {
+        border-radius: 12px;
+        border: none;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    }
+    .card-generar .card-header {
+        background: var(--primary-gradient) !important;
+        color: white;
+        border-radius: 12px 12px 0 0 !important;
+        padding: 14px 20px;
+        font-weight: 600;
+    }
+    .btn-abrir {
+        background: var(--primary-gradient);
         color: white;
         border: none;
-        padding: 7px 20px;
-        border-radius: 5px;
-        font-weight: bold;
-        transition: background 0.3s;
-        text-decoration: none;
+        font-weight: 500;
+        padding: 12px 40px;
+        border-radius: 8px;
+        transition: all 0.3s;
+        font-size: 1.1rem;
+    }
+    .btn-abrir:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,45,84,0.3);
+        color: white;
+    }
+    .btn-volver {
+        background: #6c757d;
+        color: white;
+        border: none;
+        font-weight: 500;
+        padding: 12px 40px;
+        border-radius: 8px;
+        transition: all 0.3s;
+        font-size: 1.1rem;
     }
     .btn-volver:hover {
-        background-color: #5a6268;
+        background: #5a6268;
         color: white;
+    }
+    .docente-info {
+        background: #e8f4f8;
+        border-left: 4px solid #002d54;
+        padding: 12px 20px;
+        border-radius: 8px;
+        margin-top: 10px;
+        font-size: 1rem;
+    }
+    .docente-info strong {
+        color: #002d54;
     }
 </style>
 
-<div class="container-fluid py-4">
-    <div class="card mb-4">
-        <div class="card-header bg-navy d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Generar Formulario de Rendimiento - Primaria</h5>
-            <a href="rendimientofinalindex.php" class="btn-volver">
-                <i class="fas fa-arrow-left"></i> VOLVER
+<div class="container mt-4">
+    <div class="page-header d-flex flex-wrap justify-content-between align-items-center">
+        <div>
+            <h4 class="mb-1 fw-bold"><i class="fas fa-file-alt me-2"></i> Generar Formulario de Rendimiento - Primaria</h4>
+            <small class="opacity-75"><i class="fas fa-graduation-cap me-1"></i> Seleccione grado, sección y periodo</small>
+        </div>
+        <div class="mt-2 mt-md-0">
+            <a href="rendimientofinalindex.php" class="btn btn-light fw-bold">
+                <i class="fas fa-arrow-left me-2"></i> Volver
             </a>
         </div>
+    </div>
+
+    <div class="card card-generar">
+        <div class="card-header">
+            <h6 class="mb-0"><i class="fas fa-sliders-h me-2"></i> Seleccionar parámetros</h6>
+        </div>
         <div class="card-body p-4">
-            <form action="formularioprimaria.php" method="GET" target="_blank" class="row g-3 align-items-end" id="filtroForm">
-    
-                <div class="col-md-3">
-                    <label class="small fw-bold text-muted">GRADO</label>
-                    <select name="sala" id="select-grado" class="form-select shadow-none" required onchange="pasoGrado()">
-                        <option value="">Seleccione grado...</option>
-                        <optgroup label="Educación Primaria">
-                            <option value="1ro">Primer Grado</option>
-                            <option value="2do">Segundo Grado</option>
-                            <option value="3ro">Tercer Grado</option>
-                            <option value="4to">Cuarto Grado</option>
-                            <option value="5to">Quinto Grado</option>
-                            <option value="6to">Sexto Grado</option>
-                        </optgroup>
-                    </select>
+            <form method="GET" action="primaria.php" id="formGenerar">
+                <input type="hidden" name="accion" value="abrir">
+                <div class="row g-4">
+                    <!-- Sala / Grado -->
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold"><i class="fas fa-graduation-cap me-1"></i> Grado</label>
+                        <select name="sala" id="select-sala" class="form-select shadow-none" required>
+                            <option value="">Seleccione...</option>
+                            <?php foreach ($salas as $sala): 
+                                $nombre_sala = $nombres_salas[$sala] ?? $sala;
+                                $selected = ($sala_seleccionada == $sala) ? 'selected' : '';
+                            ?>
+                                <option value="<?= htmlspecialchars($sala) ?>" <?= $selected ?>><?= htmlspecialchars($nombre_sala) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <!-- Sección -->
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold"><i class="fas fa-layer-group me-1"></i> Sección</label>
+                        <select name="seccion" id="select-seccion" class="form-select shadow-none" required <?= empty($sala_seleccionada) ? 'disabled' : '' ?>>
+                            <option value="">Primero seleccione un grado</option>
+                            <?php foreach ($secciones as $sec): 
+                                $selected = ($seccion_seleccionada == $sec['id']) ? 'selected' : '';
+                            ?>
+                                <option value="<?= $sec['id'] ?>" <?= $selected ?>><?= htmlspecialchars($sec['nombre']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <!-- Periodo -->
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold"><i class="fas fa-calendar-alt me-1"></i> Año Escolar</label>
+                        <select name="periodo" class="form-select shadow-none" required>
+                            <?php foreach ($periodos as $p): 
+                                $selected = ($periodo_seleccionado == $p) ? 'selected' : '';
+                            ?>
+                                <option value="<?= htmlspecialchars($p) ?>" <?= $selected ?>><?= htmlspecialchars($p) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                 </div>
 
-                <div class="col-md-2" id="seccion-seccion">
-                    <label class="small fw-bold text-muted">SECCIÓN</label>
-                    <select name="seccion" id="select-seccion" class="form-select shadow-none" disabled onchange="pasoSeccion()">
-                        <option value="">Primero seleccione grado...</option>
-                    </select>
-                </div>
+                <!-- Docente Asignado (automático) -->
+                <?php if ($sala_seleccionada && $seccion_seleccionada): ?>
+                    <div class="docente-info mt-3">
+                        <i class="fas fa-chalkboard-teacher me-2" style="color: #002d54;"></i>
+                        <strong>Docente asignado:</strong> <?= htmlspecialchars($docente_asignado) ?>
+                    </div>
+                <?php endif; ?>
 
-                <div class="col-md-3" id="seccion-docente">
-                    <label class="small fw-bold text-muted">PROFESOR / DOCENTE</label>
-                    <select name="profesor" id="select-docente" class="form-select shadow-none" disabled required onchange="pasoDocente()">
-                        <option value="">Primero seleccione sección...</option>
-                    </select>
-                </div>
-
-                <div class="col-md-2" id="seccion-periodo" style="display:none;">
-                    <label class="small fw-bold text-muted">AÑO ESCOLAR</label>
-                    <select name="periodo" id="select-periodo" class="form-select shadow-none" required>
-                        <?php echo generarOpcionesAnios(); ?>
-                    </select>
-                </div>
-
-                <div class="col-md-2" id="seccion-boton" style="display:none;">
-                    <button type="submit" class="btn w-100 fw-bold bg-navy border-0" style="padding: 7px 0;">
-                        <i class="fas fa-external-link-alt"></i> ABRIR FORMULARIO
+                <!-- Botones -->
+                <div class="mt-4 d-flex gap-3">
+                    <button type="submit" class="btn-abrir" <?= empty($sala_seleccionada) || empty($seccion_seleccionada) ? 'disabled' : '' ?>>
+                        <i class="fas fa-file-alt me-2"></i> Abrir Formulario
                     </button>
+                    <a href="primaria.php" class="btn-volver">
+                        <i class="fas fa-undo me-2"></i> Limpiar
+                    </a>
                 </div>
             </form>
         </div>
@@ -141,83 +228,55 @@ function generarOpcionesAnios() {
 </div>
 
 <script>
-function pasoGrado() {
-    const sala = document.getElementById('select-grado').value;
-    const seccionSelect = document.getElementById('select-seccion');
-    const docenteSelect = document.getElementById('select-docente');
-    
-    seccionSelect.innerHTML = '<option value="">Primero seleccione grado...</option>';
-    seccionSelect.disabled = true;
-    docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
-    docenteSelect.disabled = true;
-    
-    document.getElementById('seccion-periodo').style.display = 'none';
-    document.getElementById('seccion-boton').style.display = 'none';
+document.addEventListener('DOMContentLoaded', function() {
+    const selectSala = document.getElementById('select-sala');
+    const selectSeccion = document.getElementById('select-seccion');
+    const form = document.getElementById('formGenerar');
 
-    if (sala !== "") {
-        seccionSelect.innerHTML = '<option value="">Cargando secciones...</option>';
-        const formData = new FormData();
-        formData.append('action', 'cargar_secciones');
-        formData.append('sala', sala);
-        fetch('?ajax=1', { method: 'POST', body: formData })
-            .then(res => res.json())
+    function cargarSecciones(sala, seleccionado) {
+        selectSeccion.innerHTML = '<option value="">Cargando...</option>';
+        selectSeccion.disabled = true;
+
+        if (!sala) {
+            selectSeccion.innerHTML = '<option value="">Primero seleccione un grado</option>';
+            selectSeccion.disabled = false;
+            return;
+        }
+
+        fetch('ajax_secciones.php?sala=' + encodeURIComponent(sala))
+            .then(response => response.json())
             .then(data => {
-                seccionSelect.innerHTML = '<option value="">Seleccione sección...</option>';
-                if (data.secciones && data.secciones.length > 0) {
-                    data.secciones.forEach(sec => {
-                        seccionSelect.innerHTML += `<option value="${sec.id}">${sec.nombre}</option>`;
-                    });
-                    seccionSelect.disabled = false;
-                } else {
-                    seccionSelect.innerHTML = '<option value="">No hay secciones</option>';
-                }
+                selectSeccion.innerHTML = '<option value="">Seleccione...</option>';
+                data.forEach(sec => {
+                    const option = document.createElement('option');
+                    option.value = sec.id;
+                    option.textContent = sec.nombre;
+                    if (seleccionado && parseInt(seleccionado) === sec.id) {
+                        option.selected = true;
+                    }
+                    selectSeccion.appendChild(option);
+                });
+                selectSeccion.disabled = false;
+            })
+            .catch(() => {
+                selectSeccion.innerHTML = '<option value="">Error al cargar</option>';
+                selectSeccion.disabled = true;
             });
     }
-}
 
-function pasoSeccion() {
-    const seccion = document.getElementById('select-seccion').value;
-    const docenteSelect = document.getElementById('select-docente');
-    
-    docenteSelect.innerHTML = '<option value="">Primero seleccione sección...</option>';
-    docenteSelect.disabled = true;
-    
-    document.getElementById('seccion-periodo').style.display = 'none';
-    document.getElementById('seccion-boton').style.display = 'none';
+    selectSala.addEventListener('change', function() {
+        const sala = this.value;
+        const seccionActual = selectSeccion.value;
+        cargarSecciones(sala, seccionActual);
+    });
 
-    if (seccion !== "") {
-        docenteSelect.innerHTML = '<option value="">Cargando docentes...</option>';
-        const formData = new FormData();
-        formData.append('action', 'cargar_docentes');
-        formData.append('seccion', seccion);
-        fetch('?ajax=1', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                docenteSelect.innerHTML = '<option value="">Seleccione docente...</option>';
-                if(data.docentes && data.docentes.length > 0) {
-                    data.docentes.forEach(d => {
-                        docenteSelect.innerHTML += `<option value="${d.id}">${d.nombre}</option>`;
-                    });
-                    docenteSelect.disabled = false;
-                } else {
-                    docenteSelect.innerHTML = '<option value="">No hay docentes</option>';
-                }
-            });
+    // Cargar secciones iniciales si hay sala seleccionada
+    const salaInicial = '<?= $sala_seleccionada ?>';
+    const seccionInicial = '<?= $seccion_seleccionada ?>';
+    if (salaInicial) {
+        cargarSecciones(salaInicial, seccionInicial);
     }
-}
-
-window.pasoDocente = function() {
-    const profesor = document.getElementById('select-docente').value;
-    const periodoDiv = document.getElementById('seccion-periodo');
-    const botonDiv = document.getElementById('seccion-boton');
-    if (profesor !== "") {
-        periodoDiv.style.display = 'block';
-        botonDiv.style.display = 'block';
-    } else {
-        periodoDiv.style.display = 'none';
-        botonDiv.style.display = 'none';
-    }
-};
+});
 </script>
 
-<?php include "../includes/footer.php"; ?>
+<?php include '../includes/footer.php'; ?>

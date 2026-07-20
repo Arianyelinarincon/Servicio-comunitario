@@ -13,12 +13,18 @@ if (!isset($_SESSION['usuario'])) {
     exit();
 }
 
+require_once __DIR__ . '/../config/configuracion.php';
+require_once __DIR__ . '/../config/conexion.php';
+
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
+
 // ========== NORMALIZAR ROL ==========
 $rol_raw = $_SESSION['rol'] ?? '';
 $rol_normalizado = trim(preg_replace('/[^a-zA-Z_]/', '', $rol_raw));
 $rol_normalizado = strtolower($rol_normalizado);
 
-// ========== DEFINIR ROLES PERMITIDOS PARA VER EL MENÚ COMPLETO ==========
+// ========== DEFINIR ROLES PERMITIDOS ==========
 $roles_admin = ['administrador', 'admin', 'super_admin', 'directiva', 'superadmin'];
 $es_admin = in_array($rol_normalizado, $roles_admin);
 
@@ -32,6 +38,37 @@ if (isset($_COOKIE['sidebarStatus']) && $_COOKIE['sidebarStatus'] === 'hidden') 
 $panel_titulo = 'PANEL DE SECRETARÍA';
 if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $rol_normalizado === 'directiva') {
     $panel_titulo = 'PANEL DE DIRECTIVA';
+}
+
+// ========== ASEGURAR QUE USUARIO_ID EXISTA ==========
+if (!isset($_SESSION['usuario_id']) || $_SESSION['usuario_id'] == 0) {
+    if (isset($_SESSION['usuario'])) {
+        $sql_user = "SELECT id FROM secretaria WHERE usuario = ?";
+        $stmt_user = $conexion->prepare($sql_user);
+        if ($stmt_user) {
+            $stmt_user->bind_param('s', $_SESSION['usuario']);
+            $stmt_user->execute();
+            $result_user = $stmt_user->get_result();
+            if ($row_user = $result_user->fetch_assoc()) {
+                $_SESSION['usuario_id'] = intval($row_user['id']);
+                $_SESSION['tipo_usuario'] = 'secretaria';
+            } else {
+                $sql_user = "SELECT id FROM profesores WHERE usuario = ?";
+                $stmt_user = $conexion->prepare($sql_user);
+                if ($stmt_user) {
+                    $stmt_user->bind_param('s', $_SESSION['usuario']);
+                    $stmt_user->execute();
+                    $result_user = $stmt_user->get_result();
+                    if ($row_user = $result_user->fetch_assoc()) {
+                        $_SESSION['usuario_id'] = intval($row_user['id']);
+                        $_SESSION['tipo_usuario'] = 'profesor';
+                    }
+                    $stmt_user->close();
+                }
+            }
+            $stmt_user->close();
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -80,11 +117,10 @@ if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $
                 <?php endif; ?>
                 
             <?php else: ?>
-                <!-- Si no es admin, mostrar solo lo básico (opcional) -->
                 <li><a href="/servicio-comunitario/index.php"><i class="fas fa-home me-2"></i> Inicio</a></li>
             <?php endif; ?>
             
-            <!-- CERRAR SESIÓN (siempre visible) -->
+            <!-- CERRAR SESIÓN -->
             <li class="mt-4"><a href="/servicio-comunitario/logout.php" class="text-danger"><i class="fas fa-sign-out-alt me-2"></i> Cerrar Sesión</a></li>
         </ul>
     </nav>
@@ -97,6 +133,28 @@ if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $
             </button>
             <div class="ms-3 fw-bold text-muted">
                 <?php echo $panel_titulo; ?>
+            </div>
+            
+            <!-- ========== BOTÓN DE PERIODO ESCOLAR ========== -->
+            <div class="ms-auto d-flex align-items-center gap-3">
+                <?php if ($es_admin): ?>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted small fw-bold">
+                            <i class="fas fa-calendar-alt me-1"></i> Periodo:
+                        </span>
+                        <span class="badge bg-primary" id="periodo-actual-label">
+                            <?= htmlspecialchars($periodo_escolar_actual) ?>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="btnCambiarPeriodo" title="Cambiar periodo escolar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                    </div>
+                <?php else: ?>
+                    <span class="text-muted small">
+                        <i class="fas fa-calendar-alt me-1"></i>
+                        <?= htmlspecialchars($periodo_escolar_actual) ?>
+                    </span>
+                <?php endif; ?>
             </div>
         </nav>
         

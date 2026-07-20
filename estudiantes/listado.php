@@ -5,12 +5,14 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'a
     exit();
 }
 require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
+
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 
 // ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS (MEJORADA) ==========
 function verificarCamposCompletos($datos) {
     $faltantes = [];
     
-    // Campos del estudiante (obligatorios)
     $campos_estudiante = [
         'nombre' => 'Nombre',
         'apellido' => 'Apellido',
@@ -19,26 +21,22 @@ function verificarCamposCompletos($datos) {
         'cedula_escolar' => 'Cédula Escolar',
     ];
     
-    // Campos del representante (obligatorios)
     $campos_representante = [
         'rep_nombre' => 'Nombre',
         'rep_cedula' => 'Cédula',
         'rep_telefono' => 'Teléfono',
     ];
     
-    // Sala y sección
     $campos_sala = [
         'sala' => 'Sala/Grado',
         'seccion_id' => 'Sección',
     ];
     
-    // Padres (al menos uno)
     $campos_padres = [
         'madre_nombre' => 'Madre (nombre)',
         'padre_nombre' => 'Padre (nombre)',
     ];
     
-    // Condicionales (enfermedad, educación física, alergia)
     $campos_condicionales = [];
     if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si') {
         $campos_condicionales['enfermedad_cual'] = 'Enfermedad (cuál)';
@@ -50,45 +48,38 @@ function verificarCamposCompletos($datos) {
         $campos_condicionales['alergia_cual'] = 'Alergia (cuál)';
     }
     
-    // Verificar cada grupo
     $faltantes_por_grupo = [];
     
-    // Estudiante
     foreach ($campos_estudiante as $campo => $label) {
         if (empty($datos[$campo]) && $datos[$campo] !== '0') {
             $faltantes_por_grupo['Estudiante'][] = $label;
         }
     }
     
-    // Representante
     foreach ($campos_representante as $campo => $label) {
         if (empty($datos[$campo]) && $datos[$campo] !== '0') {
             $faltantes_por_grupo['Representante'][] = $label;
         }
     }
     
-    // Sala / Sección
     foreach ($campos_sala as $campo => $label) {
         if (!isset($datos[$campo]) || $datos[$campo] === '' || $datos[$campo] === NULL) {
             $faltantes_por_grupo['Sala/Sección'][] = $label;
         }
     }
     
-    // Padres (al menos uno)
     $madre = !empty($datos['madre_nombre']);
     $padre = !empty($datos['padre_nombre']);
     if (!$madre && !$padre) {
         $faltantes_por_grupo['Padres'][] = 'Madre o Padre (al menos uno)';
     }
     
-    // Condicionales
     foreach ($campos_condicionales as $campo => $label) {
         if (empty($datos[$campo])) {
             $faltantes_por_grupo['Condicionales'][] = $label;
         }
     }
     
-    // Construir array plano para tooltip simple
     $faltantes_plano = [];
     foreach ($faltantes_por_grupo as $grupo => $items) {
         foreach ($items as $item) {
@@ -112,6 +103,7 @@ if (empty($_SESSION['csrf_token'])) {
 if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     $sala = isset($_GET['sala']) ? trim($_GET['sala']) : '';
     $busqueda = isset($_GET['busqueda']) ? '%' . trim($_GET['busqueda']) . '%' : '';
+    $filtro_anio = isset($_GET['anio']) ? trim($_GET['anio']) : '';
 
     $sql = "
         SELECT DISTINCT e.*, 
@@ -144,6 +136,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         $params[] = $busqueda;
         $types .= "sss";
     }
+    if ($filtro_anio) {
+        $sql .= " AND EXISTS (SELECT 1 FROM inscripciones i2 WHERE i2.estudiante_id = e.id AND i2.ano_escolar = ?)";
+        $params[] = $filtro_anio;
+        $types .= "s";
+    }
+    // ===== ORDEN: Año más reciente arriba, luego alfabético =====
     $sql .= " ORDER BY e.sala, e.nombre, e.apellido";
 
     $stmt = $conexion->prepare($sql);
@@ -199,6 +197,18 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                         $faltantes_plano = $resultado_verificacion['plano'];
                         $faltantes_por_grupo = $resultado_verificacion['por_grupo'];
                         $completa = ($resultado_verificacion['total'] == 0);
+                        
+                        $mapa_salas = [
+                            'sala4' => 'Sala 4 Años',
+                            'sala5' => 'Sala 5 Años',
+                            '1ro' => '1er Grado',
+                            '2do' => '2do Grado',
+                            '3ro' => '3er Grado',
+                            '4to' => '4to Grado',
+                            '5to' => '5to Grado',
+                            '6to' => '6to Grado'
+                        ];
+                        $sala_nombre = $mapa_salas[$e['sala']] ?? $e['sala'];
                 ?>
                     <tr>
                         <td class="text-center fw-bold text-muted"><?= $contador++ ?></td>
@@ -209,7 +219,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                                     <i class="fas fa-check-circle fa-lg"></i>
                                 </span>
                             <?php else: ?>
-                                <!-- Icono + tooltip mejorado -->
                                 <span class="text-warning estado-icono" 
                                       style="cursor:help; position:relative;"
                                       data-bs-toggle="popover"
@@ -223,12 +232,10 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                                         <?= $resultado_verificacion['total'] ?>
                                     </span>
                                 </span>
-                                <!-- Tooltip simple como respaldo -->
-                                <span class="d-none" data-faltantes="<?= htmlspecialchars(implode(' | ', $faltantes_plano)) ?>"></span>
                             <?php endif; ?>
                         </td>
                         <td><span class="font-monospace"><?= htmlspecialchars($e['cedula_escolar']) ?></span></td>
-                        <td><span class="badge-sala"><?= htmlspecialchars($e['sala']) ?></span></td>
+                        <td><span class="badge-sala"><?= htmlspecialchars($sala_nombre) ?></span></td>
                         <td><?= htmlspecialchars($e['seccion_nombre'] ?? 'N/A') ?></td>
                         <td><?= htmlspecialchars($e['profesor_nombre'] ?? 'Sin asignar') ?></td>
                         <td><?= htmlspecialchars($e['rep_nombre'] ?? 'No asignado') ?></td>
@@ -237,12 +244,9 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                             <a href="ver_ficha.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-info" target="_blank" title="Ver ficha completa"><i class="fas fa-eye"></i></a>
                             <a href="editar_estudiantes.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-primary" title="Editar datos"><i class="fas fa-edit"></i></a>
                             <?php if ($_SESSION['rol'] === 'super_admin' || $_SESSION['rol'] === 'administrador' || $_SESSION['rol'] === 'directiva'): ?>
-                            <form method="POST" style="display:inline;" onsubmit="return confirm('¿Eliminar este estudiante?')">
-                                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?= $e['id'] ?>">
-                                <button type="submit" class="btn btn-sm btn-danger" title="Eliminar"><i class="fas fa-trash-alt"></i></button>
-                            </form>
+                                <a href="eliminar_estudiante_completo.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-danger" title="Eliminar estudiante (con confirmación avanzada)" onclick="return confirm('¿Está seguro de eliminar este estudiante? Se eliminarán TODOS sus registros asociados (boletines, asistencia, inscripciones, rendimiento).')">
+                                    <i class="fas fa-trash-alt"></i>
+                                </a>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -272,32 +276,13 @@ function construirContenidoPopover($faltantes_por_grupo) {
     return $html;
 }
 
-// ========== MANEJAR ELIMINACIÓN (POST) ==========
+// ========== MANEJAR ELIMINACIÓN ==========
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         die("Error CSRF");
     }
     $id = intval($_POST['id']);
-
-    $stmt_nombre = $conexion->prepare("SELECT nombre, apellido FROM estudiantes WHERE id = ?");
-    $stmt_nombre->bind_param("i", $id);
-    $stmt_nombre->execute();
-    $result_nombre = $stmt_nombre->get_result();
-    $estudiante = $result_nombre->fetch_assoc();
-    $stmt_nombre->close();
-    $nombre_estudiante = $estudiante ? $estudiante['nombre'] . ' ' . $estudiante['apellido'] : 'ID: ' . $id;
-
-    $stmt = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $stmt->close();
-
-    $usuario_id = $_SESSION['usuario_id'] ?? 0;
-    if ($usuario_id > 0 && function_exists('registrarAuditoria')) {
-        registrarAuditoria($conexion, $usuario_id, 'ELIMINAR_ESTUDIANTE', 'estudiantes', $id, "Baja lógica (estatus -> Inactivo) del estudiante: $nombre_estudiante");
-    }
-
-    header("Location: listado.php?msg=deleted");
+    header("Location: eliminar_estudiante_completo.php?id=$id");
     exit();
 }
 
@@ -305,6 +290,17 @@ include '../includes/header.php';
 
 $sala_filtro = isset($_GET['sala']) ? trim($_GET['sala']) : '';
 $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
+$filtro_anio = isset($_GET['anio']) ? trim($_GET['anio']) : '';
+
+// ===== OBTENER AÑOS ESCOLARES DISPONIBLES =====
+$anios_disponibles = [];
+$res_anios = $conexion->query("SELECT DISTINCT ano_escolar FROM inscripciones ORDER BY ano_escolar DESC");
+while ($row = $res_anios->fetch_assoc()) {
+    $anios_disponibles[] = $row['ano_escolar'];
+}
+if (empty($anios_disponibles)) {
+    $anios_disponibles[] = $periodo_escolar_actual;
+}
 ?>
 
 <style>
@@ -369,7 +365,6 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
         border-color: #002d54;
         box-shadow: 0 0 0 3px rgba(0,45,84,0.15);
     }
-    /* Estilo para el popover */
     .popover {
         max-width: 350px;
         font-size: 0.85rem;
@@ -413,6 +408,13 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
         </div>
     <?php endif; ?>
 
+    <?php if (isset($_GET['msg']) && $_GET['msg'] === 'eliminado'): ?>
+        <div class="alert alert-success alert-dismissible fade show">
+            <i class="fas fa-check-circle me-2"></i> Estudiante eliminado permanentemente con todos sus registros asociados.
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    <?php endif; ?>
+
     <!-- Filtros -->
     <div class="card card-filtros">
         <div class="card-body p-4">
@@ -423,19 +425,39 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
                         <select name="sala" id="salaSelect" class="form-select shadow-none">
                             <option value="">Todas</option>
                             <?php
-                            $salas_disponibles = $conexion->query("SELECT DISTINCT sala FROM secciones ORDER BY sala");
-                            while ($row = $salas_disponibles->fetch_assoc()):
-                                $selected = ($sala_filtro == $row['sala']) ? 'selected' : '';
+                            $orden_salas = ['sala4', 'sala5', '1ro', '2do', '3ro', '4to', '5to', '6to'];
+                            $mapa_salas = [
+                                'sala4' => 'Sala de 4 años',
+                                'sala5' => 'Sala de 5 años',
+                                '1ro' => '1er Grado',
+                                '2do' => '2do Grado',
+                                '3ro' => '3er Grado',
+                                '4to' => '4to Grado',
+                                '5to' => '5to Grado',
+                                '6to' => '6to Grado'
+                            ];
+                            foreach ($orden_salas as $sala) {
+                                $selected = ($sala_filtro == $sala) ? 'selected' : '';
+                                $nombre_mostrar = $mapa_salas[$sala] ?? $sala;
+                                echo '<option value="' . htmlspecialchars($sala) . '" ' . $selected . '>' . htmlspecialchars($nombre_mostrar) . '</option>';
+                            }
                             ?>
-                                <option value="<?= htmlspecialchars($row['sala']) ?>" <?= $selected ?>><?= ucfirst($row['sala']) ?></option>
-                            <?php endwhile; ?>
                         </select>
                     </div>
-                    <div class="col-md-5">
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-muted"><i class="fas fa-calendar-alt me-1"></i> Año Escolar</label>
+                        <select name="anio" id="anioSelect" class="form-select shadow-none">
+                            <option value="">Todos</option>
+                            <?php foreach ($anios_disponibles as $anio): ?>
+                                <option value="<?= htmlspecialchars($anio) ?>" <?= ($filtro_anio == $anio) ? 'selected' : '' ?>><?= htmlspecialchars($anio) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
                         <label class="small fw-bold text-muted"><i class="fas fa-search me-1"></i> Buscar estudiante</label>
                         <input type="text" name="busqueda" id="busquedaInput" class="form-control shadow-none" placeholder="Nombre, apellido o cédula..." value="<?= htmlspecialchars($busqueda) ?>">
                     </div>
-                    <div class="col-md-4 text-end">
+                    <div class="col-md-2 text-end">
                         <span class="text-muted small"><i class="fas fa-info-circle me-1"></i> Filtro automático</span>
                     </div>
                 </div>
@@ -462,6 +484,7 @@ $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
 <script>
 const busquedaInput = document.getElementById('busquedaInput');
 const salaSelect = document.getElementById('salaSelect');
+const anioSelect = document.getElementById('anioSelect');
 const tablaContainer = document.getElementById('tabla-container');
 const contadorTotal = document.getElementById('contador-total');
 const contadorFooter = document.getElementById('contador-footer');
@@ -470,6 +493,7 @@ let timeoutId = null;
 function cargarTabla() {
     const termino = busquedaInput.value.trim();
     const sala = salaSelect.value;
+    const anio = anioSelect.value;
 
     tablaContainer.innerHTML = `
         <div class="text-center py-5">
@@ -483,6 +507,7 @@ function cargarTabla() {
     const params = new URLSearchParams();
     if (termino) params.append('busqueda', termino);
     if (sala) params.append('sala', sala);
+    if (anio) params.append('anio', anio);
     params.append('ajax', '1');
 
     fetch('listado.php?' + params.toString())
@@ -494,7 +519,6 @@ function cargarTabla() {
             contadorTotal.textContent = total;
             contadorFooter.textContent = total;
             
-            // Inicializar popovers de Bootstrap para los iconos de estado
             if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
                 const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
                 popoverTriggerList.map(function (popoverTriggerEl) {
@@ -523,6 +547,7 @@ busquedaInput.addEventListener('input', function() {
 });
 
 salaSelect.addEventListener('change', cargarTabla);
+anioSelect.addEventListener('change', cargarTabla);
 
 document.addEventListener('DOMContentLoaded', function() {
     if (busquedaInput) {

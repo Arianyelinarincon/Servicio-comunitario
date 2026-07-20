@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once('../config/conexion.php');
+require_once('../config/configuracion.php');
 
 // ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
 function verificarCamposCompletos($datos) {
@@ -28,7 +29,9 @@ function verificarCamposCompletos($datos) {
     return true;
 }
 
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+$periodo_escolar_actual = obtenerPeriodoEscolar();
+
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
     header("Location: ../profesores/Login/login.php");
     exit();
 }
@@ -60,7 +63,7 @@ if (!$estudiante) {
     exit();
 }
 
-// Obtener historial escolar (inscripciones) - ORDEN ASC (más antiguo primero)
+// ========== OBTENER HISTORIAL ESCOLAR - ORDEN ASC (más antiguo primero) ==========
 $stmt_ins = $conexion->prepare("SELECT * FROM inscripciones WHERE estudiante_id = ? ORDER BY ano_escolar ASC");
 $stmt_ins->bind_param("i", $id);
 $stmt_ins->execute();
@@ -115,7 +118,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $grado_actual = $grado_seccion_arr[$ultimo_indice] ?? '';
         $peso_actual = !empty($peso_arr[$ultimo_indice]) ? floatval($peso_arr[$ultimo_indice]) : null;
         $talla_actual = !empty($talla_arr[$ultimo_indice]) ? floatval($talla_arr[$ultimo_indice]) : null;
-        $ano_escolar_actual = $ano_escolar_arr[$ultimo_indice] ?? '';
 
         // Extraer sala y sección del grado_seccion (ej: "sala5 - U")
         $sala_nombre = '';
@@ -137,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $stmt_sec->close();
         }
 
-        // ========== ACTUALIZAR ESTUDIANTE CON LOS DATOS DEL AÑO ACTUAL ==========
+        // ========== ACTUALIZAR ESTUDIANTE ==========
         $stmt_upd = $conexion->prepare("UPDATE estudiantes SET 
             nombre=?, apellido=?, fecha_nacimiento=?, genero=?, orden_nacimiento=?,
             nacionalidad=?, pais_nacimiento=?, estado_nacimiento=?, direccion=?,
@@ -145,50 +147,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             enfermedad=?, enfermedad_cual=?, educacion_fisica=?, educacion_fisica_porque=?,
             alergia=?, alergia_cual=?, madre_nombre=?, madre_cedula=?, madre_telefono=?,
             padre_nombre=?, padre_cedula=?, padre_telefono=?,
-            sala=?, seccion_id=?, peso=?, talla=?
+            sala=?, seccion_id=?
             WHERE id=?");
 
-        // Convertir a string para evitar problemas de referencia
-        $p1 = (string)$nombre;
-        $p2 = (string)$apellido;
-        $p3 = (string)$fecha_nac;
-        $p4 = (string)$genero;
-        $p5 = (string)$orden_nacimiento;
-        $p6 = (string)$nacionalidad;
-        $p7 = (string)$pais_nac;
-        $p8 = (string)$estado_nac;
-        $p9 = (string)$direccion;
-        $p10 = (string)$estado_res;
-        $p11 = (string)$municipio;
-        $p12 = (string)$parroquia;
-        $p13 = (string)$ciudad;
-        $p14 = (string)$enfermedad;
-        $p15 = (string)$enfermedad_cual;
-        $p16 = (string)$educacion_fisica;
-        $p17 = (string)$educacion_fisica_porque;
-        $p18 = (string)$alergia;
-        $p19 = (string)$alergia_cual;
-        $p20 = (string)$madre_nombre;
-        $p21 = (string)$madre_cedula;
-        $p22 = (string)$madre_telefono;
-        $p23 = (string)$padre_nombre;
-        $p24 = (string)$padre_cedula;
-        $p25 = (string)$padre_telefono;
-        $p26 = (string)$sala_nombre;
-        $p27 = (string)$seccion_id_actual;
-        $p28 = (string)$peso_actual;
-        $p29 = (string)$talla_actual;
-        $p30 = (string)$id;
+        if (!$stmt_upd) {
+            throw new Exception("Error en prepare: " . $conexion->error);
+        }
 
-        $types_upd = str_repeat('s', 30);
         $stmt_upd->bind_param(
-            $types_upd,
-            $p1, $p2, $p3, $p4, $p5,
-            $p6, $p7, $p8, $p9, $p10,
-            $p11, $p12, $p13, $p14, $p15,
-            $p16, $p17, $p18, $p19, $p20,
-            $p21, $p22, $p23, $p24, $p25,
-            $p26, $p27, $p28, $p29, $p30
+            "sssssssssssssssssssssssssssi",
+            $nombre, $apellido, $fecha_nac, $genero, $orden_nacimiento,
+            $nacionalidad, $pais_nac, $estado_nac, $direccion,
+            $estado_res, $municipio, $parroquia, $ciudad,
+            $enfermedad, $enfermedad_cual, $educacion_fisica, $educacion_fisica_porque,
+            $alergia, $alergia_cual, $madre_nombre, $madre_cedula, $madre_telefono,
+            $padre_nombre, $padre_cedula, $padre_telefono,
+            $sala_nombre, $seccion_id_actual,
+            $id
         );
         $stmt_upd->execute();
         $stmt_upd->close();
@@ -216,25 +191,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             afinidad=?, sexo=?, pais_nacimiento=?, estado_nacimiento=?, nacionalidad=?,
             direccion=?, estado_residencia=?, municipio=?, parroquia=?, ciudad=?
             WHERE id=?");
+        
+        if (!$stmt_rep) {
+            throw new Exception("Error en prepare representante: " . $conexion->error);
+        }
 
-        $types_rep = str_repeat('s', 16);
         $stmt_rep->bind_param(
-            $types_rep,
-            $rep_nombre,
-            $rep_cedula,
-            $rep_telefono,
-            $rep_fecha_nac,
-            $rep_estado_civil,
-            $rep_afinidad,
-            $rep_sexo,
-            $rep_pais_nac,
-            $rep_estado_nac,
-            $rep_nacionalidad,
-            $rep_direccion,
-            $rep_estado_res,
-            $rep_municipio,
-            $rep_parroquia,
-            $rep_ciudad,
+            "sssssssssssssssi",
+            $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil,
+            $rep_afinidad, $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad,
+            $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad,
             $rep_id
         );
         $stmt_rep->execute();
@@ -253,12 +219,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
              firma_representante, fecha_inscripcion, funcionario) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)");
 
+        if (!$stmt_ins) {
+            throw new Exception("Error en prepare inscripciones: " . $conexion->error);
+        }
+
         for ($i = 0; $i < count($ano_escolar_arr); $i++) {
             $fecha_ins = !empty($fecha_inscripcion_arr[$i]) ? $fecha_inscripcion_arr[$i] : date('Y-m-d');
             $peso_val = !empty($peso_arr[$i]) ? floatval($peso_arr[$i]) : null;
             $talla_val = !empty($talla_arr[$i]) ? floatval($talla_arr[$i]) : null;
 
-            // Asignar a variables limpias para bind_param
             $ano_esc   = $ano_escolar_arr[$i] ?? '';
             $grado_sec = $grado_seccion_arr[$i] ?? '';
             $registro  = $registro_arr[$i] ?? '';
@@ -330,7 +299,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 include('../includes/header.php'); 
 
-// ========== OPCIONES PARA GRADO-SECCIÓN (CORREGIDO) ==========
+// ========== OPCIONES PARA GRADO-SECCIÓN ==========
 $opciones_historial = '<option value="">Seleccione</option>';
 $secciones_hist = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 while($sec = $secciones_hist->fetch_assoc()) {
@@ -360,6 +329,22 @@ while($sec = $secciones_hist->fetch_assoc()) {
     #tablaHistorial td:first-child {
         min-width: 130px;
         white-space: nowrap;
+    }
+    /* Estilos para el scroll de selects geográficos */
+    .select-geo {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .select-geo option {
+        padding: 4px 8px;
+    }
+    .select-geo option[value="OTRO"] {
+        font-weight: bold;
+        color: #dc3545;
+        background-color: #f8f9fa;
+        border-top: 2px solid #dc3545;
+        margin-top: 4px;
+        padding-top: 6px;
     }
 </style>
 
@@ -442,11 +427,43 @@ while($sec = $secciones_hist->fetch_assoc()) {
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">País de Nacimiento</label>
-                            <input type="text" name="pais_nacimiento" class="form-control" value="<?= htmlspecialchars($estudiante['pais_nacimiento']) ?>">
+                            <select name="pais_nacimiento" id="pais_nacimiento" class="form-select select-geo">
+                                <option value="">Seleccione...</option>
+                                <?php
+                                $paises_lista = [
+                                    'Venezuela', 'Argentina', 'Bolivia', 'Brasil', 'Chile', 'Colombia',
+                                    'Costa Rica', 'Cuba', 'Ecuador', 'El Salvador', 'España', 'Estados Unidos',
+                                    'Guatemala', 'Honduras', 'México', 'Nicaragua', 'Panamá', 'Paraguay',
+                                    'Perú', 'Portugal', 'Puerto Rico', 'República Dominicana', 'Uruguay'
+                                ];
+                                foreach ($paises_lista as $pais) {
+                                    $selected = ($estudiante['pais_nacimiento'] == $pais) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($pais) . '" ' . $selected . '>' . htmlspecialchars($pais) . '</option>';
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_pais_nacimiento" name="pais_nacimiento_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el país..." style="display:none;" value="<?= !in_array($estudiante['pais_nacimiento'], $paises_lista) ? htmlspecialchars($estudiante['pais_nacimiento']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Estado de Nacimiento</label>
-                            <input type="text" name="estado_nacimiento" class="form-control" value="<?= htmlspecialchars($estudiante['estado_nacimiento']) ?>">
+                            <select name="estado_nacimiento" id="estado_nacimiento" class="form-select select-geo">
+                                <option value="">Seleccione...</option>
+                                <?php
+                                $estados_venezuela = [
+                                    'Amazonas', 'Anzoátegui', 'Apure', 'Aragua', 'Barinas', 'Bolívar',
+                                    'Carabobo', 'Cojedes', 'Delta Amacuro', 'Distrito Capital', 'Falcón',
+                                    'Guárico', 'La Guaira', 'Lara', 'Mérida', 'Miranda', 'Monagas',
+                                    'Nueva Esparta', 'Portuguesa', 'Sucre', 'Táchira', 'Trujillo', 'Yaracuy', 'Zulia'
+                                ];
+                                foreach ($estados_venezuela as $estado) {
+                                    $selected = ($estudiante['estado_nacimiento'] == $estado) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($estado) . '" ' . $selected . '>' . htmlspecialchars($estado) . '</option>';
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_estado_nacimiento" name="estado_nacimiento_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el estado..." style="display:none;" value="<?= !in_array($estudiante['estado_nacimiento'], $estados_venezuela) ? htmlspecialchars($estudiante['estado_nacimiento']) : '' ?>">
                         </div>
                         <div class="col-md-12">
                             <label class="form-label fw-semibold">Dirección</label>
@@ -454,15 +471,83 @@ while($sec = $secciones_hist->fetch_assoc()) {
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Estado Residencia</label>
-                            <input type="text" name="estado_residencia" class="form-control" value="<?= htmlspecialchars($estudiante['estado_residencia']) ?>">
+                            <select name="estado_residencia" id="estado_residencia" class="form-select select-geo">
+                                <option value="">Seleccione...</option>
+                                <?php
+                                foreach ($estados_venezuela as $estado) {
+                                    $selected = ($estudiante['estado_residencia'] == $estado) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($estado) . '" ' . $selected . '>' . htmlspecialchars($estado) . '</option>';
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_estado_residencia" name="estado_residencia_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el estado..." style="display:none;" value="<?= !in_array($estudiante['estado_residencia'], $estados_venezuela) ? htmlspecialchars($estudiante['estado_residencia']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Municipio</label>
-                            <input type="text" name="municipio" class="form-control" value="<?= htmlspecialchars($estudiante['municipio']) ?>">
+                            <select name="municipio" id="municipio" class="form-select select-geo">
+                                <option value="">Primero seleccione un estado</option>
+                                <?php
+                                $municipios_por_estado = [
+                                    'Zulia' => ['Maracaibo', 'San Francisco', 'Cabimas', 'Santa Rita', 'Jesús Enrique Lossada', 'La Cañada de Urdaneta'],
+                                    'Miranda' => ['Baruta', 'Carrizal', 'Chacao', 'El Hatillo', 'Guaicaipuro', 'Los Salias', 'Sucre'],
+                                    'Carabobo' => ['Valencia', 'Puerto Cabello', 'Guacara', 'Los Guayos', 'Naguanagua', 'San Diego'],
+                                    'Lara' => ['Barquisimeto', 'Cabudare', 'Carora', 'El Tocuyo', 'Quíbor'],
+                                    'Bolívar' => ['Ciudad Bolívar', 'Ciudad Guayana', 'Upata'],
+                                    'Táchira' => ['San Cristóbal', 'La Fría', 'Rubio', 'Táriba'],
+                                    'Mérida' => ['Mérida', 'Ejido', 'Tovar'],
+                                    'Falcón' => ['Coro', 'Punto Fijo', 'La Vela de Coro'],
+                                    'Anzoátegui' => ['Barcelona', 'Puerto La Cruz', 'Lechería', 'El Tigre'],
+                                    'Monagas' => ['Maturín', 'Punta de Mata'],
+                                    'Sucre' => ['Cumaná', 'Carúpano'],
+                                    'Portuguesa' => ['Guanare', 'Acarigua'],
+                                    'Barinas' => ['Barinas', 'Sabaneta'],
+                                    'Apure' => ['San Fernando de Apure', 'Guasdualito'],
+                                    'Guárico' => ['Calabozo', 'Valle de la Pascua', 'San Juan de los Morros'],
+                                    'Cojedes' => ['San Carlos', 'Tinaquillo'],
+                                    'Aragua' => ['Maracay', 'El Limón', 'La Victoria', 'Cagua', 'Turmero'],
+                                    'Nueva Esparta' => ['Porlamar', 'La Asunción', 'Juan Griego'],
+                                    'Delta Amacuro' => ['Tucupita'],
+                                    'Amazonas' => ['Puerto Ayacucho'],
+                                    'Distrito Capital' => ['Caracas']
+                                ];
+                                $municipio_actual = $estudiante['municipio'];
+                                $estado_actual = $estudiante['estado_residencia'];
+                                if ($estado_actual && isset($municipios_por_estado[$estado_actual])) {
+                                    foreach ($municipios_por_estado[$estado_actual] as $municipio) {
+                                        $selected = ($municipio_actual == $municipio) ? 'selected' : '';
+                                        echo '<option value="' . htmlspecialchars($municipio) . '" ' . $selected . '>' . htmlspecialchars($municipio) . '</option>';
+                                    }
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_municipio" name="municipio_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el municipio..." style="display:none;" value="<?= $estudiante['municipio'] && !in_array($estudiante['municipio'], ($municipios_por_estado[$estudiante['estado_residencia']] ?? [])) ? htmlspecialchars($estudiante['municipio']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Parroquia</label>
-                            <input type="text" name="parroquia" class="form-control" value="<?= htmlspecialchars($estudiante['parroquia']) ?>">
+                            <select name="parroquia" id="parroquia" class="form-select select-geo">
+                                <option value="">Primero seleccione un municipio</option>
+                                <?php
+                                $parroquias_por_municipio = [
+                                    'Maracaibo' => ['Bolívar', 'Cecilio Acosta', 'Chiquinquirá', 'Coquivacoa', 'Idelfonso Vásquez', 'Juana de Ávila', 'San Isidro', 'Santa Lucía'],
+                                    'San Francisco' => ['Domitila Flores', 'El Bajo', 'Francisco Ochoa', 'José Domínguez', 'Los Cortijos'],
+                                    'Cabimas' => ['Ambrosio', 'Carmen Herrera', 'Germán Ríos Linares', 'La Rosa', 'Punta Gorda', 'Rómulo Betancourt'],
+                                    'Caracas' => ['Catedral', 'El Valle', 'La Candelaria', 'La Pastora', 'San Agustín', 'San Bernardino', 'San José', 'San Juan', 'Santa Teresa', 'Sucre'],
+                                    'Valencia' => ['Candelaria', 'El Socorro', 'Miguel Peña', 'Rafael Urdaneta', 'San Blas', 'San José']
+                                ];
+                                $parroquia_actual = $estudiante['parroquia'];
+                                $municipio_actual = $estudiante['municipio'];
+                                if ($municipio_actual && isset($parroquias_por_municipio[$municipio_actual])) {
+                                    foreach ($parroquias_por_municipio[$municipio_actual] as $parroquia) {
+                                        $selected = ($parroquia_actual == $parroquia) ? 'selected' : '';
+                                        echo '<option value="' . htmlspecialchars($parroquia) . '" ' . $selected . '>' . htmlspecialchars($parroquia) . '</option>';
+                                    }
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_parroquia" name="parroquia_otro" class="form-control text-uppercase mt-1" placeholder="Escriba la parroquia..." style="display:none;" value="<?= $estudiante['parroquia'] && !in_array($estudiante['parroquia'], ($parroquias_por_municipio[$estudiante['municipio']] ?? [])) ? htmlspecialchars($estudiante['parroquia']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Ciudad</label>
@@ -552,11 +637,31 @@ while($sec = $secciones_hist->fetch_assoc()) {
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">País de Nacimiento</label>
-                            <input type="text" name="rep_pais_nacimiento" class="form-control" value="<?= htmlspecialchars($estudiante['rep_pais_nac']) ?>">
+                            <select name="rep_pais_nacimiento" id="rep_pais_nacimiento" class="form-select select-geo">
+                                <option value="">Seleccione...</option>
+                                <?php
+                                foreach ($paises_lista as $pais) {
+                                    $selected = ($estudiante['rep_pais_nac'] == $pais) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($pais) . '" ' . $selected . '>' . htmlspecialchars($pais) . '</option>';
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_rep_pais_nacimiento" name="rep_pais_nacimiento_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el país..." style="display:none;" value="<?= !in_array($estudiante['rep_pais_nac'], $paises_lista) ? htmlspecialchars($estudiante['rep_pais_nac']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Estado Nacimiento</label>
-                            <input type="text" name="rep_estado_nacimiento" class="form-control" value="<?= htmlspecialchars($estudiante['rep_estado_nac']) ?>">
+                            <select name="rep_estado_nacimiento" id="rep_estado_nacimiento" class="form-select select-geo">
+                                <option value="">Seleccione...</option>
+                                <?php
+                                foreach ($estados_venezuela as $estado) {
+                                    $selected = ($estudiante['rep_estado_nac'] == $estado) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($estado) . '" ' . $selected . '>' . htmlspecialchars($estado) . '</option>';
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_rep_estado_nacimiento" name="rep_estado_nacimiento_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el estado..." style="display:none;" value="<?= !in_array($estudiante['rep_estado_nac'], $estados_venezuela) ? htmlspecialchars($estudiante['rep_estado_nac']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Nacionalidad</label>
@@ -568,15 +673,53 @@ while($sec = $secciones_hist->fetch_assoc()) {
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Estado Residencia</label>
-                            <input type="text" name="rep_estado_residencia" class="form-control" value="<?= htmlspecialchars($estudiante['rep_estado_res']) ?>">
+                            <select name="rep_estado_residencia" id="rep_estado_residencia" class="form-select select-geo">
+                                <option value="">Seleccione...</option>
+                                <?php
+                                foreach ($estados_venezuela as $estado) {
+                                    $selected = ($estudiante['rep_estado_res'] == $estado) ? 'selected' : '';
+                                    echo '<option value="' . htmlspecialchars($estado) . '" ' . $selected . '>' . htmlspecialchars($estado) . '</option>';
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_rep_estado_residencia" name="rep_estado_residencia_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el estado..." style="display:none;" value="<?= !in_array($estudiante['rep_estado_res'], $estados_venezuela) ? htmlspecialchars($estudiante['rep_estado_res']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Municipio</label>
-                            <input type="text" name="rep_municipio" class="form-control" value="<?= htmlspecialchars($estudiante['rep_municipio']) ?>">
+                            <select name="rep_municipio" id="rep_municipio" class="form-select select-geo">
+                                <option value="">Primero seleccione un estado</option>
+                                <?php
+                                $rep_estado_actual = $estudiante['rep_estado_res'];
+                                $rep_municipio_actual = $estudiante['rep_municipio'];
+                                if ($rep_estado_actual && isset($municipios_por_estado[$rep_estado_actual])) {
+                                    foreach ($municipios_por_estado[$rep_estado_actual] as $municipio) {
+                                        $selected = ($rep_municipio_actual == $municipio) ? 'selected' : '';
+                                        echo '<option value="' . htmlspecialchars($municipio) . '" ' . $selected . '>' . htmlspecialchars($municipio) . '</option>';
+                                    }
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_rep_municipio" name="rep_municipio_otro" class="form-control text-uppercase mt-1" placeholder="Escriba el municipio..." style="display:none;" value="<?= $estudiante['rep_municipio'] && !in_array($estudiante['rep_municipio'], ($municipios_por_estado[$estudiante['rep_estado_res']] ?? [])) ? htmlspecialchars($estudiante['rep_municipio']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Parroquia</label>
-                            <input type="text" name="rep_parroquia" class="form-control" value="<?= htmlspecialchars($estudiante['rep_parroquia']) ?>">
+                            <select name="rep_parroquia" id="rep_parroquia" class="form-select select-geo">
+                                <option value="">Primero seleccione un municipio</option>
+                                <?php
+                                $rep_parroquia_actual = $estudiante['rep_parroquia'];
+                                $rep_municipio_actual = $estudiante['rep_municipio'];
+                                if ($rep_municipio_actual && isset($parroquias_por_municipio[$rep_municipio_actual])) {
+                                    foreach ($parroquias_por_municipio[$rep_municipio_actual] as $parroquia) {
+                                        $selected = ($rep_parroquia_actual == $parroquia) ? 'selected' : '';
+                                        echo '<option value="' . htmlspecialchars($parroquia) . '" ' . $selected . '>' . htmlspecialchars($parroquia) . '</option>';
+                                    }
+                                }
+                                ?>
+                                <option value="OTRO" style="font-weight:bold;color:#dc3545;border-top:2px solid #dc3545;">--- OTRO ---</option>
+                            </select>
+                            <input type="text" id="input_rep_parroquia" name="rep_parroquia_otro" class="form-control text-uppercase mt-1" placeholder="Escriba la parroquia..." style="display:none;" value="<?= $estudiante['rep_parroquia'] && !in_array($estudiante['rep_parroquia'], ($parroquias_por_municipio[$estudiante['rep_municipio']] ?? [])) ? htmlspecialchars($estudiante['rep_parroquia']) : '' ?>">
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold">Ciudad</label>
@@ -662,11 +805,13 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                                 <select name="ano_escolar[]" class="form-select form-select-sm" required>
                                                     <option value="">Seleccione</option>
                                                     <?php 
-                                                    $ano_actual = date('Y');
-                                                    for ($a = $ano_actual - 1; $a >= 2015; $a--): 
+                                                    $anio_inicio = 2020;
+                                                    $anio_fin = date('Y') + 2;
+                                                    for ($a = $anio_fin; $a >= $anio_inicio; $a--): 
                                                         $periodo = $a . '-' . ($a + 1);
+                                                        $selected = ($ins['ano_escolar'] == $periodo) ? 'selected' : '';
                                                     ?>
-                                                        <option value="<?= htmlspecialchars($periodo) ?>" <?= ($ins['ano_escolar'] == $periodo) ? 'selected' : '' ?>><?= htmlspecialchars($periodo) ?></option>
+                                                        <option value="<?= htmlspecialchars($periodo) ?>" <?= $selected ?>><?= htmlspecialchars($periodo) ?></option>
                                                     <?php endfor; ?>
                                                 </select>
                                             </td>
@@ -678,7 +823,13 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                                     ?>
                                                 </select>
                                             </td>
-                                            <td><input type="text" name="registro[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['registro']) ?>" placeholder="Reg."></td>
+                                            <td>
+                                                <select name="registro[]" class="form-select form-select-sm">
+                                                    <option value="">Seleccione</option>
+                                                    <option value="Si" <?= ($ins['registro'] == 'Si') ? 'selected' : '' ?>>Si</option>
+                                                    <option value="No" <?= ($ins['registro'] == 'No') ? 'selected' : '' ?>>No</option>
+                                                </select>
+                                            </td>
                                             <td>
                                                 <select name="repite[]" class="form-select form-select-sm">
                                                     <option value="No" <?= ($ins['repite']=='No')?'selected':'' ?>>No</option>
@@ -688,8 +839,8 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                             <td><input type="text" name="c[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['c']) ?>" placeholder="C"></td>
                                             <td><input type="text" name="f[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['f']) ?>" placeholder="F"></td>
                                             <td><input type="text" name="p[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['p']) ?>" placeholder="P"></td>
-                                            <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm peso-input" value="<?= $ins['peso'] ?>" placeholder="Peso"></td>
-                                            <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm talla-input" value="<?= $ins['talla'] ?>" placeholder="Talla"></td>
+                                            <td><input type="number" step="1" name="peso[]" class="form-control form-control-sm peso-input" value="<?= $ins['peso'] ?>" placeholder="Peso"></td>
+                                            <td><input type="number" step="1" name="talla[]" class="form-control form-control-sm talla-input" value="<?= $ins['talla'] ?>" placeholder="Talla"></td>
                                             <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm" value="<?= $ins['fecha_inscripcion'] ?>"></td>
                                             <td class="text-center">
                                                 <?php if ($es_ultima): ?>
@@ -726,11 +877,13 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                             <select name="ano_escolar[]" class="form-select form-select-sm" required>
                                                 <option value="">Seleccione</option>
                                                 <?php 
-                                                $ano_actual = date('Y');
-                                                for ($a = $ano_actual - 1; $a >= 2015; $a--): 
+                                                $anio_inicio = 2020;
+                                                $anio_fin = date('Y') + 2;
+                                                for ($a = $anio_fin; $a >= $anio_inicio; $a--): 
                                                     $periodo = $a . '-' . ($a + 1);
+                                                    $selected = ($periodo == $periodo_escolar_actual) ? 'selected' : '';
                                                 ?>
-                                                    <option value="<?= htmlspecialchars($periodo) ?>"><?= htmlspecialchars($periodo) ?></option>
+                                                    <option value="<?= htmlspecialchars($periodo) ?>" <?= $selected ?>><?= htmlspecialchars($periodo) ?></option>
                                                 <?php endfor; ?>
                                             </select>
                                         </td>
@@ -739,7 +892,13 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                                 <?= $opciones_historial ?>
                                             </select>
                                         </td>
-                                        <td><input type="text" name="registro[]" class="form-control form-control-sm" placeholder="Reg."></td>
+                                        <td>
+                                            <select name="registro[]" class="form-select form-select-sm">
+                                                <option value="">Seleccione</option>
+                                                <option value="Si">Si</option>
+                                                <option value="No">No</option>
+                                            </select>
+                                        </td>
                                         <td>
                                             <select name="repite[]" class="form-select form-select-sm">
                                                 <option value="No">No</option>
@@ -749,8 +908,8 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                         <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
                                         <td><input type="text" name="f[]" class="form-control form-control-sm" placeholder="F"></td>
                                         <td><input type="text" name="p[]" class="form-control form-control-sm" placeholder="P"></td>
-                                        <td><input type="number" step="0.01" name="peso[]" class="form-control form-control-sm peso-input" placeholder="Peso"></td>
-                                        <td><input type="number" step="0.01" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
+                                        <td><input type="number" step="1" name="peso[]" class="form-control form-control-sm peso-input" placeholder="Peso"></td>
+                                        <td><input type="number" step="1" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
                                         <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
                                         <td class="text-center">
                                             <span class="badge bg-success" style="font-size:0.75rem;">
@@ -807,7 +966,238 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('educacion_fisica')?.addEventListener('change', toggleEducacionFisica);
     document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
 
-    // ---------- WIZARD ----------
+    // ============================================================================
+    // ========== FUNCIONES PARA "OTRO" EN SELECTS GEOGRÁFICOS ==========
+    // ============================================================================
+    function configurarOtro(selectId, inputId) {
+        const select = document.getElementById(selectId);
+        const input = document.getElementById(inputId);
+        if (!select || !input) return;
+        
+        // Si el input tiene valor (porque se guardó "OTRO"), mostrar el input y ocultar select
+        if (input.value.trim() !== '') {
+            select.style.display = 'none';
+            input.style.display = 'block';
+            select.value = 'OTRO';
+        }
+        
+        select.addEventListener('change', function() {
+            if (this.value === 'OTRO') {
+                this.style.display = 'none';
+                input.style.display = 'block';
+                input.value = '';
+                input.focus();
+                input.required = true;
+            } else {
+                this.style.display = 'block';
+                input.style.display = 'none';
+                input.value = '';
+                input.required = false;
+            }
+        });
+        
+        input.addEventListener('blur', function() {
+            if (this.value.trim() === '') {
+                select.style.display = 'block';
+                this.style.display = 'none';
+                this.required = false;
+                select.value = '';
+            }
+        });
+        
+        // Si el input tiene valor, al hacer submit se enviará
+        // Si el select tiene valor, se enviará el select
+    }
+
+    // ============================================================================
+    // ========== FUNCIONES PARA MUNICIPIOS Y PARROQUIAS ==========
+    // ============================================================================
+    const municipiosPorEstado = {
+        'Zulia': ['Maracaibo', 'San Francisco', 'Cabimas', 'Santa Rita', 'Jesús Enrique Lossada', 'La Cañada de Urdaneta'],
+        'Miranda': ['Baruta', 'Carrizal', 'Chacao', 'El Hatillo', 'Guaicaipuro', 'Los Salias', 'Sucre'],
+        'Carabobo': ['Valencia', 'Puerto Cabello', 'Guacara', 'Los Guayos', 'Naguanagua', 'San Diego'],
+        'Lara': ['Barquisimeto', 'Cabudare', 'Carora', 'El Tocuyo', 'Quíbor'],
+        'Bolívar': ['Ciudad Bolívar', 'Ciudad Guayana', 'Upata'],
+        'Táchira': ['San Cristóbal', 'La Fría', 'Rubio', 'Táriba'],
+        'Mérida': ['Mérida', 'Ejido', 'Tovar'],
+        'Falcón': ['Coro', 'Punto Fijo', 'La Vela de Coro'],
+        'Anzoátegui': ['Barcelona', 'Puerto La Cruz', 'Lechería', 'El Tigre'],
+        'Monagas': ['Maturín', 'Punta de Mata'],
+        'Sucre': ['Cumaná', 'Carúpano'],
+        'Portuguesa': ['Guanare', 'Acarigua'],
+        'Barinas': ['Barinas', 'Sabaneta'],
+        'Apure': ['San Fernando de Apure', 'Guasdualito'],
+        'Guárico': ['Calabozo', 'Valle de la Pascua', 'San Juan de los Morros'],
+        'Cojedes': ['San Carlos', 'Tinaquillo'],
+        'Aragua': ['Maracay', 'El Limón', 'La Victoria', 'Cagua', 'Turmero'],
+        'Nueva Esparta': ['Porlamar', 'La Asunción', 'Juan Griego'],
+        'Delta Amacuro': ['Tucupita'],
+        'Amazonas': ['Puerto Ayacucho'],
+        'Distrito Capital': ['Caracas']
+    };
+
+    const parroquiasPorMunicipio = {
+        'Maracaibo': ['Bolívar', 'Cecilio Acosta', 'Chiquinquirá', 'Coquivacoa', 'Idelfonso Vásquez', 'Juana de Ávila', 'San Isidro', 'Santa Lucía'],
+        'San Francisco': ['Domitila Flores', 'El Bajo', 'Francisco Ochoa', 'José Domínguez', 'Los Cortijos'],
+        'Cabimas': ['Ambrosio', 'Carmen Herrera', 'Germán Ríos Linares', 'La Rosa', 'Punta Gorda', 'Rómulo Betancourt'],
+        'Caracas': ['Catedral', 'El Valle', 'La Candelaria', 'La Pastora', 'San Agustín', 'San Bernardino', 'San José', 'San Juan', 'Santa Teresa', 'Sucre'],
+        'Valencia': ['Candelaria', 'El Socorro', 'Miguel Peña', 'Rafael Urdaneta', 'San Blas', 'San José']
+    };
+
+    function cargarMunicipios(estadoId, municipioId, parroquiaId) {
+        const estadoSelect = document.getElementById(estadoId);
+        const municipioSelect = document.getElementById(municipioId);
+        const parroquiaSelect = document.getElementById(parroquiaId);
+        if (!estadoSelect || !municipioSelect || !parroquiaSelect) return;
+        
+        const estado = estadoSelect.value;
+        municipioSelect.innerHTML = '<option value="">Primero seleccione un estado</option>';
+        parroquiaSelect.innerHTML = '<option value="">Primero seleccione un municipio</option>';
+        
+        if (!estado || estado === 'OTRO') {
+            municipioSelect.disabled = true;
+            parroquiaSelect.disabled = true;
+            return;
+        }
+        
+        const municipios = municipiosPorEstado[estado] || [];
+        if (municipios.length > 0) {
+            municipios.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m;
+                municipioSelect.appendChild(opt);
+            });
+        }
+        // Agregar opción OTRO
+        const optOtro = document.createElement('option');
+        optOtro.value = 'OTRO';
+        optOtro.textContent = '--- OTRO ---';
+        optOtro.style.fontWeight = 'bold';
+        optOtro.style.color = '#dc3545';
+        optOtro.style.borderTop = '2px solid #dc3545';
+        optOtro.style.marginTop = '4px';
+        optOtro.style.paddingTop = '6px';
+        municipioSelect.appendChild(optOtro);
+        
+        municipioSelect.disabled = false;
+        parroquiaSelect.disabled = true;
+        
+        // Si el municipio actual coincide con alguno, seleccionarlo
+        const municipioActual = '<?php echo htmlspecialchars($estudiante['municipio'] ?? ''); ?>';
+        if (municipioActual && municipios.includes(municipioActual)) {
+            municipioSelect.value = municipioActual;
+            // Disparar cambio para cargar parroquias
+            municipioSelect.dispatchEvent(new Event('change'));
+        }
+    }
+
+    function cargarParroquias(municipioId, parroquiaId) {
+        const municipioSelect = document.getElementById(municipioId);
+        const parroquiaSelect = document.getElementById(parroquiaId);
+        if (!municipioSelect || !parroquiaSelect) return;
+        
+        const municipio = municipioSelect.value;
+        parroquiaSelect.innerHTML = '<option value="">Primero seleccione un municipio</option>';
+        
+        if (!municipio || municipio === 'OTRO') {
+            parroquiaSelect.disabled = true;
+            return;
+        }
+        
+        const parroquias = parroquiasPorMunicipio[municipio] || [];
+        if (parroquias.length > 0) {
+            parroquias.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                parroquiaSelect.appendChild(opt);
+            });
+        }
+        // Agregar opción OTRO
+        const optOtro = document.createElement('option');
+        optOtro.value = 'OTRO';
+        optOtro.textContent = '--- OTRO ---';
+        optOtro.style.fontWeight = 'bold';
+        optOtro.style.color = '#dc3545';
+        optOtro.style.borderTop = '2px solid #dc3545';
+        optOtro.style.marginTop = '4px';
+        optOtro.style.paddingTop = '6px';
+        parroquiaSelect.appendChild(optOtro);
+        
+        parroquiaSelect.disabled = false;
+        
+        // Si la parroquia actual coincide con alguna, seleccionarla
+        const parroquiaActual = '<?php echo htmlspecialchars($estudiante['parroquia'] ?? ''); ?>';
+        if (parroquiaActual && parroquias.includes(parroquiaActual)) {
+            parroquiaSelect.value = parroquiaActual;
+        }
+    }
+
+    // Configurar eventos para los selects geográficos
+    function inicializarGeografia() {
+        // Configurar "OTRO" para todos los selects
+        const configs = [
+            ['pais_nacimiento', 'input_pais_nacimiento'],
+            ['estado_nacimiento', 'input_estado_nacimiento'],
+            ['estado_residencia', 'input_estado_residencia'],
+            ['rep_pais_nacimiento', 'input_rep_pais_nacimiento'],
+            ['rep_estado_nacimiento', 'input_rep_estado_nacimiento'],
+            ['rep_estado_residencia', 'input_rep_estado_residencia']
+        ];
+        configs.forEach(([sel, inp]) => {
+            configurarOtro(sel, inp);
+        });
+        
+        // Configurar municipios y parroquias
+        const estadoSelect = document.getElementById('estado_residencia');
+        const municipioSelect = document.getElementById('municipio');
+        const parroquiaSelect = document.getElementById('parroquia');
+        
+        if (estadoSelect && municipioSelect && parroquiaSelect) {
+            // Cargar municipios iniciales si hay estado
+            if (estadoSelect.value && estadoSelect.value !== 'OTRO') {
+                cargarMunicipios('estado_residencia', 'municipio', 'parroquia');
+            }
+            
+            estadoSelect.addEventListener('change', function() {
+                cargarMunicipios('estado_residencia', 'municipio', 'parroquia');
+            });
+            
+            municipioSelect.addEventListener('change', function() {
+                cargarParroquias('municipio', 'parroquia');
+            });
+            
+            configurarOtro('municipio', 'input_municipio');
+            configurarOtro('parroquia', 'input_parroquia');
+        }
+        
+        // Configurar para representante
+        const repEstadoSelect = document.getElementById('rep_estado_residencia');
+        const repMunicipioSelect = document.getElementById('rep_municipio');
+        const repParroquiaSelect = document.getElementById('rep_parroquia');
+        
+        if (repEstadoSelect && repMunicipioSelect && repParroquiaSelect) {
+            if (repEstadoSelect.value && repEstadoSelect.value !== 'OTRO') {
+                cargarMunicipios('rep_estado_residencia', 'rep_municipio', 'rep_parroquia');
+            }
+            
+            repEstadoSelect.addEventListener('change', function() {
+                cargarMunicipios('rep_estado_residencia', 'rep_municipio', 'rep_parroquia');
+            });
+            
+            repMunicipioSelect.addEventListener('change', function() {
+                cargarParroquias('rep_municipio', 'rep_parroquia');
+            });
+            
+            configurarOtro('rep_municipio', 'input_rep_municipio');
+            configurarOtro('rep_parroquia', 'input_rep_parroquia');
+        }
+    }
+
+    // ============================================================================
+    // ========== WIZARD ==========
+    // ============================================================================
     const steps = document.querySelectorAll('.step');
     const nextBtns = document.querySelectorAll('.next-step');
     const prevBtns = document.querySelectorAll('.prev-step');
@@ -838,6 +1228,11 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         currentStep = step;
         updateProgress();
+        
+        // Re-inicializar geografía al cambiar de paso
+        if (step === 0 || step === 1) {
+            setTimeout(inicializarGeografia, 100);
+        }
     }
     
     function nextHandler() {
@@ -871,7 +1266,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStep(0);
 
-    // ---------- TABLA DINÁMICA ----------
+    // ============================================================================
+    // ========== TABLA DINÁMICA (HISTORIAL) ==========
+    // ============================================================================
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
 
@@ -891,6 +1288,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 inp.selectedIndex = 0;
             }
         });
+        
+        // Asegurar que el año escolar sea el actual
+        const selectAnio = newRow.querySelector('select[name="ano_escolar[]"]');
+        if (selectAnio) {
+            const periodoActual = '<?php echo $periodo_escolar_actual; ?>';
+            for (let opt of selectAnio.options) {
+                if (opt.value === periodoActual) {
+                    opt.selected = true;
+                    break;
+                }
+            }
+        }
         
         // Antigua última fila → HISTÓRICO
         const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
@@ -1041,6 +1450,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }, 5000);
     }
+
+    // Inicializar geografía al cargar la página
+    inicializarGeografia();
 });
 </script>
 
