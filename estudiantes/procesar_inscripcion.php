@@ -167,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  pais_nacimiento, estado_nacimiento, nacionalidad, direccion, estado_residencia, 
                  municipio, parroquia, ciudad, created_at) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-            $stmt_rep->bind_param("sssssssssssssss", 
+            $stmt_rep->bind_param("ssssssssssssss", 
                 $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil, 
                 $rep_sexo, $rep_pais_nac, $rep_estado_nac, $rep_nacionalidad, 
                 $rep_direccion, $rep_estado_res, $rep_municipio, $rep_parroquia, $rep_ciudad);

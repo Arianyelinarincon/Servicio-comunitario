@@ -88,13 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Gestión Educativa - Login</title>
-    <!-- ========== SIN CSP PARA EVITAR BLOQUEOS ========== -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #e0e0e0 0%, #c0c0c0 100%);
+            background: linear-gradient(135deg, #e0e0e0 0%, #b0b0b0 100%);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -105,8 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         }
         .login-container {
             border-top: 4px solid #003366;
-            background: white;
-            padding: 30px 35px;
+            background: #ffffff;
+            padding: 35px 35px 25px;
             border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0,0,0,0.15);
             width: 100%;
@@ -118,16 +117,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             box-shadow: 0 12px 40px rgba(0,0,0,0.2);
         }
         .logo {
-            max-width: 180px;
+            max-width: 160px;
             height: auto;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
         }
         .login-container h2 {
             color: #003366;
             font-weight: 700;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             font-size: 22px;
             letter-spacing: 1px;
+        }
+        .login-container h2 i {
+            margin-right: 8px;
         }
         .input-group {
             position: relative;
@@ -143,30 +148,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .input-group i {
+        .input-group .input-icon {
             position: absolute;
             left: 12px;
             top: 38px;
             color: #777;
             font-size: 16px;
+            pointer-events: none;
         }
         .input-group input {
             width: 100%;
-            padding: 12px 12px 12px 40px;
+            padding: 12px 40px 12px 40px;
             border: 1px solid #ccc;
             border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.3s, box-shadow 0.3s;
-            box-sizing: border-box;
             background: #fafafa;
+            outline: none;
         }
         .input-group input:focus {
             border-color: #003366;
-            outline: none;
             box-shadow: 0 0 0 3px rgba(0,51,102,0.15);
             background: #ffffff;
         }
-        #togglePassword {
+        .input-group .toggle-password {
             position: absolute;
             right: 12px;
             top: 38px;
@@ -175,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             font-size: 16px;
             transition: color 0.3s;
         }
-        #togglePassword:hover {
+        .input-group .toggle-password:hover {
             color: #003366;
         }
         .btn-entrar {
@@ -213,32 +218,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             margin-right: 8px;
         }
         .footer-text {
-            margin-top: 20px;
+            margin-top: 22px;
             font-size: 12px;
             color: #777;
         }
         @media (max-width: 480px) {
             .login-container {
-                padding: 20px;
+                padding: 20px 20px 15px;
             }
             .logo {
-                max-width: 140px;
+                max-width: 120px;
+            }
+            .login-container h2 {
+                font-size: 19px;
             }
         }
     </style>
 </head>
 <body>
 
-    <img src="../../includes/image/logo1.png" alt="Logo" class="logo">
+    <!-- Logo - si la ruta no existe, se muestra texto -->
+    <img src="../../includes/image/logo1.png" alt="Logo" class="logo" onerror="this.style.display='none'">
+
     <div class="login-container">
-        <h2><i class="fas fa-school" style="color: #003366; margin-right: 10px;"></i>INICIO DE SESIÓN</h2>
+        <h2><i class="fas fa-school"></i> INICIO DE SESIÓN</h2>
 
         <?php if ($error): ?>
             <div id="mensaje-error" class="error-msg">
                 <i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?>
             </div>
             <script>
-                // Ocultar automáticamente después de 5 segundos
                 setTimeout(function() {
                     var err = document.getElementById('mensaje-error');
                     if (err) {
@@ -252,18 +261,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
         <form action="" method="POST" autocomplete="off">
             <div class="input-group">
-                <label for="usuario"><i class="fas fa-user-circle" style="margin-right: 5px;"></i> USUARIO</label>
-                <i class="fas fa-user"></i>
+                <label for="usuario"><i class="fas fa-user-circle"></i> USUARIO</label>
+                <i class="fas fa-user input-icon"></i>
                 <input type="text" id="usuario" name="usuario" placeholder="Ingrese su usuario" required autofocus>
             </div>
             <div class="input-group">
-                <label for="password"><i class="fas fa-lock" style="margin-right: 5px;"></i> CONTRASEÑA</label>
-                <i class="fas fa-lock"></i>
+                <label for="password"><i class="fas fa-lock"></i> CONTRASEÑA</label>
+                <i class="fas fa-lock input-icon"></i>
                 <input type="password" id="password" name="password" placeholder="••••••••" required>
-                <i class="fas fa-eye" id="togglePassword"></i>
+                <i class="fas fa-eye toggle-password" id="togglePassword"></i>
             </div>
             <button type="submit" name="login" class="btn-entrar">
-                <i class="fas fa-sign-in-alt" style="margin-right: 8px;"></i> ENTRAR
+                <i class="fas fa-sign-in-alt"></i> ENTRAR
             </button>
         </form>
         <div class="footer-text">
@@ -283,7 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             this.classList.toggle('fa-eye-slash');
         });
 
-        // ========== ENFOQUE AUTOMÁTICO EN EL CAMPO DE USUARIO ==========
+        // ========== ENFOQUE AUTOMÁTICO ==========
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('usuario').focus();
         });

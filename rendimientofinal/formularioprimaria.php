@@ -39,14 +39,14 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 $stmt_sec->close();
 
 // ========== CONSULTA CORREGIDA ==========
-// - Debe existir inscripción en la tabla inscripciones para el período
-// - Debe tener boletín completo (3 lapsos) para el período
+// Incluye b.aprobado para determinar aprobado/aplazado
 $ano_inicio = substr($periodo, 0, 4);
 $query_est = "
     SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
            e.fecha_nacimiento, e.lugar_nacimiento,
            b.resultado_final,
            b.literal_final,
+           b.aprobado,
            b.observacion AS observacion_boletin
     FROM estudiantes e
     INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar LIKE ?
@@ -237,12 +237,24 @@ include "../includes/header.php";
                             $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
                             $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
 
+                            // ========== CORRECCIÓN: lógica de APROBADO/APLAZADO ==========
+                            $aprobado_db = $est['aprobado'] ?? ''; // 'SI' o 'NO'
                             $resultado_final = $est['resultado_final'] ?? '';
-                            $literal_final = $est['literal_final'] ?? '';
-                            $observacion_boletin = htmlspecialchars($est['observacion_boletin'] ?? '', ENT_QUOTES, 'UTF-8');
 
-                            $aprobado = ($resultado_final == 'Promovido') ? 'X' : '';
-                            $aplazado = ($resultado_final == 'Aplazado') ? 'X' : '';
+                            $es_aprobado = false;
+                            $es_aplazado = false;
+
+                            if ($aprobado_db == 'SI' || in_array($resultado_final, ['Promovido', 'Aprobado'])) {
+                                $es_aprobado = true;
+                            } elseif ($aprobado_db == 'NO' || in_array($resultado_final, ['Aplazado', 'Reprobado'])) {
+                                $es_aplazado = true;
+                            }
+
+                            $aprobado = $es_aprobado ? 'X' : '';
+                            $aplazado = $es_aplazado ? 'X' : '';
+
+                            $literal_final = htmlspecialchars($est['literal_final'] ?? '');
+                            $observacion_boletin = htmlspecialchars($est['observacion_boletin'] ?? '', ENT_QUOTES, 'UTF-8');
                         ?>
                         <tr>
                             <td><?= $index + 1 ?></td>
