@@ -36,11 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             if ($row['estatus'] !== 'Activo') {
                 $error = 'Cuenta inactiva. Contacte al administrador.';
             } elseif (password_verify($password, $row['password'])) {
-                $_SESSION['usuario_id'] = $row['id'];
+                // ========== GUARDAR SESIÓN CON usuario_id ==========
+                $_SESSION['usuario_id'] = intval($row['id']);
                 $_SESSION['usuario'] = $row['usuario'];
                 $_SESSION['nombre_profesor'] = $row['nombre'];
                 $_SESSION['rol'] = $row['rol'];
                 $_SESSION['tipo_usuario'] = 'secretaria';
+                $_SESSION['usuario_auditoria_tipo'] = 'secretaria';
                 
                 header('Location: /servicio-comunitario/index.php');
                 exit();
@@ -59,11 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                     if ($row2['estatus'] !== 'Activo') {
                         $error = 'Cuenta inactiva. Contacte al administrador.';
                     } elseif (password_verify($password, $row2['password']) || $password === $row2['password']) {
-                        $_SESSION['usuario_id'] = $row2['id'];
+                        $_SESSION['usuario_id'] = intval($row2['id']);
                         $_SESSION['usuario'] = $row2['usuario'];
                         $_SESSION['nombre_profesor'] = $row2['nombre'];
                         $_SESSION['rol'] = $row2['rol'];
                         $_SESSION['tipo_usuario'] = 'profesor';
+                        $_SESSION['usuario_auditoria_tipo'] = 'profesor';
                         
                         header('Location: /servicio-comunitario/index.php');
                         exit();
@@ -154,7 +157,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             top: 38px;
             color: #777;
             font-size: 16px;
+<<<<<<< HEAD
             pointer-events: none;
+=======
+            z-index: 5;
+>>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
         }
         .input-group input {
             width: 100%;
@@ -178,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             cursor: pointer;
             color: #777;
             font-size: 16px;
-            transition: color 0.3s;
+            z-index: 10;
         }
         .input-group .toggle-password:hover {
             color: #003366;
@@ -261,12 +268,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
         <form action="" method="POST" autocomplete="off">
             <div class="input-group">
+<<<<<<< HEAD
                 <label for="usuario"><i class="fas fa-user-circle"></i> USUARIO</label>
+=======
+                <label for="usuario"><i class="fas fa-user-circle" style="margin-right: 5px;"></i> USUARIO</label>
+>>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
                 <i class="fas fa-user input-icon"></i>
                 <input type="text" id="usuario" name="usuario" placeholder="Ingrese su usuario" required autofocus>
             </div>
             <div class="input-group">
+<<<<<<< HEAD
                 <label for="password"><i class="fas fa-lock"></i> CONTRASEÑA</label>
+=======
+                <label for="password"><i class="fas fa-lock" style="margin-right: 5px;"></i> CONTRASEÑA</label>
+>>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
                 <i class="fas fa-lock input-icon"></i>
                 <input type="password" id="password" name="password" placeholder="••••••••" required>
                 <i class="fas fa-eye toggle-password" id="togglePassword"></i>
@@ -281,7 +296,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     </div>
 
     <script>
-        // ========== MOSTRAR/OCULTAR CONTRASEÑA ==========
         const togglePassword = document.querySelector('#togglePassword');
         const password = document.querySelector('#password');
 
@@ -292,7 +306,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             this.classList.toggle('fa-eye-slash');
         });
 
+<<<<<<< HEAD
         // ========== ENFOQUE AUTOMÁTICO ==========
+=======
+>>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('usuario').focus();
         });

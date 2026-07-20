@@ -7,6 +7,10 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 
 include '../includes/header.php';
 require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
+
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 
 // ========== SI VIENE CON editar_id, CARGAR DATOS DESDE LA BD ==========
 if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id'])) {
@@ -82,7 +86,7 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
     <title>Panel de Control - Boletín Inicial</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        /* ===== ESTILOS (idénticos a la versión anterior, solo cambio la variable $todo_completo) ===== */
+        /* ===== ESTILOS ===== */
         :root {
             --primary: #1a237e;
             --primary-dark: #0d1555;
@@ -453,7 +457,7 @@ $modo_edicion = isset($_GET['editar_id']) ? true : false;
                 <div><i class="fas fa-user"></i> <strong>Estudiante:</strong> <?php echo htmlspecialchars($_SESSION['estudiante']); ?></div>
                 <div><i class="fas fa-id-card"></i> <strong>C.E:</strong> <?php echo htmlspecialchars($_SESSION['ce']); ?></div>
                 <div><i class="fas fa-users"></i> <strong>Grupo:</strong> <?php echo htmlspecialchars($_SESSION['grupo']); ?></div>
-                <div><i class="fas fa-calendar-alt"></i> <strong>Año Escolar:</strong> <?php echo htmlspecialchars($_SESSION['ano_escolar']); ?></div>
+                <div><i class="fas fa-calendar-alt"></i> <strong>Año Escolar:</strong> <?php echo htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual); ?></div>
                 <div><i class="fas fa-chalkboard-teacher"></i> <strong>Docente:</strong> <?php echo htmlspecialchars($_SESSION['docente']); ?></div>
                 <div><i class="fas fa-user-tie"></i> <strong>Representante:</strong> <?php echo htmlspecialchars($_SESSION['representante']); ?></div>
             </div>

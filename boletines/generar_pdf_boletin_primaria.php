@@ -8,30 +8,34 @@ if (!isset($_SESSION['estudiante'])) {
 
 require_once '../estadisticas/dompdf/autoload.inc.php';
 require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
+
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 
 // Recuperar datos de la sesión y forzar MAYÚSCULAS
 $estudiante = mb_strtoupper(htmlspecialchars($_SESSION['estudiante'] ?? ''), 'UTF-8');
 $ce = mb_strtoupper(htmlspecialchars($_SESSION['ce'] ?? ''), 'UTF-8');
 $grado = mb_strtoupper(htmlspecialchars($_SESSION['grado'] ?? ''), 'UTF-8');
-$ano_escolar = mb_strtoupper(htmlspecialchars($_SESSION['ano_escolar'] ?? '2025/2026.'), 'UTF-8');
+$ano_escolar = mb_strtoupper(htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual), 'UTF-8');
 $docente = mb_strtoupper(htmlspecialchars($_SESSION['docente'] ?? ''), 'UTF-8');
 $representante = mb_strtoupper(htmlspecialchars($_SESSION['representante'] ?? ''), 'UTF-8');
 $observacion = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['observacion'] ?? ''), 'UTF-8'));
 
-// === LAPSO 1 (CORREGIDO: usar l1_analisis) ===
+// === LAPSO 1 ===
 $l1_proyecto = mb_strtoupper(htmlspecialchars($_SESSION['l1_proyecto'] ?? ''), 'UTF-8');
 $l1_analisis = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l1_analisis'] ?? ''), 'UTF-8'));
 $l1_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l1_sugerencias'] ?? ''), 'UTF-8'));
 
-// === LAPSO 2 (CORREGIDO) ===
+// === LAPSO 2 ===
 $l2_proyecto = mb_strtoupper(htmlspecialchars($_SESSION['l2_proyecto'] ?? ''), 'UTF-8');
 $l2_analisis = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l2_analisis'] ?? ''), 'UTF-8'));
 $l2_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l2_sugerencias'] ?? ''), 'UTF-8'));
 
-// === LAPSO 3 (CORREGIDO) ===
+// === LAPSO 3 ===
 $l3_proyecto = mb_strtoupper(htmlspecialchars($_SESSION['l3_proyecto'] ?? ''), 'UTF-8');
 $l3_analisis = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_analisis'] ?? ''), 'UTF-8'));
 $l3_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_sugerencias'] ?? ''), 'UTF-8'));
@@ -40,7 +44,7 @@ $l3_sugerencias = nl2br(mb_strtoupper(htmlspecialchars($_SESSION['l3_sugerencias
 $resultado_final = htmlspecialchars($_SESSION['resultado_final'] ?? '');
 $literal_final = mb_strtoupper(htmlspecialchars($_SESSION['literal_final'] ?? ''), 'UTF-8');
 
-// ========== LOGO - RUTA ABSOLUTA ==========
+// ========== LOGO - RUTA ABSOLUTA CON CENTRADO ==========
 $logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
 $logo_html = '';
 
@@ -54,26 +58,26 @@ if (extension_loaded('gd')) {
             
             if ($mime_type && strpos($mime_type, 'image/') === 0) {
                 $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
-                $logo_html = '<img src="' . $logo_base64 . '" class="logo-img" alt="Logo">';
+                $logo_html = '<div style="text-align: center !important; margin: 0 auto; width: 100%;">
+                                <img src="' . $logo_base64 . '" style="width: 75px; height: auto; display: inline-block !important; margin: 0 auto;" alt="Logo">
+                             </div>';
             } else {
-                $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+                $logo_html = '<div style="text-align: center; font-weight: bold; font-size: 14pt; margin: 0 auto;">LOGO</div>';
             }
         } catch (Exception $e) {
-            $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+            $logo_html = '<div style="text-align: center; font-weight: bold; font-size: 14pt; margin: 0 auto;">LOGO</div>';
         }
     } else {
-        $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+        $logo_html = '<div style="text-align: center; font-weight: bold; font-size: 14pt; margin: 0 auto;">LOGO</div>';
     }
 } else {
-    $logo_html = '<div style="width:75px; height:75px; border:2px solid #000; margin:0 auto; text-align:center; line-height:75px; font-size:8pt; font-weight:bold;">LOGO</div>';
+    $logo_html = '<div style="text-align: center; font-weight: bold; font-size: 14pt; margin: 0 auto;">LOGO</div>';
 }
 
 $options = new Options();
 $options->set('isHtml5ParserEnabled', true);
 $options->set('isRemoteEnabled', true);
 $dompdf = new Dompdf($options);
-
-
 
 ob_start();
 ?>
@@ -167,11 +171,16 @@ ob_start();
         .texto-negrita { font-weight: bold; }
         .page-break { page-break-before: always; }
 
-        .logo-img {
+        .logo-portada {
+            text-align: center !important;
+            margin: 15px auto !important;
+            width: 100%;
+        }
+        .logo-portada img {
+            display: inline-block !important;
+            margin: 0 auto !important;
             width: 75px;
             height: auto;
-            display: block;
-            margin: 0 auto;
         }
 
         .casilla-container {
@@ -279,19 +288,20 @@ ob_start();
             </div>
 
             <div style="text-align: center; margin-bottom: 40px;">
-                <div class="casilla-container" style="display: inline-block; width: 45%; text-align: center;">
-                    <div class="casilla-label">PROMOVIDO</div>
-                    <div class="<?php echo ($resultado_final == 'Promovido') ? 'casilla-x' : 'casilla'; ?>">
-                        <span class="x-symbol"><?php echo ($resultado_final == 'Promovido') ? 'X' : ''; ?></span>
+                <div style="display: inline-block; width: 45%; text-align: center;">
+                    <div style="display: block; font-weight: bold; font-size: 10.5pt; margin-bottom: 5px;">PROMOVIDO</div>
+                    <div style="display: inline-block; width: 26px; height: 26px; border: 2px solid #000; border-radius: 4px; text-align: center; line-height: 26px; font-size: 18pt; font-weight: bold; background: #fff; color: #000;">
+                        <?php echo ($resultado_final == 'Promovido') ? 'X' : ''; ?>
                     </div>
                 </div>
-                <div class="casilla-container" style="display: inline-block; width: 45%; text-align: center;">
-                    <div class="casilla-label">APLAZADO</div>
-                    <div class="<?php echo ($resultado_final == 'Aplazado') ? 'casilla-x' : 'casilla'; ?>">
-                        <span class="x-symbol"><?php echo ($resultado_final == 'Aplazado') ? 'X' : ''; ?></span>
+                <div style="display: inline-block; width: 45%; text-align: center;">
+                    <div style="display: block; font-weight: bold; font-size: 10.5pt; margin-bottom: 5px;">APLAZADO</div>
+                    <div style="display: inline-block; width: 26px; height: 26px; border: 2px solid #000; border-radius: 4px; text-align: center; line-height: 26px; font-size: 18pt; font-weight: bold; background: #fff; color: #000;">
+                        <?php echo ($resultado_final == 'Aplazado') ? 'X' : ''; ?>
                     </div>
                 </div>
             </div>
+            
             <div style="text-align: center; margin-bottom: 1px; font-weight: bold; font-size: 11pt;">
                 Al Grado: <span style="font-weight: normal; margin-left: 5px;"><?php echo $grado; ?></span>
             </div>
@@ -316,8 +326,7 @@ ob_start();
                 <tr>
                     <td colspan="3" style="padding-top: 45px;">
                         <div style="width: 70%; margin: 0 auto; border-top: 1px solid #000; padding-top: 5px;">
-                            Vocera investigación y formación
-                        </div>
+                            Vocera investigación y formación                        </div>
                     </td>
                 </tr>
             </table>
@@ -332,8 +341,7 @@ ob_start();
                 MARACAIBO ZULIA
             </div>
 
-            <!-- ===== LOGO ===== -->
-            <div style="text-align: center; margin: 25px 0;">
+            <div class="logo-portada">
                 <?php echo $logo_html; ?>
             </div>
 
@@ -488,8 +496,9 @@ $dompdf->setPaper('letter', 'landscape');
 $dompdf->loadHtml($html);
 $dompdf->render();
 
-// ========== GUARDAR BOLETÍN EN TABLA boletines ==========
+// ========== GUARDAR BOLETÍN EN TABLA boletines (EVITAR DUPLICADOS) ==========
 $estudiante_id = $_SESSION['estudiante_id'] ?? 0;
+
 if (!$estudiante_id && isset($_SESSION['estudiante'])) {
     $nombre_est = $_SESSION['estudiante'];
     $ce_est = $_SESSION['ce'];
@@ -508,51 +517,65 @@ if (!$estudiante_id && isset($_SESSION['estudiante'])) {
 
 if ($estudiante_id) {
     $tipo = 'primaria';
-    $periodo_escolar = $_SESSION['ano_escolar'] ?? date('Y') . '-' . (date('Y') + 1);
+    $periodo_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
     
-    $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
-    if ($stmt_del) {
-        $stmt_del->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
-        $stmt_del->execute();
-        $stmt_del->close();
-    }
+    // ===== VERIFICAR SI YA EXISTE =====
+    $stmt_check = $conexion->prepare("SELECT id FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
+    $stmt_check->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
+    $stmt_check->execute();
+    $existe = $stmt_check->get_result()->fetch_assoc();
+    $stmt_check->close();
     
     $obs = $_SESSION['observacion'] ?? '';
-    
     $l1_proyecto_db = $_SESSION['l1_proyecto'] ?? '';
     $l1_analisis_db = $_SESSION['l1_analisis'] ?? '';
     $l1_sugerencias_db = $_SESSION['l1_sugerencias'] ?? '';
-    
     $l2_proyecto_db = $_SESSION['l2_proyecto'] ?? '';
     $l2_analisis_db = $_SESSION['l2_analisis'] ?? '';
     $l2_sugerencias_db = $_SESSION['l2_sugerencias'] ?? '';
-    
     $l3_proyecto_db = $_SESSION['l3_proyecto'] ?? '';
     $l3_analisis_db = $_SESSION['l3_analisis'] ?? '';
     $l3_sugerencias_db = $_SESSION['l3_sugerencias'] ?? '';
-    
     $resultado_final_db = $_SESSION['resultado_final'] ?? '';
     $literal_final_db = $_SESSION['literal_final'] ?? '';
     
-    $stmt_bol = $conexion->prepare("INSERT INTO boletines 
-        (estudiante_id, periodo, tipo_boletin, observacion, 
-         m1_proyecto, m1_formacion, m1_sugerencias,
-         m2_proyecto, m2_formacion, m2_sugerencias,
-         m3_proyecto, m3_formacion, m3_sugerencias,
-         resultado_final, literal_final)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        
-    if ($stmt_bol) {
-        $tipos = 'i' . str_repeat('s', 14);
-        $stmt_bol->bind_param($tipos, 
+    if ($existe) {
+        // ===== ACTUALIZAR EN LUGAR DE INSERTAR =====
+        $stmt_update = $conexion->prepare("UPDATE boletines SET 
+            observacion = ?, 
+            m1_proyecto = ?, m1_formacion = ?, m1_sugerencias = ?,
+            m2_proyecto = ?, m2_formacion = ?, m2_sugerencias = ?,
+            m3_proyecto = ?, m3_formacion = ?, m3_sugerencias = ?,
+            resultado_final = ?, literal_final = ?
+            WHERE id = ?");
+        $stmt_update->bind_param("ssssssssssssi", 
+            $obs,
+            $l1_proyecto_db, $l1_analisis_db, $l1_sugerencias_db,
+            $l2_proyecto_db, $l2_analisis_db, $l2_sugerencias_db,
+            $l3_proyecto_db, $l3_analisis_db, $l3_sugerencias_db,
+            $resultado_final_db, $literal_final_db,
+            $existe['id']
+        );
+        $stmt_update->execute();
+        $stmt_update->close();
+    } else {
+        // ===== INSERTAR NUEVO =====
+        $stmt_insert = $conexion->prepare("INSERT INTO boletines 
+            (estudiante_id, periodo, tipo_boletin, observacion, 
+             m1_proyecto, m1_formacion, m1_sugerencias,
+             m2_proyecto, m2_formacion, m2_sugerencias,
+             m3_proyecto, m3_formacion, m3_sugerencias,
+             resultado_final, literal_final)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt_insert->bind_param("issssssssssssss", 
             $estudiante_id, $periodo_escolar, $tipo, $obs,
             $l1_proyecto_db, $l1_analisis_db, $l1_sugerencias_db,
             $l2_proyecto_db, $l2_analisis_db, $l2_sugerencias_db,
             $l3_proyecto_db, $l3_analisis_db, $l3_sugerencias_db,
             $resultado_final_db, $literal_final_db
         );
-        $stmt_bol->execute();
-        $stmt_bol->close();
+        $stmt_insert->execute();
+        $stmt_insert->close();
     }
 }
 

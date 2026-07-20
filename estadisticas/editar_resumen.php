@@ -5,6 +5,10 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
     exit();
 }
 require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
+
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 
 // ========== FUNCIONES DE SEGURIDAD ==========
 function generarTokenCSRF() {
@@ -553,8 +557,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
     $datos_clasificacion_json = json_encode($clasificacion, JSON_UNESCAPED_UNICODE);
     
     // ========== ACTUALIZAR RESUMEN ==========
-    // Nota: ya no guardamos ingresos/egresos en el resumen aquí, porque se manejan por AJAX.
-    // Pero por compatibilidad, podemos actualizar el JSON de ingresos/egresos obteniéndolos de las tablas.
     $periodo_mes = date('Y-m', strtotime($periodo));
     $ingresos_display = [];
     $egresos_display = [];
@@ -607,8 +609,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
         egresos = ?
         WHERE id = ?");
     
-    // Tipos: 6 enteros (mat_v, mat_h, total_v, total_h, porcentaje, id) + 4 strings (observaciones, datos_clasificacion, ingresos, egresos)
-    $types = "iiiiissssi"; // 6 i (5 campos + id) + 4 s = 10 tipos
+    $types = "iiiiissssi";
     $stmt->bind_param($types, 
         $mat_v, $mat_h, $total_v, $total_h, $porcentaje, 
         $observaciones, $datos_clasificacion_json, $ingresos_json, $egresos_json, 

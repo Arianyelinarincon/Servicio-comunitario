@@ -7,15 +7,19 @@ if (!isset($_SESSION['estudiante'])) {
 
 require_once '../estadisticas/dompdf/autoload.inc.php';
 require_once '../config/conexion.php';
+require_once '../config/configuracion.php';
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
+
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
 
 // Recuperar datos de la sesión
 $estudiante = htmlspecialchars($_SESSION['estudiante'] ?? '');
 $ce = htmlspecialchars($_SESSION['ce'] ?? '');
 $grupo = htmlspecialchars($_SESSION['grupo'] ?? '');
-$ano_escolar = htmlspecialchars($_SESSION['ano_escolar'] ?? '2025 / 2026');
+$ano_escolar = htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual);
 $docente = htmlspecialchars($_SESSION['docente'] ?? '');
 $representante = htmlspecialchars($_SESSION['representante'] ?? '');
 $observacion = nl2br(htmlspecialchars($_SESSION['observacion'] ?? ''));
@@ -36,7 +40,6 @@ $m3_rel = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
 $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
 
 // ========== LOGO - RUTA ABSOLUTA ==========
-// Usamos la ruta absoluta de XAMPP
 $logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
 $logo_html = '';
 
@@ -44,9 +47,7 @@ $logo_html = '';
 if (extension_loaded('gd')) {
     if (file_exists($logo_path)) {
         try {
-            // Leer la imagen y convertir a base64
             $logo_data = file_get_contents($logo_path);
-            // Detectar el tipo de imagen
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime_type = finfo_file($finfo, $logo_path);
             finfo_close($finfo);
@@ -55,18 +56,15 @@ if (extension_loaded('gd')) {
                 $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
                 $logo_html = '<img src="' . $logo_base64 . '" style="width:75px; height:auto; display:block; margin:0 auto;" alt="Logo">';
             } else {
-                // Si no es una imagen válida, mostrar texto
                 $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
             }
         } catch (Exception $e) {
             $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
         }
     } else {
-        // El archivo no existe
         $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
     }
 } else {
-    // GD no está instalada
     $logo_html = '<div style="text-align:center; font-weight:bold; font-size:14pt;">LOGO</div>';
 }
 
@@ -447,7 +445,7 @@ if (!$estudiante_id && isset($_SESSION['estudiante'])) {
 
 if ($estudiante_id) {
     $tipo = $_SESSION['tipo_boletin'] ?? 'inicial';
-    $periodo_escolar = $_SESSION['ano_escolar'] ?? date('Y') . '-' . (date('Y')+1);
+    $periodo_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
     
     $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
     $stmt_del->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);

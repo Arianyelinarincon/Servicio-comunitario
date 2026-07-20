@@ -1,24 +1,27 @@
 <?php
 session_start();
 
-// Limpiar solo las variables de navegación, no los datos ya guardados
+// Limpiar variables de navegación
 unset($_SESSION['paso_actual']);
 
 require_once "../estadisticas/config_db.php";
+require_once "../config/configuracion.php";
 
-// Guardar el tipo de boletín (inicial/primaria) en sesión
-if (isset($_GET['tipo'])) {
-    $_SESSION['tipo_boletin'] = $_GET['tipo'];
-} elseif (!isset($_SESSION['tipo_boletin'])) {
-    $_SESSION['tipo_boletin'] = 'inicial';
-}
+// ========== OBTENER PERIODO ESCOLAR ==========
+$periodo_escolar_actual = obtenerPeriodoEscolar();
+
+// Guardar el tipo de boletín
+$_SESSION['tipo_boletin'] = 'inicial';
 
 // Búsqueda AJAX para autocompletado
 if (isset($_GET['buscar_estudiante'])) {
     $termino = $_GET['buscar_estudiante'] . '%';
-    $periodo_actual = $_SESSION['ano_escolar'] ?? '2025 / 2026';
-    $ano_inicio = substr($periodo_actual, 0, 4); // Extrae "2025"
+    $periodo_actual = $_GET['periodo'] ?? $periodo_escolar_actual;
+    $ano_inicio = substr($periodo_actual, 0, 4);
+    $like_periodo = $ano_inicio . '%';
     
+    // ===== CORRECCIÓN: SOLO ESTUDIANTES CON TODOS LOS DATOS COMPLETOS =====
+    // Incluye: inscripcion_completa, sala, seccion, docente, al menos 1 padre
     $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
                    s.nombre AS grupo, p.nombre AS doc_nombre, p.apellido AS doc_apellido
             FROM estudiantes e
@@ -28,6 +31,16 @@ if (isset($_GET['buscar_estudiante'])) {
             WHERE CONCAT(e.nombre, ' ', e.apellido) LIKE ?
               AND e.inscripcion_completa = 1
               AND e.estatus = 'Activo'
+              AND e.sala IN ('sala4', 'sala5')
+              AND e.sala IS NOT NULL AND e.sala != ''
+              AND e.seccion_id IS NOT NULL AND e.seccion_id > 0
+              -- ===== NUEVO: DEBE TENER AL MENOS UN PADRE =====
+              AND (e.madre_nombre IS NOT NULL AND e.madre_nombre != '' 
+                   OR e.padre_nombre IS NOT NULL AND e.padre_nombre != '')
+              AND EXISTS (
+                  SELECT 1 FROM profesores p2 
+                  WHERE p2.seccion = e.seccion_id AND p2.sala = e.sala AND p2.estatus = 'Activo'
+              )
               AND NOT EXISTS (
                   SELECT 1 FROM egresos eg 
                   WHERE eg.estudiante_id = e.id 
@@ -39,10 +52,10 @@ if (isset($_GET['buscar_estudiante'])) {
                   SELECT 1 FROM inscripciones i
                   WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?
               )
+            ORDER BY e.apellido, e.nombre
             LIMIT 10";
     $stmt = $conexion->prepare($sql);
     $buscar = "%$termino%";
-    $like_periodo = $ano_inicio . '%';
     $stmt->bind_param("sss", $buscar, $like_periodo, $like_periodo);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -64,38 +77,50 @@ if (isset($_GET['buscar_estudiante'])) {
 
 // Procesar selección de estudiante
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verificar que el estudiante seleccionado sigue cumpliendo los requisitos
     $estudiante_id = intval($_POST['estudiante_id']);
-    $periodo_actual = $_POST['ano_escolar'] ?? '2025 / 2026';
+    $periodo_actual = $_POST['ano_escolar'] ?? $periodo_escolar_actual;
     $ano_inicio = substr($periodo_actual, 0, 4);
     $like_periodo = $ano_inicio . '%';
     
-    $stmt_check = $conexion->prepare("SELECT id FROM estudiantes 
-                                      WHERE id = ? AND inscripcion_completa = 1 AND estatus = 'Activo'
-                                      AND NOT EXISTS (
-                                          SELECT 1 FROM egresos eg 
-                                          WHERE eg.estudiante_id = estudiantes.id 
-                                            AND eg.sala = estudiantes.sala 
-                                            AND eg.seccion_id = estudiantes.seccion_id 
-                                            AND eg.periodo LIKE ?
-                                      )
-                                      AND EXISTS (
-                                          SELECT 1 FROM inscripciones i
-                                          WHERE i.estudiante_id = estudiantes.id AND i.ano_escolar LIKE ?
-                                      )");
+    // ===== CORRECCIÓN: VERIFICAR TODOS LOS DATOS COMPLETOS =====
+    $stmt_check = $conexion->prepare("SELECT e.id
+                                      FROM estudiantes e
+                                      WHERE e.id = ? 
+                                        AND e.inscripcion_completa = 1 
+                                        AND e.estatus = 'Activo'
+                                        AND e.sala IN ('sala4', 'sala5')
+                                        AND e.sala IS NOT NULL AND e.sala != ''
+                                        AND e.seccion_id IS NOT NULL AND e.seccion_id > 0
+                                        AND (e.madre_nombre IS NOT NULL AND e.madre_nombre != '' 
+                                             OR e.padre_nombre IS NOT NULL AND e.padre_nombre != '')
+                                        AND EXISTS (
+                                            SELECT 1 FROM profesores p2 
+                                            WHERE p2.seccion = e.seccion_id AND p2.sala = e.sala AND p2.estatus = 'Activo'
+                                        )
+                                        AND NOT EXISTS (
+                                            SELECT 1 FROM egresos eg 
+                                            WHERE eg.estudiante_id = e.id 
+                                              AND eg.sala = e.sala 
+                                              AND eg.seccion_id = e.seccion_id 
+                                              AND eg.periodo LIKE ?
+                                        )
+                                        AND EXISTS (
+                                            SELECT 1 FROM inscripciones i
+                                            WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?
+                                        )
+                                      LIMIT 1");
     $stmt_check->bind_param("iss", $estudiante_id, $like_periodo, $like_periodo);
     $stmt_check->execute();
     $existe = $stmt_check->get_result()->fetch_assoc();
     if (!$existe) {
-        // Si no es válido, redirigir con error
-        header('Location: paso1_portada.php?tipo=inicial&error=no_valido');
+        header('Location: paso1_portada.php?error=no_valido');
         exit;
     }
 
     $_SESSION['estudiante'] = htmlspecialchars($_POST['estudiante']);
     $_SESSION['ce'] = htmlspecialchars($_POST['ce']);
     $_SESSION['grupo'] = htmlspecialchars($_POST['grupo']);
-    $_SESSION['ano_escolar'] = htmlspecialchars($_POST['ano_escolar'] ?? '2025 / 2026');
+    $_SESSION['ano_escolar'] = htmlspecialchars($_POST['ano_escolar'] ?? $periodo_escolar_actual);
     $_SESSION['docente'] = htmlspecialchars($_POST['docente']);
     $_SESSION['representante'] = htmlspecialchars($_POST['representante']);
     $_SESSION['estudiante_id'] = intval($_POST['estudiante_id']);
@@ -304,6 +329,21 @@ include '../includes/header.php';
             margin-right: 6px;
         }
 
+        .alerta-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            padding: 10px 16px;
+            border-radius: var(--radius-sm);
+            margin-top: 10px;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        .alerta-info i {
+            margin-right: 6px;
+        }
+
         .clearfix {
             clear: both;
             overflow: hidden;
@@ -346,16 +386,34 @@ include '../includes/header.php';
                 justify-content: center;
             }
         }
+
+        .badge-info {
+            background: #17a2b8;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
-    
     <div class="portada-container">
         <div class="card-portada">
             <h2>
                 <i class="fas fa-user-graduate"></i>
                 Seleccionar Estudiante - Boletín Inicial
             </h2>
+            <div style="text-align:center; margin-bottom:15px;">
+                <span class="badge-info"><i class="fas fa-graduation-cap"></i> Solo estudiantes de Sala 4 y Sala 5</span>
+                <span class="badge-info" style="margin-left:8px; background:#28a745;"><i class="fas fa-check-circle"></i> Con inscripción completa, grado, sección, docente y al menos un padre</span>
+            </div>
+            
+            <div class="alerta-info">
+                <i class="fas fa-info-circle"></i> 
+                <strong>Nota:</strong> Solo aparecen estudiantes con <strong>inscripción completa</strong>, <strong>grado</strong>, <strong>sección</strong>, <strong>docente asignado</strong> y <strong>al menos un padre registrado</strong>.
+            </div>
+            
             <form method="POST">
                 <div class="grid-portada">
                     <div class="grupo-form">
@@ -375,7 +433,7 @@ include '../includes/header.php';
                     </div>
                     <div class="grupo-form">
                         <label><i class="fas fa-calendar-alt"></i> Año Escolar:</label>
-                        <input type="text" name="ano_escolar" id="ano_escolar" value="2025 / 2026">
+                        <input type="text" name="ano_escolar" id="ano_escolar" value="<?= htmlspecialchars($periodo_escolar_actual) ?>">
                     </div>
                     <div class="grupo-form">
                         <label><i class="fas fa-chalkboard-teacher"></i> Docente:</label>
@@ -388,7 +446,7 @@ include '../includes/header.php';
                     <input type="hidden" name="estudiante_id" id="estudiante_id">
                 </div>
                 <div id="mensaje_error" class="alerta-error">
-                    <i class="fas fa-exclamation-triangle"></i> Estudiante no encontrado. Verifique el nombre.
+                    <i class="fas fa-exclamation-triangle"></i> Estudiante no encontrado o no tiene todos los datos completos (grado, sección, docente, padre/madre).
                 </div>
                 <div class="clearfix">
                     <button type="submit" id="btn_siguiente" class="btn-seleccionar" disabled>
@@ -409,6 +467,7 @@ include '../includes/header.php';
         const btnSiguiente = document.getElementById('btn_siguiente');
         const mensajeError = document.getElementById('mensaje_error');
         const estudianteIdInput = document.getElementById('estudiante_id');
+        const anoEscolarInput = document.getElementById('ano_escolar');
 
         function limpiarCampos() {
             ceInput.value = ''; 
@@ -434,12 +493,13 @@ include '../includes/header.php';
         
         inputEstudiante.addEventListener('input', function() {
             const texto = this.value.trim();
+            const periodo = anoEscolarInput.value.trim();
             if (texto.length < 2) { 
                 sugerenciasDiv.style.display = 'none'; 
                 limpiarCampos(); 
                 return; 
             }
-            fetch('?buscar_estudiante=' + encodeURIComponent(texto))
+            fetch('?buscar_estudiante=' + encodeURIComponent(texto) + '&periodo=' + encodeURIComponent(periodo))
                 .then(res => res.json())
                 .then(data => {
                     if (data.length === 0) { 
@@ -451,7 +511,7 @@ include '../includes/header.php';
                     sugerenciasDiv.innerHTML = '';
                     data.forEach(est => {
                         const div = document.createElement('div');
-                        div.textContent = est.nombre_completo;
+                        div.textContent = est.nombre_completo + ' (' + est.grupo + ') - ' + est.docente;
                         div.onclick = () => seleccionarEstudiante(est);
                         sugerenciasDiv.appendChild(div);
                     });

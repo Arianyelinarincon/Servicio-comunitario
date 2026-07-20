@@ -158,7 +158,7 @@ ob_start();
         .seccion-titulo {
             font-weight: bold;
             text-transform: uppercase;
-            margin-top: 0.5cm;    
+            margin-top: 0,1cm;    
             margin-bottom: 0.2cm;   
             font-size: 10.5pt;
             clear: both;
@@ -233,14 +233,14 @@ ob_start();
             width: 100%;
             border-collapse: collapse;
             margin-top: 0.4cm;
-            font-size: 8.5pt;
+            font-size: 8pt;
             text-align: center;
             table-layout: fixed !important;
         }
         .tabla-historial th,
         .tabla-historial td {
             border: 1px solid #000;
-            padding: 4px 2px;
+            padding: 2px 2px;
             vertical-align: middle;
             word-wrap: break-word;
             overflow: hidden;
@@ -251,9 +251,10 @@ ob_start();
             background: transparent;
         }
         .tabla-historial td {
-            font-size: 8.5pt;
-            height: 0.8cm; 
-        }
+    font-size: 7.5pt;
+    height: 0.01cm;
+    padding: 1px 1px;
+}
 
         /* ===== BOTONES (solo preview) ===== */
         .btn-accion {
