@@ -44,9 +44,9 @@ if (!function_exists('checkbox')) {
         .hoja-impresion {
             background: #fff;
             width: 100%;
-            max-width: 21.59cm;      /* Ancho de carta */
+            max-width: 21.59cm;
             margin: 0 auto;
-            padding: 0.8cm 1.0cm;    /* Márgenes internos consistentes */
+            padding: 0.8cm 1.0cm;
             box-shadow: <?= $es_preview ? '0 0 10px rgba(0,0,0,0.1)' : 'none' ?>;
             box-sizing: border-box;
         }
@@ -347,7 +347,7 @@ if (!function_exists('checkbox')) {
         </tr>
     </table>
 
-    <!-- ===== HISTORIAL ESCOLAR ===== -->
+    <!-- ===== HISTORIAL ESCOLAR (con X en Reg. y Rep) ===== -->
     <table class="tabla-notas">
         <thead>
             <tr>
@@ -373,17 +373,24 @@ if (!function_exists('checkbox')) {
                     $anos = explode('-', $ins['ano_escolar']);
                     $ano1 = isset($anos[0]) ? substr(trim($anos[0]), -2) : '';
                     $ano2 = isset($anos[1]) ? substr(trim($anos[1]), -2) : '';
+                    $peso = isset($ins['peso']) && is_numeric($ins['peso']) ? round($ins['peso']) : '';
+                    $talla = isset($ins['talla']) && is_numeric($ins['talla']) ? round($ins['talla']) : '';
+                    if ($peso == 0) $peso = '';
+                    if ($talla == 0) $talla = '';
+                    // Determinar X para Regular y Repitiente
+                    $reg_x = ($ins['registro'] == 'Regular') ? 'X' : '';
+                    $rep_x = ($ins['repite'] == 'Si') ? 'X' : '';
                 ?>
                 <tr>
                     <td>20<span class="dato-line"><?= $ano1 ?></span> - 20<span class="dato-line"><?= $ano2 ?></span></td>
                     <td><?= htmlspecialchars($ins['grado_seccion'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['registro'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['repite'] ?? '') ?></td>
+                    <td><?= $reg_x ?></td>
+                    <td><?= $rep_x ?></td>
                     <td><?= htmlspecialchars($ins['c'] ?? '') ?></td>
                     <td><?= htmlspecialchars($ins['f'] ?? '') ?></td>
                     <td><?= htmlspecialchars($ins['p'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['peso'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($ins['talla'] ?? '') ?></td>
+                    <td><?= $peso ?></td>
+                    <td><?= $talla ?></td>
                     <td></td>
                     <td><?= !empty($ins['fecha_inscripcion']) ? date('d/m/Y', strtotime($ins['fecha_inscripcion'])) : '' ?></td>
                     <td></td>

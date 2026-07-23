@@ -16,7 +16,6 @@ $mensaje = "";
 
 // ==================== PROCESAR INACTIVACIÓN POR POST ====================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['inactivar_id'])) {
-    // Validar token CSRF
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         $mensaje = "<div style='background:#f8d7da; color:#721c24; padding:10px; border-radius:6px; margin-bottom:20px;'>Error de seguridad: token inválido.</div>";
     } else {
@@ -33,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['inactivar_id'])) {
     }
 }
 
-// Consulta de lista (sin cambios)
+// Consulta de lista
 $sql_lista = "SELECT p.id, p.nombre AS nombre_profesor, p.apellido AS apellido_profesor, p.sala, p.estatus, s.nombre AS nombre_seccion
               FROM profesores p 
               LEFT JOIN secciones s ON p.seccion = s.id
@@ -76,7 +75,8 @@ $resultado_lista = $conexion->query($sql_lista);
     <table id="tablaProfesores">
         <thead>
             <tr>
-                <th>Nº</th> <th>Nombre</th>
+                <th>Nº</th>
+                <th>Nombre</th>
                 <th>Apellido</th>
                 <th>Sala</th>
                 <th>Sección</th>
@@ -100,7 +100,7 @@ $resultado_lista = $conexion->query($sql_lista);
                     <span class="badge <?php echo $esActivo ? 'bg-activo' : 'bg-inactivo'; ?>">
                         <?php echo htmlspecialchars($row['estatus']); ?>
                     </span>
-                 </a>
+                </td>
                 <td>
                     <a href="editar_profesor.php?id=<?php echo $row['id']; ?>" class="btn btn-editar">
                         <i class="fas fa-edit"></i> Editar
@@ -114,7 +114,7 @@ $resultado_lista = $conexion->query($sql_lista);
                         </button>
                     </form>
                     <?php endif; ?>
-                 </a>
+                </td>
             </tr>
             <?php endwhile; ?>
         </tbody>

@@ -3,32 +3,6 @@ session_start();
 require_once('../config/conexion.php');
 require_once('../config/configuracion.php');
 
-// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS ==========
-function verificarCamposCompletos($datos) {
-    $obligatorios = [
-        'nombre', 'apellido', 'fecha_nacimiento', 'genero', 'cedula_escolar',
-        'rep_nombre', 'rep_cedula', 'rep_telefono', 'sala', 'seccion_id'
-    ];
-    foreach ($obligatorios as $campo) {
-        if (empty($datos[$campo])) {
-            return false;
-        }
-    }
-    if (empty($datos['madre_nombre']) && empty($datos['padre_nombre'])) {
-        return false;
-    }
-    if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si' && empty($datos['enfermedad_cual'])) {
-        return false;
-    }
-    if (!empty($datos['educacion_fisica']) && $datos['educacion_fisica'] === 'No' && empty($datos['educacion_fisica_porque'])) {
-        return false;
-    }
-    if (!empty($datos['alergia']) && $datos['alergia'] === 'Si' && empty($datos['alergia_cual'])) {
-        return false;
-    }
-    return true;
-}
-
 $periodo_escolar_actual = obtenerPeriodoEscolar();
 
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
@@ -63,12 +37,44 @@ if (!$estudiante) {
     exit();
 }
 
-// ========== OBTENER HISTORIAL ESCOLAR - ORDEN ASC (más antiguo primero) ==========
+// ========== OBTENER HISTORIAL ESCOLAR - ORDEN ASCENDENTE (más antiguo primero) ==========
 $stmt_ins = $conexion->prepare("SELECT * FROM inscripciones WHERE estudiante_id = ? ORDER BY ano_escolar ASC");
 $stmt_ins->bind_param("i", $id);
 $stmt_ins->execute();
 $inscripciones = $stmt_ins->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt_ins->close();
+
+// ========== SI NO HAY INSCRIPCIONES, CREAR UNA POR DEFECTO ==========
+if (empty($inscripciones)) {
+    $seccion_letra = '';
+    if (!empty($estudiante['seccion_id'])) {
+        $stmt_sec = $conexion->prepare("SELECT nombre FROM secciones WHERE id = ?");
+        $stmt_sec->bind_param("i", $estudiante['seccion_id']);
+        $stmt_sec->execute();
+        $sec_res = $stmt_sec->get_result()->fetch_assoc();
+        $seccion_letra = $sec_res['nombre'] ?? '';
+        $stmt_sec->close();
+    }
+    $grado_seccion_default = (!empty($estudiante['sala']) && !empty($seccion_letra)) 
+        ? $estudiante['sala'] . ' - ' . $seccion_letra 
+        : '';
+
+    $inscripciones = [
+        [
+            'id' => 0,
+            'ano_escolar' => $periodo_escolar_actual,
+            'grado_seccion' => $grado_seccion_default,
+            'registro' => 'Regular',
+            'repite' => 'No',
+            'c' => '',
+            'f' => '',
+            'p' => '',
+            'peso' => null,
+            'talla' => null,
+            'fecha_inscripcion' => date('Y-m-d'),
+        ]
+    ];
+}
 
 // Procesar guardado de cambios
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -81,12 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $genero = $_POST['genero'];
         $orden_nacimiento = intval($_POST['orden_nacimiento']);
         $nacionalidad = $_POST['nacionalidad'];
-        $pais_nac = $_POST['pais_nacimiento'];
-        $estado_nac = $_POST['estado_nacimiento'];
+        
+        $pais_nac = obtenerValorConOtro($_POST['pais_nacimiento'] ?? '', $_POST['pais_nacimiento_otro'] ?? '');
+        $estado_nac = obtenerValorConOtro($_POST['estado_nacimiento'] ?? '', $_POST['estado_nacimiento_otro'] ?? '');
         $direccion = $_POST['direccion'];
-        $estado_res = $_POST['estado_residencia'];
-        $municipio = $_POST['municipio'];
-        $parroquia = $_POST['parroquia'];
+        $estado_res = obtenerValorConOtro($_POST['estado_residencia'] ?? '', $_POST['estado_residencia_otro'] ?? '');
+        $municipio = obtenerValorConOtro($_POST['municipio'] ?? '', $_POST['municipio_otro'] ?? '');
+        $parroquia = obtenerValorConOtro($_POST['parroquia'] ?? '', $_POST['parroquia_otro'] ?? '');
         $ciudad = $_POST['ciudad'];
         $enfermedad = $_POST['enfermedad'];
         $enfermedad_cual = $_POST['enfermedad_cual'];
@@ -104,39 +111,44 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // ========== OBTENER DATOS DEL HISTORIAL ESCOLAR ==========
         $ano_escolar_arr = $_POST['ano_escolar'] ?? [];
         $grado_seccion_arr = $_POST['grado_seccion'] ?? [];
-        $registro_arr = $_POST['registro'] ?? [];
-        $repite_arr = $_POST['repite'] ?? [];
+        $condicion_arr = $_POST['condicion'] ?? [];
         $c_arr = $_POST['c'] ?? [];
         $f_arr = $_POST['f'] ?? [];
         $p_arr = $_POST['p'] ?? [];
         $peso_arr = $_POST['peso'] ?? [];
         $talla_arr = $_POST['talla'] ?? [];
         $fecha_inscripcion_arr = $_POST['fecha_inscripcion'] ?? [];
+        $historial_ids = $_POST['historial_id'] ?? [];
 
-        // ========== DETERMINAR EL AÑO ACTUAL (ÚLTIMA FILA) ==========
+        // ========== DETERMINAR EL AÑO ACTUAL (ÚLTIMA FILA - la más reciente) ==========
+        // Con orden ASC, la última fila es la más reciente (actual)
         $ultimo_indice = count($ano_escolar_arr) - 1;
         $grado_actual = $grado_seccion_arr[$ultimo_indice] ?? '';
         $peso_actual = !empty($peso_arr[$ultimo_indice]) ? floatval($peso_arr[$ultimo_indice]) : null;
         $talla_actual = !empty($talla_arr[$ultimo_indice]) ? floatval($talla_arr[$ultimo_indice]) : null;
 
-        // Extraer sala y sección del grado_seccion (ej: "sala5 - U")
+        // Extraer sala y sección del grado_seccion
         $sala_nombre = '';
         $seccion_letra = '';
+        $seccion_id_actual = 0;
+
         if (!empty($grado_actual)) {
             $partes = explode(' - ', $grado_actual);
             $sala_nombre = $partes[0] ?? '';
             $seccion_letra = $partes[1] ?? '';
+            if (!empty($sala_nombre) && !empty($seccion_letra)) {
+                $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
+                $stmt_sec->bind_param("ss", $sala_nombre, $seccion_letra);
+                $stmt_sec->execute();
+                $row_sec = $stmt_sec->get_result()->fetch_assoc();
+                $seccion_id_actual = $row_sec['id'] ?? 0;
+                $stmt_sec->close();
+            }
         }
 
-        // Obtener el ID de la sección
-        $seccion_id_actual = 0;
-        if (!empty($sala_nombre) && !empty($seccion_letra)) {
-            $stmt_sec = $conexion->prepare("SELECT id FROM secciones WHERE sala = ? AND nombre = ?");
-            $stmt_sec->bind_param("ss", $sala_nombre, $seccion_letra);
-            $stmt_sec->execute();
-            $row_sec = $stmt_sec->get_result()->fetch_assoc();
-            $seccion_id_actual = $row_sec['id'] ?? 0;
-            $stmt_sec->close();
+        if (empty($sala_nombre) && !empty($estudiante['sala'])) {
+            $sala_nombre = $estudiante['sala'];
+            $seccion_id_actual = $estudiante['seccion_id'];
         }
 
         // ========== ACTUALIZAR ESTUDIANTE ==========
@@ -149,11 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             padre_nombre=?, padre_cedula=?, padre_telefono=?,
             sala=?, seccion_id=?
             WHERE id=?");
-
-        if (!$stmt_upd) {
-            throw new Exception("Error en prepare: " . $conexion->error);
-        }
-
+        if (!$stmt_upd) throw new Exception("Error en prepare: " . $conexion->error);
         $stmt_upd->bind_param(
             "sssssssssssssssssssssssssssi",
             $nombre, $apellido, $fecha_nac, $genero, $orden_nacimiento,
@@ -177,13 +185,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $rep_estado_civil = $_POST['rep_estado_civil'];
         $rep_afinidad = $_POST['rep_afinidad'];
         $rep_sexo = $_POST['rep_sexo'];
-        $rep_pais_nac = $_POST['rep_pais_nacimiento'];
-        $rep_estado_nac = $_POST['rep_estado_nacimiento'];
+        $rep_pais_nac = obtenerValorConOtro($_POST['rep_pais_nacimiento'] ?? '', $_POST['rep_pais_nacimiento_otro'] ?? '');
+        $rep_estado_nac = obtenerValorConOtro($_POST['rep_estado_nacimiento'] ?? '', $_POST['rep_estado_nacimiento_otro'] ?? '');
         $rep_nacionalidad = $_POST['rep_nacionalidad'];
         $rep_direccion = $_POST['rep_direccion'];
-        $rep_estado_res = $_POST['rep_estado_residencia'];
-        $rep_municipio = $_POST['rep_municipio'];
-        $rep_parroquia = $_POST['rep_parroquia'];
+        $rep_estado_res = obtenerValorConOtro($_POST['rep_estado_residencia'] ?? '', $_POST['rep_estado_residencia_otro'] ?? '');
+        $rep_municipio = obtenerValorConOtro($_POST['rep_municipio'] ?? '', $_POST['rep_municipio_otro'] ?? '');
+        $rep_parroquia = obtenerValorConOtro($_POST['rep_parroquia'] ?? '', $_POST['rep_parroquia_otro'] ?? '');
         $rep_ciudad = $_POST['rep_ciudad'];
 
         $stmt_rep = $conexion->prepare("UPDATE representantes SET
@@ -191,11 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             afinidad=?, sexo=?, pais_nacimiento=?, estado_nacimiento=?, nacionalidad=?,
             direccion=?, estado_residencia=?, municipio=?, parroquia=?, ciudad=?
             WHERE id=?");
-        
-        if (!$stmt_rep) {
-            throw new Exception("Error en prepare representante: " . $conexion->error);
-        }
-
+        if (!$stmt_rep) throw new Exception("Error en prepare representante: " . $conexion->error);
         $stmt_rep->bind_param(
             "sssssssssssssssi",
             $rep_nombre, $rep_cedula, $rep_telefono, $rep_fecha_nac, $rep_estado_civil,
@@ -213,15 +217,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $stmt_del->close();
 
         $funcionario = $_SESSION['nombre_profesor'] ?? $_SESSION['usuario'] ?? 'Sistema';
-
         $stmt_ins = $conexion->prepare("INSERT INTO inscripciones 
             (estudiante_id, ano_escolar, grado_seccion, registro, repite, c, f, p, peso, talla, 
              firma_representante, fecha_inscripcion, funcionario) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)");
-
-        if (!$stmt_ins) {
-            throw new Exception("Error en prepare inscripciones: " . $conexion->error);
-        }
+        if (!$stmt_ins) throw new Exception("Error en prepare inscripciones: " . $conexion->error);
 
         for ($i = 0; $i < count($ano_escolar_arr); $i++) {
             $fecha_ins = !empty($fecha_inscripcion_arr[$i]) ? $fecha_inscripcion_arr[$i] : date('Y-m-d');
@@ -230,8 +230,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
             $ano_esc   = $ano_escolar_arr[$i] ?? '';
             $grado_sec = $grado_seccion_arr[$i] ?? '';
-            $registro  = $registro_arr[$i] ?? '';
-            $repite    = $repite_arr[$i] ?? 'No';
+            $condicion = $condicion_arr[$i] ?? '';
+            
+            $registro = ($condicion === 'Regular') ? 'Regular' : '';
+            $repite = ($condicion === 'Repitiente') ? 'Si' : 'No';
             $c_val     = $c_arr[$i] ?? '';
             $f_val     = $f_arr[$i] ?? '';
             $p_val     = $p_arr[$i] ?? '';
@@ -253,29 +255,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
         $stmt_ins->close();
 
-        // ========== VERIFICAR SI LA INSCRIPCIÓN ESTÁ COMPLETA ==========
-        $datos_estudiante = [
-            'nombre' => $nombre,
-            'apellido' => $apellido,
-            'fecha_nacimiento' => $fecha_nac,
-            'genero' => $genero,
-            'cedula_escolar' => $estudiante['cedula_escolar'] ?? '',
-            'rep_nombre' => $rep_nombre,
-            'rep_cedula' => $rep_cedula,
-            'rep_telefono' => $rep_telefono,
-            'sala' => $sala_nombre,
-            'seccion_id' => $seccion_id_actual,
-            'madre_nombre' => $madre_nombre,
-            'padre_nombre' => $padre_nombre,
-            'enfermedad' => $enfermedad,
-            'enfermedad_cual' => $enfermedad_cual,
-            'educacion_fisica' => $educacion_fisica,
-            'educacion_fisica_porque' => $educacion_fisica_porque,
-            'alergia' => $alergia,
-            'alergia_cual' => $alergia_cual,
-        ];
-        $inscripcion_completa = verificarCamposCompletos($datos_estudiante) ? 1 : 0;
-
+        $estado = verificarFichaCompleta($id, $conexion);
+        $inscripcion_completa = $estado['completa'] ? 1 : 0;
+        
         $stmt_completa = $conexion->prepare("UPDATE estudiantes SET inscripcion_completa = ? WHERE id = ?");
         $stmt_completa->bind_param("ii", $inscripcion_completa, $id);
         $stmt_completa->execute();
@@ -286,7 +268,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($inscripcion_completa) {
             header("Location: editar_estudiantes.php?id=$id&msg=success");
         } else {
-            header("Location: editar_estudiantes.php?id=$id&msg=incompleta");
+            $faltantes = implode(', ', $estado['faltantes']);
+            header("Location: editar_estudiantes.php?id=$id&msg=incompleta&faltantes=" . urlencode($faltantes));
         }
         exit();
         
@@ -294,17 +277,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $conexion->rollback();
         $mensaje = "Error al guardar: " . $e->getMessage();
         $tipo_mensaje = "danger";
+        error_log("🚨 Error en editar_estudiantes.php: " . $e->getMessage());
     }
 }
 
 include('../includes/header.php'); 
 
 // ========== OPCIONES PARA GRADO-SECCIÓN ==========
-$opciones_historial = '<option value="">Seleccione</option>';
+$opciones_historial = [];
 $secciones_hist = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 while($sec = $secciones_hist->fetch_assoc()) {
     $valor = $sec['sala'] . ' - ' . $sec['nombre'];
-    $opciones_historial .= '<option value="' . htmlspecialchars($valor) . '">' . htmlspecialchars($valor) . '</option>';
+    $opciones_historial[$valor] = $sec['id'];
 }
 ?>
 
@@ -316,36 +300,12 @@ while($sec = $secciones_hist->fetch_assoc()) {
     .nav-link.completed { background-color: #28a745 !important; color: white !important; }
     .table-sm th, .table-sm td { padding: 0.3rem; vertical-align: middle; }
     .progress-bar { transition: width 0.3s ease; }
-    .step { 
-        display: none; 
-        animation: fadeIn 0.3s ease;
-    }
+    .step { display: none; animation: fadeIn 0.3s ease; }
     .step.active { display: block; }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    #tablaHistorial th:first-child,
-    #tablaHistorial td:first-child {
-        min-width: 130px;
-        white-space: nowrap;
-    }
-    /* Estilos para el scroll de selects geográficos */
-    .select-geo {
-        max-height: 200px;
-        overflow-y: auto;
-    }
-    .select-geo option {
-        padding: 4px 8px;
-    }
-    .select-geo option[value="OTRO"] {
-        font-weight: bold;
-        color: #dc3545;
-        background-color: #f8f9fa;
-        border-top: 2px solid #dc3545;
-        margin-top: 4px;
-        padding-top: 6px;
-    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    #tablaHistorial th:first-child, #tablaHistorial td:first-child { min-width: 130px; white-space: nowrap; }
+    .select-geo { max-height: 200px; overflow-y: auto; }
+    .select-geo option[value="OTRO"] { font-weight: bold; color: #dc3545; background-color: #f8f9fa; border-top: 2px solid #dc3545; margin-top: 4px; padding-top: 6px; }
 </style>
 
 <div class="container mt-4 mb-5">
@@ -361,26 +321,26 @@ while($sec = $secciones_hist->fetch_assoc()) {
             
             <?php if (isset($_GET['msg']) && $_GET['msg'] == 'success'): ?>
                 <div class="alert alert-success alert-dismissible fade show">
-                    <i class="fas fa-check-circle me-2"></i> ¡Datos actualizados con éxito! La inscripción está completa.
+                    <i class="fas fa-check-circle me-2"></i> ¡Datos actualizados con éxito! La ficha está completa.
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
 
             <?php if (isset($_GET['msg']) && $_GET['msg'] == 'incompleta'): ?>
                 <div class="alert alert-warning alert-dismissible fade show">
-                    <i class="fas fa-exclamation-triangle me-2"></i> <strong>Inscripción incompleta.</strong> Faltan campos obligatorios.
+                    <i class="fas fa-exclamation-triangle me-2"></i> <strong>Ficha incompleta.</strong> Faltan campos obligatorios.
+                    <?php if (isset($_GET['faltantes'])): ?>
+                        <br><small>Faltan: <?= htmlspecialchars(urldecode($_GET['faltantes'])) ?></small>
+                    <?php endif; ?>
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
 
-            <!-- Progress Bar -->
             <div class="progress mb-4" style="height: 6px;">
                 <div id="progressBar" class="progress-bar bg-success" style="width: 25%;"></div>
             </div>
 
             <form method="POST" id="wizardForm">
-                
-                <!-- Tabs -->
                 <ul class="nav nav-tabs nav-justified mb-4 border-0" id="stepTabs">
                     <li class="nav-item"><a class="nav-link active rounded-0" href="#step1" data-step="1">1. Datos del Alumno</a></li>
                     <li class="nav-item"><a class="nav-link disabled rounded-0" href="#step2" data-step="2">2. Datos del Representante</a></li>
@@ -765,11 +725,11 @@ while($sec = $secciones_hist->fetch_assoc()) {
                 </div>
 
                 <!-- STEP 4: HISTORIAL ESCOLAR -->
-                <div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
+                <div <div id="step4" class="step p-3 bg-light rounded-3 mb-3" style="display:none;">
                     <h5 class="border-start border-4 border-navy ps-3 mb-4">HISTORIAL ESCOLAR</h5>
                     <div class="alert alert-info small">
                         <i class="fas fa-info-circle me-2"></i>
-                        <strong>Instrucciones:</strong> La <strong>última fila (la de abajo)</strong> es el año actual del estudiante. 
+                        <strong>Instrucciones:</strong> La <strong>última fila (la de abajo)</strong> es el año actual del estudiante.
                         Al guardar, se actualizará automáticamente su grado, sección, peso y talla.
                     </div>
                     
@@ -779,8 +739,7 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                 <tr>
                                     <th style="min-width:130px;">Año Escolar</th>
                                     <th>Grado y Sección</th>
-                                    <th>Reg.</th>
-                                    <th>Rep.</th>
+                                    <th>Condición</th>
                                     <th>C</th>
                                     <th>F</th>
                                     <th>P</th>
@@ -795,84 +754,17 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                 <?php 
                                 $total_filas = count($inscripciones);
                                 $indice = 0;
-                                
-                                if ($total_filas > 0): 
-                                    foreach ($inscripciones as $ins): 
-                                        $es_ultima = ($indice == $total_filas - 1);
+                                // Con ORDER ASC, la última fila es la actual
+                                foreach ($inscripciones as $ins): 
+                                    $es_actual = ($indice == $total_filas - 1);
+                                    $condicion = '';
+                                    if (!empty($ins['registro']) && $ins['registro'] === 'Regular') {
+                                        $condicion = 'Regular';
+                                    } elseif (!empty($ins['repite']) && $ins['repite'] === 'Si') {
+                                        $condicion = 'Repitiente';
+                                    }
                                 ?>
-                                        <tr class="fila-historial" data-ano="<?= htmlspecialchars($ins['ano_escolar']) ?>" data-es-ultima="<?= $es_ultima ? '1' : '0' ?>">
-                                            <td>
-                                                <select name="ano_escolar[]" class="form-select form-select-sm" required>
-                                                    <option value="">Seleccione</option>
-                                                    <?php 
-                                                    $anio_inicio = 2020;
-                                                    $anio_fin = date('Y') + 2;
-                                                    for ($a = $anio_fin; $a >= $anio_inicio; $a--): 
-                                                        $periodo = $a . '-' . ($a + 1);
-                                                        $selected = ($ins['ano_escolar'] == $periodo) ? 'selected' : '';
-                                                    ?>
-                                                        <option value="<?= htmlspecialchars($periodo) ?>" <?= $selected ?>><?= htmlspecialchars($periodo) ?></option>
-                                                    <?php endfor; ?>
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <select name="grado_seccion[]" class="form-select form-select-sm grado-seccion-select" required>
-                                                    <?php 
-                                                    $grado_guardado = htmlspecialchars($ins['grado_seccion']);
-                                                    echo str_replace('value="' . $grado_guardado . '"', 'value="' . $grado_guardado . '" selected', $opciones_historial);
-                                                    ?>
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <select name="registro[]" class="form-select form-select-sm">
-                                                    <option value="">Seleccione</option>
-                                                    <option value="Si" <?= ($ins['registro'] == 'Si') ? 'selected' : '' ?>>Si</option>
-                                                    <option value="No" <?= ($ins['registro'] == 'No') ? 'selected' : '' ?>>No</option>
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <select name="repite[]" class="form-select form-select-sm">
-                                                    <option value="No" <?= ($ins['repite']=='No')?'selected':'' ?>>No</option>
-                                                    <option value="Si" <?= ($ins['repite']=='Si')?'selected':'' ?>>Sí</option>
-                                                </select>
-                                            </td>
-                                            <td><input type="text" name="c[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['c']) ?>" placeholder="C"></td>
-                                            <td><input type="text" name="f[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['f']) ?>" placeholder="F"></td>
-                                            <td><input type="text" name="p[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['p']) ?>" placeholder="P"></td>
-                                            <td><input type="number" step="1" name="peso[]" class="form-control form-control-sm peso-input" value="<?= $ins['peso'] ?>" placeholder="Peso"></td>
-                                            <td><input type="number" step="1" name="talla[]" class="form-control form-control-sm talla-input" value="<?= $ins['talla'] ?>" placeholder="Talla"></td>
-                                            <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm" value="<?= $ins['fecha_inscripcion'] ?>"></td>
-                                            <td class="text-center">
-                                                <?php if ($es_ultima): ?>
-                                                    <span class="badge bg-success" style="font-size:0.75rem;">
-                                                        <i class="fas fa-check-circle me-1"></i> Actual
-                                                    </span>
-                                                    <input type="hidden" name="es_actual[]" value="1">
-                                                <?php else: ?>
-                                                    <span class="badge bg-secondary" style="font-size:0.7rem;">
-                                                        <i class="fas fa-history me-1"></i> Histórico
-                                                    </span>
-                                                    <input type="hidden" name="es_actual[]" value="0">
-                                                <?php endif; ?>
-                                            </td>
-                                            <td class="text-center">
-                                                <?php if ($total_filas > 1 && !$es_ultima): ?>
-                                                    <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
-                                                        <i class="fas fa-times"></i>
-                                                    </button>
-                                                <?php else: ?>
-                                                    <span class="text-muted" title="Año actual - no se puede eliminar">
-                                                        <i class="fas fa-lock"></i>
-                                                    </span>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                <?php 
-                                        $indice++;
-                                    endforeach; 
-                                else: 
-                                ?>
-                                    <tr class="fila-historial" data-es-ultima="1">
+                                    <tr class="fila-historial" data-ano="<?= htmlspecialchars($ins['ano_escolar']) ?>" data-es-actual="<?= $es_actual ? '1' : '0' ?>">
                                         <td>
                                             <select name="ano_escolar[]" class="form-select form-select-sm" required>
                                                 <option value="">Seleccione</option>
@@ -881,7 +773,7 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                                 $anio_fin = date('Y') + 2;
                                                 for ($a = $anio_fin; $a >= $anio_inicio; $a--): 
                                                     $periodo = $a . '-' . ($a + 1);
-                                                    $selected = ($periodo == $periodo_escolar_actual) ? 'selected' : '';
+                                                    $selected = ($ins['ano_escolar'] == $periodo) ? 'selected' : '';
                                                 ?>
                                                     <option value="<?= htmlspecialchars($periodo) ?>" <?= $selected ?>><?= htmlspecialchars($periodo) ?></option>
                                                 <?php endfor; ?>
@@ -889,41 +781,59 @@ while($sec = $secciones_hist->fetch_assoc()) {
                                         </td>
                                         <td>
                                             <select name="grado_seccion[]" class="form-select form-select-sm grado-seccion-select" required>
-                                                <?= $opciones_historial ?>
-                                            </select>
-                                        </td>
-                                        <td>
-                                            <select name="registro[]" class="form-select form-select-sm">
                                                 <option value="">Seleccione</option>
-                                                <option value="Si">Si</option>
-                                                <option value="No">No</option>
+                                                <?php 
+                                                $grado_guardado = $ins['grado_seccion'];
+                                                foreach ($opciones_historial as $valor => $id_sec) {
+                                                    $selected = ($grado_guardado == $valor) ? 'selected' : '';
+                                                    echo '<option value="' . htmlspecialchars($valor) . '" ' . $selected . '>' . htmlspecialchars($valor) . '</option>';
+                                                }
+                                                ?>
                                             </select>
                                         </td>
                                         <td>
-                                            <select name="repite[]" class="form-select form-select-sm">
-                                                <option value="No">No</option>
-                                                <option value="Si">Sí</option>
+                                            <select name="condicion[]" class="form-select form-select-sm" required>
+                                                <option value="">Seleccione...</option>
+                                                <option value="Regular" <?= ($condicion === 'Regular') ? 'selected' : '' ?>>Regular (No repite)</option>
+                                                <option value="Repitiente" <?= ($condicion === 'Repitiente') ? 'selected' : '' ?>>Repitiente</option>
                                             </select>
                                         </td>
-                                        <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
-                                        <td><input type="text" name="f[]" class="form-control form-control-sm" placeholder="F"></td>
-                                        <td><input type="text" name="p[]" class="form-control form-control-sm" placeholder="P"></td>
-                                        <td><input type="number" step="1" name="peso[]" class="form-control form-control-sm peso-input" placeholder="Peso"></td>
-                                        <td><input type="number" step="1" name="talla[]" class="form-control form-control-sm talla-input" placeholder="Talla"></td>
-                                        <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm"></td>
+                                        <td><input type="text" name="c[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['c']) ?>" placeholder="C"></td>
+                                        <td><input type="text" name="f[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['f']) ?>" placeholder="F"></td>
+                                        <td><input type="text" name="p[]" class="form-control form-control-sm" value="<?= htmlspecialchars($ins['p']) ?>" placeholder="P"></td>
+                                        <td><input type="number" step="1" name="peso[]" class="form-control form-control-sm peso-input" value="<?= $ins['peso'] ?>" placeholder="Peso"></td>
+                                        <td><input type="number" step="1" name="talla[]" class="form-control form-control-sm talla-input" value="<?= $ins['talla'] ?>" placeholder="Talla"></td>
+                                        <td><input type="date" name="fecha_inscripcion[]" class="form-control form-control-sm" value="<?= $ins['fecha_inscripcion'] ?>"></td>
                                         <td class="text-center">
-                                            <span class="badge bg-success" style="font-size:0.75rem;">
-                                                <i class="fas fa-check-circle me-1"></i> Actual
-                                            </span>
-                                            <input type="hidden" name="es_actual[]" value="1">
+                                            <?php if ($es_actual): ?>
+                                                <span class="badge bg-success" style="font-size:0.75rem;">
+                                                    <i class="fas fa-check-circle me-1"></i> Actual
+                                                </span>
+                                                <input type="hidden" name="es_actual[]" value="1">
+                                            <?php else: ?>
+                                                <span class="badge bg-secondary" style="font-size:0.7rem;">
+                                                    <i class="fas fa-history me-1"></i> Histórico
+                                                </span>
+                                                <input type="hidden" name="es_actual[]" value="0">
+                                            <?php endif; ?>
                                         </td>
                                         <td class="text-center">
-                                            <span class="text-muted" title="Año actual - no se puede eliminar">
-                                                <i class="fas fa-lock"></i>
-                                            </span>
+                                            <?php if ($total_filas > 1 && !$es_actual): ?>
+                                                <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
+                                                    <i class="fas fa-times"></i>
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-muted" title="Año actual - no se puede eliminar">
+                                                    <i class="fas fa-lock"></i>
+                                                </span>
+                                            <?php endif; ?>
                                         </td>
+                                        <input type="hidden" name="historial_id[]" value="<?= $ins['id'] ?? 0 ?>">
                                     </tr>
-                                <?php endif; ?>
+                                <?php 
+                                    $indice++;
+                                endforeach; 
+                                ?>
                             </tbody>
                         </table>
                     </div>
@@ -947,8 +857,7 @@ while($sec = $secciones_hist->fetch_assoc()) {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    
-    // ---------- TOGGLES CONDICIONALES ----------
+    // TOGGLES CONDICIONALES
     function toggleEnfermedad() {
         const show = document.getElementById('enfermedad').value === 'Si';
         document.getElementById('div_enfermedad_cual').style.display = show ? 'block' : 'none';
@@ -961,243 +870,125 @@ document.addEventListener('DOMContentLoaded', function() {
         const show = document.getElementById('alergia').value === 'Si';
         document.getElementById('div_alergia_cual').style.display = show ? 'block' : 'none';
     }
-    
     document.getElementById('enfermedad')?.addEventListener('change', toggleEnfermedad);
     document.getElementById('educacion_fisica')?.addEventListener('change', toggleEducacionFisica);
     document.getElementById('alergia')?.addEventListener('change', toggleAlergia);
 
-    // ============================================================================
-    // ========== FUNCIONES PARA "OTRO" EN SELECTS GEOGRÁFICOS ==========
-    // ============================================================================
-    function configurarOtro(selectId, inputId) {
-        const select = document.getElementById(selectId);
-        const input = document.getElementById(inputId);
-        if (!select || !input) return;
+    // TABLA DINÁMICA (agregar fila al final)
+    const agregarBtn = document.getElementById('agregarFila');
+    const historialBody = document.getElementById('historial-body');
+
+    function agregarFilaHistorial() {
+        const filas = historialBody.querySelectorAll('.fila-historial');
+        const ultimaFila = filas[filas.length - 1]; // la actual (más reciente)
+        if (!ultimaFila) return;
         
-        // Si el input tiene valor (porque se guardó "OTRO"), mostrar el input y ocultar select
-        if (input.value.trim() !== '') {
-            select.style.display = 'none';
-            input.style.display = 'block';
-            select.value = 'OTRO';
+        const newRow = ultimaFila.cloneNode(true);
+        newRow.querySelectorAll('input, select').forEach(inp => {
+            if (inp.type === 'text' || inp.type === 'number' || inp.type === 'date') {
+                inp.value = '';
+            }
+            if (inp.tagName === 'SELECT') {
+                inp.selectedIndex = 0;
+            }
+        });
+        
+        // La antigua última fila pasa a ser histórica
+        const celdaActual = ultimaFila.querySelector('td:nth-child(10)');
+        if (celdaActual) {
+            celdaActual.innerHTML = `
+                <span class="badge bg-secondary" style="font-size:0.7rem;">
+                    <i class="fas fa-history me-1"></i> Histórico
+                </span>
+                <input type="hidden" name="es_actual[]" value="0">
+            `;
+            ultimaFila.dataset.esActual = '0';
+        }
+        const celdaAccion = ultimaFila.querySelector('td:last-child');
+        if (celdaAccion) {
+            celdaAccion.innerHTML = `
+                <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
         }
         
-        select.addEventListener('change', function() {
-            if (this.value === 'OTRO') {
-                this.style.display = 'none';
-                input.style.display = 'block';
-                input.value = '';
-                input.focus();
-                input.required = true;
+        // Nueva fila → ACTUAL (al final)
+        const celdaActualNueva = newRow.querySelector('td:nth-child(10)');
+        if (celdaActualNueva) {
+            celdaActualNueva.innerHTML = `
+                <span class="badge bg-success" style="font-size:0.75rem;">
+                    <i class="fas fa-check-circle me-1"></i> Actual
+                </span>
+                <input type="hidden" name="es_actual[]" value="1">
+            `;
+        }
+        const celdaAccionNueva = newRow.querySelector('td:last-child');
+        if (celdaAccionNueva) {
+            celdaAccionNueva.innerHTML = `
+                <span class="text-muted" title="Año actual - no se puede eliminar">
+                    <i class="fas fa-lock"></i>
+                </span>
+            `;
+        }
+        newRow.dataset.esActual = '1';
+        historialBody.appendChild(newRow);
+        
+        // Actualizar el estado de todas las filas (solo la última es actual)
+        const todasLasFilas = historialBody.querySelectorAll('.fila-historial');
+        todasLasFilas.forEach((f, idx) => {
+            f.dataset.esActual = (idx === todasLasFilas.length - 1) ? '1' : '0';
+        });
+        mostrarMensaje('Nuevo año agregado. Complete los datos del nuevo año actual (la última fila).');
+    }
+
+    agregarBtn?.addEventListener('click', agregarFilaHistorial);
+
+    // ELIMINAR FILA
+    document.getElementById('historial-body')?.addEventListener('click', function(e) {
+        const btnEliminar = e.target.closest('.eliminar-fila');
+        if (btnEliminar) {
+            const fila = btnEliminar.closest('.fila-historial');
+            const totalFilas = document.querySelectorAll('#historial-body .fila-historial').length;
+            if (totalFilas > 1) {
+                if (fila.dataset.esActual === '1') {
+                    alert('No se puede eliminar el año actual. Agregue un nuevo año primero.');
+                    return;
+                }
+                fila.remove();
+                // Reasignar la última fila como actual
+                const filasRestantes = document.querySelectorAll('#historial-body .fila-historial');
+                filasRestantes.forEach((f, idx) => {
+                    f.dataset.esActual = (idx === filasRestantes.length - 1) ? '1' : '0';
+                });
+                const ultimaFila = filasRestantes[filasRestantes.length - 1];
+                if (ultimaFila) {
+                    const celdaActual = ultimaFila.querySelector('td:nth-child(10)');
+                    if (celdaActual) {
+                        celdaActual.innerHTML = `
+                            <span class="badge bg-success" style="font-size:0.75rem;">
+                                <i class="fas fa-check-circle me-1"></i> Actual
+                            </span>
+                            <input type="hidden" name="es_actual[]" value="1">
+                        `;
+                    }
+                    const celdaAccion = ultimaFila.querySelector('td:last-child');
+                    if (celdaAccion) {
+                        celdaAccion.innerHTML = `
+                            <span class="text-muted" title="Año actual - no se puede eliminar">
+                                <i class="fas fa-lock"></i>
+                            </span>
+                        `;
+                    }
+                    ultimaFila.dataset.esActual = '1';
+                }
             } else {
-                this.style.display = 'block';
-                input.style.display = 'none';
-                input.value = '';
-                input.required = false;
+                alert('Debe haber al menos un registro escolar (el año actual).');
             }
-        });
-        
-        input.addEventListener('blur', function() {
-            if (this.value.trim() === '') {
-                select.style.display = 'block';
-                this.style.display = 'none';
-                this.required = false;
-                select.value = '';
-            }
-        });
-        
-        // Si el input tiene valor, al hacer submit se enviará
-        // Si el select tiene valor, se enviará el select
-    }
+        }
+    });
 
-    // ============================================================================
-    // ========== FUNCIONES PARA MUNICIPIOS Y PARROQUIAS ==========
-    // ============================================================================
-    const municipiosPorEstado = {
-        'Zulia': ['Maracaibo', 'San Francisco', 'Cabimas', 'Santa Rita', 'Jesús Enrique Lossada', 'La Cañada de Urdaneta'],
-        'Miranda': ['Baruta', 'Carrizal', 'Chacao', 'El Hatillo', 'Guaicaipuro', 'Los Salias', 'Sucre'],
-        'Carabobo': ['Valencia', 'Puerto Cabello', 'Guacara', 'Los Guayos', 'Naguanagua', 'San Diego'],
-        'Lara': ['Barquisimeto', 'Cabudare', 'Carora', 'El Tocuyo', 'Quíbor'],
-        'Bolívar': ['Ciudad Bolívar', 'Ciudad Guayana', 'Upata'],
-        'Táchira': ['San Cristóbal', 'La Fría', 'Rubio', 'Táriba'],
-        'Mérida': ['Mérida', 'Ejido', 'Tovar'],
-        'Falcón': ['Coro', 'Punto Fijo', 'La Vela de Coro'],
-        'Anzoátegui': ['Barcelona', 'Puerto La Cruz', 'Lechería', 'El Tigre'],
-        'Monagas': ['Maturín', 'Punta de Mata'],
-        'Sucre': ['Cumaná', 'Carúpano'],
-        'Portuguesa': ['Guanare', 'Acarigua'],
-        'Barinas': ['Barinas', 'Sabaneta'],
-        'Apure': ['San Fernando de Apure', 'Guasdualito'],
-        'Guárico': ['Calabozo', 'Valle de la Pascua', 'San Juan de los Morros'],
-        'Cojedes': ['San Carlos', 'Tinaquillo'],
-        'Aragua': ['Maracay', 'El Limón', 'La Victoria', 'Cagua', 'Turmero'],
-        'Nueva Esparta': ['Porlamar', 'La Asunción', 'Juan Griego'],
-        'Delta Amacuro': ['Tucupita'],
-        'Amazonas': ['Puerto Ayacucho'],
-        'Distrito Capital': ['Caracas']
-    };
-
-    const parroquiasPorMunicipio = {
-        'Maracaibo': ['Bolívar', 'Cecilio Acosta', 'Chiquinquirá', 'Coquivacoa', 'Idelfonso Vásquez', 'Juana de Ávila', 'San Isidro', 'Santa Lucía'],
-        'San Francisco': ['Domitila Flores', 'El Bajo', 'Francisco Ochoa', 'José Domínguez', 'Los Cortijos'],
-        'Cabimas': ['Ambrosio', 'Carmen Herrera', 'Germán Ríos Linares', 'La Rosa', 'Punta Gorda', 'Rómulo Betancourt'],
-        'Caracas': ['Catedral', 'El Valle', 'La Candelaria', 'La Pastora', 'San Agustín', 'San Bernardino', 'San José', 'San Juan', 'Santa Teresa', 'Sucre'],
-        'Valencia': ['Candelaria', 'El Socorro', 'Miguel Peña', 'Rafael Urdaneta', 'San Blas', 'San José']
-    };
-
-    function cargarMunicipios(estadoId, municipioId, parroquiaId) {
-        const estadoSelect = document.getElementById(estadoId);
-        const municipioSelect = document.getElementById(municipioId);
-        const parroquiaSelect = document.getElementById(parroquiaId);
-        if (!estadoSelect || !municipioSelect || !parroquiaSelect) return;
-        
-        const estado = estadoSelect.value;
-        municipioSelect.innerHTML = '<option value="">Primero seleccione un estado</option>';
-        parroquiaSelect.innerHTML = '<option value="">Primero seleccione un municipio</option>';
-        
-        if (!estado || estado === 'OTRO') {
-            municipioSelect.disabled = true;
-            parroquiaSelect.disabled = true;
-            return;
-        }
-        
-        const municipios = municipiosPorEstado[estado] || [];
-        if (municipios.length > 0) {
-            municipios.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m;
-                opt.textContent = m;
-                municipioSelect.appendChild(opt);
-            });
-        }
-        // Agregar opción OTRO
-        const optOtro = document.createElement('option');
-        optOtro.value = 'OTRO';
-        optOtro.textContent = '--- OTRO ---';
-        optOtro.style.fontWeight = 'bold';
-        optOtro.style.color = '#dc3545';
-        optOtro.style.borderTop = '2px solid #dc3545';
-        optOtro.style.marginTop = '4px';
-        optOtro.style.paddingTop = '6px';
-        municipioSelect.appendChild(optOtro);
-        
-        municipioSelect.disabled = false;
-        parroquiaSelect.disabled = true;
-        
-        // Si el municipio actual coincide con alguno, seleccionarlo
-        const municipioActual = '<?php echo htmlspecialchars($estudiante['municipio'] ?? ''); ?>';
-        if (municipioActual && municipios.includes(municipioActual)) {
-            municipioSelect.value = municipioActual;
-            // Disparar cambio para cargar parroquias
-            municipioSelect.dispatchEvent(new Event('change'));
-        }
-    }
-
-    function cargarParroquias(municipioId, parroquiaId) {
-        const municipioSelect = document.getElementById(municipioId);
-        const parroquiaSelect = document.getElementById(parroquiaId);
-        if (!municipioSelect || !parroquiaSelect) return;
-        
-        const municipio = municipioSelect.value;
-        parroquiaSelect.innerHTML = '<option value="">Primero seleccione un municipio</option>';
-        
-        if (!municipio || municipio === 'OTRO') {
-            parroquiaSelect.disabled = true;
-            return;
-        }
-        
-        const parroquias = parroquiasPorMunicipio[municipio] || [];
-        if (parroquias.length > 0) {
-            parroquias.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.textContent = p;
-                parroquiaSelect.appendChild(opt);
-            });
-        }
-        // Agregar opción OTRO
-        const optOtro = document.createElement('option');
-        optOtro.value = 'OTRO';
-        optOtro.textContent = '--- OTRO ---';
-        optOtro.style.fontWeight = 'bold';
-        optOtro.style.color = '#dc3545';
-        optOtro.style.borderTop = '2px solid #dc3545';
-        optOtro.style.marginTop = '4px';
-        optOtro.style.paddingTop = '6px';
-        parroquiaSelect.appendChild(optOtro);
-        
-        parroquiaSelect.disabled = false;
-        
-        // Si la parroquia actual coincide con alguna, seleccionarla
-        const parroquiaActual = '<?php echo htmlspecialchars($estudiante['parroquia'] ?? ''); ?>';
-        if (parroquiaActual && parroquias.includes(parroquiaActual)) {
-            parroquiaSelect.value = parroquiaActual;
-        }
-    }
-
-    // Configurar eventos para los selects geográficos
-    function inicializarGeografia() {
-        // Configurar "OTRO" para todos los selects
-        const configs = [
-            ['pais_nacimiento', 'input_pais_nacimiento'],
-            ['estado_nacimiento', 'input_estado_nacimiento'],
-            ['estado_residencia', 'input_estado_residencia'],
-            ['rep_pais_nacimiento', 'input_rep_pais_nacimiento'],
-            ['rep_estado_nacimiento', 'input_rep_estado_nacimiento'],
-            ['rep_estado_residencia', 'input_rep_estado_residencia']
-        ];
-        configs.forEach(([sel, inp]) => {
-            configurarOtro(sel, inp);
-        });
-        
-        // Configurar municipios y parroquias
-        const estadoSelect = document.getElementById('estado_residencia');
-        const municipioSelect = document.getElementById('municipio');
-        const parroquiaSelect = document.getElementById('parroquia');
-        
-        if (estadoSelect && municipioSelect && parroquiaSelect) {
-            // Cargar municipios iniciales si hay estado
-            if (estadoSelect.value && estadoSelect.value !== 'OTRO') {
-                cargarMunicipios('estado_residencia', 'municipio', 'parroquia');
-            }
-            
-            estadoSelect.addEventListener('change', function() {
-                cargarMunicipios('estado_residencia', 'municipio', 'parroquia');
-            });
-            
-            municipioSelect.addEventListener('change', function() {
-                cargarParroquias('municipio', 'parroquia');
-            });
-            
-            configurarOtro('municipio', 'input_municipio');
-            configurarOtro('parroquia', 'input_parroquia');
-        }
-        
-        // Configurar para representante
-        const repEstadoSelect = document.getElementById('rep_estado_residencia');
-        const repMunicipioSelect = document.getElementById('rep_municipio');
-        const repParroquiaSelect = document.getElementById('rep_parroquia');
-        
-        if (repEstadoSelect && repMunicipioSelect && repParroquiaSelect) {
-            if (repEstadoSelect.value && repEstadoSelect.value !== 'OTRO') {
-                cargarMunicipios('rep_estado_residencia', 'rep_municipio', 'rep_parroquia');
-            }
-            
-            repEstadoSelect.addEventListener('change', function() {
-                cargarMunicipios('rep_estado_residencia', 'rep_municipio', 'rep_parroquia');
-            });
-            
-            repMunicipioSelect.addEventListener('change', function() {
-                cargarParroquias('rep_municipio', 'rep_parroquia');
-            });
-            
-            configurarOtro('rep_municipio', 'input_rep_municipio');
-            configurarOtro('rep_parroquia', 'input_rep_parroquia');
-        }
-    }
-
-    // ============================================================================
-    // ========== WIZARD ==========
-    // ============================================================================
+    // WIZARD
     const steps = document.querySelectorAll('.step');
     const nextBtns = document.querySelectorAll('.next-step');
     const prevBtns = document.querySelectorAll('.prev-step');
@@ -1209,7 +1000,6 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateProgress() {
         progressBar.style.width = ((currentStep + 1) / totalSteps * 100) + '%';
     }
-    
     function showStep(step) {
         steps.forEach((s, i) => {
             s.style.display = i === step ? 'block' : 'none';
@@ -1228,13 +1018,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         currentStep = step;
         updateProgress();
-        
-        // Re-inicializar geografía al cambiar de paso
-        if (step === 0 || step === 1) {
-            setTimeout(inicializarGeografia, 100);
-        }
     }
-    
     function nextHandler() {
         const currentStepEl = steps[currentStep];
         const inputs = currentStepEl.querySelectorAll('input, select, textarea');
@@ -1246,15 +1030,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 break;
             }
         }
-        if (isValid && currentStep < totalSteps - 1) {
-            showStep(currentStep + 1);
-        }
+        if (isValid && currentStep < totalSteps - 1) showStep(currentStep + 1);
     }
-    
     function prevHandler() {
         if (currentStep > 0) showStep(currentStep - 1);
     }
-    
     nextBtns.forEach(btn => {
         btn.removeEventListener('click', nextHandler);
         btn.addEventListener('click', nextHandler);
@@ -1263,186 +1043,88 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.removeEventListener('click', prevHandler);
         btn.addEventListener('click', prevHandler);
     });
-    
     showStep(0);
 
-    // ============================================================================
-    // ========== TABLA DINÁMICA (HISTORIAL) ==========
-    // ============================================================================
-    const agregarBtn = document.getElementById('agregarFila');
-    const historialBody = document.getElementById('historial-body');
-
-    function agregarFilaHistorial() {
-        const filas = historialBody.querySelectorAll('.fila-historial');
-        const ultimaFila = filas[filas.length - 1];
-        
-        if (!ultimaFila) return;
-        
-        const newRow = ultimaFila.cloneNode(true);
-        
-        newRow.querySelectorAll('input, select').forEach(inp => {
-            if (inp.type === 'text' || inp.type === 'number' || inp.type === 'date') {
-                inp.value = '';
-            }
-            if (inp.tagName === 'SELECT') {
-                inp.selectedIndex = 0;
-            }
-        });
-        
-        // Asegurar que el año escolar sea el actual
-        const selectAnio = newRow.querySelector('select[name="ano_escolar[]"]');
-        if (selectAnio) {
-            const periodoActual = '<?php echo $periodo_escolar_actual; ?>';
-            for (let opt of selectAnio.options) {
-                if (opt.value === periodoActual) {
-                    opt.selected = true;
-                    break;
-                }
-            }
-        }
-        
-        // Antigua última fila → HISTÓRICO
-        const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
-        if (celdaActualUltima) {
-            celdaActualUltima.innerHTML = `
-                <span class="badge bg-secondary" style="font-size:0.7rem;">
-                    <i class="fas fa-history me-1"></i> Histórico
-                </span>
-                <input type="hidden" name="es_actual[]" value="0">
-            `;
-            ultimaFila.dataset.esUltima = '0';
-        }
-        
-        const celdaAccionUltima = ultimaFila.querySelector('td:last-child');
-        if (celdaAccionUltima) {
-            celdaAccionUltima.innerHTML = `
-                <button type="button" class="btn btn-sm btn-danger eliminar-fila" title="Eliminar fila">
-                    <i class="fas fa-times"></i>
-                </button>
-            `;
-        }
-        
-        // Nueva fila → ACTUAL
-        const celdaActualNueva = newRow.querySelector('td:nth-child(11)');
-        if (celdaActualNueva) {
-            celdaActualNueva.innerHTML = `
-                <span class="badge bg-success" style="font-size:0.75rem;">
-                    <i class="fas fa-check-circle me-1"></i> Actual
-                </span>
-                <input type="hidden" name="es_actual[]" value="1">
-            `;
-        }
-        
-        const celdaAccionNueva = newRow.querySelector('td:last-child');
-        if (celdaAccionNueva) {
-            celdaAccionNueva.innerHTML = `
-                <span class="text-muted" title="Año actual - no se puede eliminar">
-                    <i class="fas fa-lock"></i>
-                </span>
-            `;
-        }
-        
-        newRow.dataset.esUltima = '1';
-        historialBody.appendChild(newRow);
-        
-        const todasLasFilas = historialBody.querySelectorAll('.fila-historial');
-        todasLasFilas.forEach((f, idx) => {
-            f.dataset.esUltima = (idx === todasLasFilas.length - 1) ? '1' : '0';
-        });
-        
-        mostrarMensaje('Nuevo año agregado. Complete los datos del nuevo año actual (la última fila).');
-    }
-
-    agregarBtn?.addEventListener('click', agregarFilaHistorial);
-
-    // ---------- ELIMINAR FILA ----------
-    document.getElementById('historial-body')?.addEventListener('click', function(e) {
-        const btnEliminar = e.target.closest('.eliminar-fila');
-        if (btnEliminar) {
-            const fila = btnEliminar.closest('.fila-historial');
-            const totalFilas = document.querySelectorAll('#historial-body .fila-historial').length;
-            
-            if (totalFilas > 1) {
-                if (fila.dataset.esUltima === '1') {
-                    alert('No se puede eliminar el año actual. Agregue un nuevo año primero.');
-                    return;
-                }
-                fila.remove();
-                
-                const filasRestantes = document.querySelectorAll('#historial-body .fila-historial');
-                filasRestantes.forEach((f, idx) => {
-                    f.dataset.esUltima = (idx === filasRestantes.length - 1) ? '1' : '0';
-                });
-                
-                const ultimaFila = filasRestantes[filasRestantes.length - 1];
-                if (ultimaFila) {
-                    const celdaActual = ultimaFila.querySelector('td:nth-child(11)');
-                    if (celdaActual) {
-                        celdaActual.innerHTML = `
-                            <span class="badge bg-success" style="font-size:0.75rem;">
-                                <i class="fas fa-check-circle me-1"></i> Actual
-                            </span>
-                            <input type="hidden" name="es_actual[]" value="1">
-                        `;
-                    }
-                    const celdaAccion = ultimaFila.querySelector('td:last-child');
-                    if (celdaAccion) {
-                        celdaAccion.innerHTML = `
-                            <span class="text-muted" title="Año actual - no se puede eliminar">
-                                <i class="fas fa-lock"></i>
-                            </span>
-                        `;
-                    }
-                    ultimaFila.dataset.esUltima = '1';
-                }
+    // FUNCIONES PARA "OTRO"
+    function configurarOtro(selectId, inputId) {
+        const select = document.getElementById(selectId);
+        const input = document.getElementById(inputId);
+        if (!select || !input) return;
+        select.addEventListener('change', function() {
+            if (this.value === 'OTRO') {
+                this.style.display = 'none';
+                input.style.display = 'block';
+                input.value = '';
+                input.focus();
+                input.required = true;
             } else {
-                alert('Debe haber al menos un registro escolar (el año actual).');
+                this.style.display = 'block';
+                input.style.display = 'none';
+                input.value = '';
+                input.required = false;
             }
-        }
-    });
-
-    // ---------- VALIDACIÓN FINAL ----------
-    const wizardForm = document.getElementById('wizardForm');
-    if (wizardForm) {
-        wizardForm.addEventListener('submit', function(e) {
-            const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
-            if (actuales.length === 0) {
-                e.preventDefault();
-                alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
-                showStep(3);
-                return;
-            }
-            
-            if (!this.checkValidity()) {
-                e.preventDefault();
-                const primerInvalido = this.querySelector(':invalid');
-                if (primerInvalido) {
-                    const stepPadre = primerInvalido.closest('.step');
-                    const stepIndex = Array.from(steps).indexOf(stepPadre);
-                    if (stepIndex !== -1) {
-                        showStep(stepIndex);
-                        setTimeout(() => primerInvalido.reportValidity(), 100);
-                    }
-                }
+        });
+        input.addEventListener('blur', function() {
+            if (this.value.trim() === '') {
+                select.style.display = 'block';
+                this.style.display = 'none';
+                this.required = false;
+                select.value = '';
             }
         });
     }
+
+    function inicializarCampoOtro(selectId, inputId, valorActual) {
+        const select = document.getElementById(selectId);
+        const input = document.getElementById(inputId);
+        if (!select || !input) return;
+        const opciones = Array.from(select.options).map(o => o.value);
+        if (valorActual && !opciones.includes(valorActual) && valorActual !== 'OTRO' && valorActual !== '') {
+            select.style.display = 'none';
+            input.style.display = 'block';
+            input.value = valorActual;
+            select.value = 'OTRO';
+            input.required = true;
+        } else {
+            if (opciones.includes(valorActual)) select.value = valorActual;
+            select.style.display = 'block';
+            input.style.display = 'none';
+            input.value = '';
+            input.required = false;
+        }
+    }
+
+    inicializarCampoOtro('pais_nacimiento', 'input_pais_nacimiento', '<?php echo htmlspecialchars($estudiante['pais_nacimiento'] ?? ''); ?>');
+    inicializarCampoOtro('estado_nacimiento', 'input_estado_nacimiento', '<?php echo htmlspecialchars($estudiante['estado_nacimiento'] ?? ''); ?>');
+    inicializarCampoOtro('estado_residencia', 'input_estado_residencia', '<?php echo htmlspecialchars($estudiante['estado_residencia'] ?? ''); ?>');
+    inicializarCampoOtro('municipio', 'input_municipio', '<?php echo htmlspecialchars($estudiante['municipio'] ?? ''); ?>');
+    inicializarCampoOtro('parroquia', 'input_parroquia', '<?php echo htmlspecialchars($estudiante['parroquia'] ?? ''); ?>');
+    inicializarCampoOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento', '<?php echo htmlspecialchars($estudiante['rep_pais_nac'] ?? ''); ?>');
+    inicializarCampoOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento', '<?php echo htmlspecialchars($estudiante['rep_estado_nac'] ?? ''); ?>');
+    inicializarCampoOtro('rep_estado_residencia', 'input_rep_estado_residencia', '<?php echo htmlspecialchars($estudiante['rep_estado_res'] ?? ''); ?>');
+    inicializarCampoOtro('rep_municipio', 'input_rep_municipio', '<?php echo htmlspecialchars($estudiante['rep_municipio'] ?? ''); ?>');
+    inicializarCampoOtro('rep_parroquia', 'input_rep_parroquia', '<?php echo htmlspecialchars($estudiante['rep_parroquia'] ?? ''); ?>');
+
+    configurarOtro('pais_nacimiento', 'input_pais_nacimiento');
+    configurarOtro('estado_nacimiento', 'input_estado_nacimiento');
+    configurarOtro('estado_residencia', 'input_estado_residencia');
+    configurarOtro('municipio', 'input_municipio');
+    configurarOtro('parroquia', 'input_parroquia');
+    configurarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
+    configurarOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento');
+    configurarOtro('rep_estado_residencia', 'input_rep_estado_residencia');
+    configurarOtro('rep_municipio', 'input_rep_municipio');
+    configurarOtro('rep_parroquia', 'input_rep_parroquia');
 
     function mostrarMensaje(texto) {
         const alertDiv = document.createElement('div');
         alertDiv.className = 'alert alert-success alert-dismissible fade show mt-2';
-        alertDiv.innerHTML = `
-            <i class="fas fa-check-circle me-2"></i>
-            <strong>${texto}</strong>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        
+        alertDiv.innerHTML = `<i class="fas fa-check-circle me-2"></i> <strong>${texto}</strong><button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
         const tabla = document.getElementById('tablaHistorial');
         const container = tabla.parentElement;
         const existingAlert = container.querySelector('.alert-success');
         if (existingAlert) existingAlert.remove();
         container.insertBefore(alertDiv, tabla.nextSibling);
-        
         setTimeout(() => {
             if (alertDiv.parentElement) {
                 alertDiv.classList.remove('show');
@@ -1450,9 +1132,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }, 5000);
     }
-
-    // Inicializar geografía al cargar la página
-    inicializarGeografia();
 });
 </script>
 

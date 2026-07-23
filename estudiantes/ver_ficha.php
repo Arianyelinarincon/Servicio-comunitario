@@ -67,7 +67,7 @@ if (!$estudiante) {
     exit();
 }
 
-// ========== OBTENER HISTORIAL ESCOLAR - ORDEN ASC (más antiguo primero) ==========
+// ========== OBTENER HISTORIAL ESCOLAR - ORDEN ASCENDENTE (más antiguo primero) ==========
 $sql_historial = "SELECT * FROM inscripciones WHERE estudiante_id = ? ORDER BY ano_escolar ASC";
 $stmt_hist = $conexion->prepare($sql_historial);
 $stmt_hist->bind_param("i", $id);
@@ -294,6 +294,10 @@ include '../includes/header.php';
                 <a href="generar_ficha_pdf.php?id=<?= $id ?>&preview=1" target="_blank" class="btn-ver-ficha">
                     <i class="fas fa-eye me-2"></i> Ver Ficha
                 </a>
+                
+<a href="editar_estudiantes.php?id=<?= $id ?>" class="btn btn-primary" title="Editar datos del estudiante">
+    <i class="fas fa-edit me-2"></i> Editar Estudiante
+</a>
                 <a href="generar_ficha_pdf.php?id=<?= $id ?>&download=1" class="btn-descargar">
                     <i class="fas fa-file-pdf me-2"></i> Descargar PDF
                 </a>

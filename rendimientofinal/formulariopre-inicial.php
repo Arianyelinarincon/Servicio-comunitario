@@ -12,6 +12,8 @@ if (!in_array($sala_seleccionada, $salas_permitidas)) {
 $seccion_id = isset($_GET['seccion']) ? intval($_GET['seccion']) : '';
 $profesor_id = isset($_GET['profesor']) ? intval($_GET['profesor']) : '';
 $periodo = isset($_GET['periodo']) ? trim($_GET['periodo']) : '2025-2026';
+
+// ========== CORRECCIÓN: VALIDAR FORMATO DEL PERÍODO ==========
 if (!preg_match('/^\d{4}-\d{4}$/', $periodo)) {
     $periodo = '2025-2026';
 }

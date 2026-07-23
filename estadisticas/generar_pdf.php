@@ -86,8 +86,14 @@ if ($desde_historial) {
     $porcentaje_total = (int)$resumen['porcentaje_asistencia'];
     $observaciones = $resumen['observaciones'];
     
-    // Decodificar JSONs de clasificación
-    $datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
+    // ========== CORRECCIÓN: INICIALIZAR $datos_clasificacion ==========
+    $datos_clasificacion = [];
+    if (!empty($resumen['datos_clasificacion'])) {
+        $datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
+        if (!is_array($datos_clasificacion)) {
+            $datos_clasificacion = [];
+        }
+    }
     
     // Obtener nombre del docente
     $nombre_docente = 'No definido';
@@ -228,6 +234,11 @@ if ($desde_historial) {
     if ($mat_total > 0 && $dias_habiles > 0) {
         $porcentaje_total = (int)round(($total_asistencia / ($mat_total * $dias_habiles)) * 100);
     }
+}
+
+// ========== ASEGURAR QUE $datos_clasificacion SIEMPRE SEA UN ARRAY ==========
+if (!isset($datos_clasificacion) || !is_array($datos_clasificacion)) {
+    $datos_clasificacion = [];
 }
 
 // =====================================================================

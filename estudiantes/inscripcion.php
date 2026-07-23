@@ -20,6 +20,12 @@ if ($prefill === '1') {
         'ci'       => $_GET['ci'] ?? '',
         'fn'       => $_GET['fn'] ?? '',
         'fi'       => $_GET['fi'] ?? '',
+        'pais_nacimiento' => $_GET['pais_nacimiento'] ?? '',
+        'estado_nacimiento' => $_GET['estado_nacimiento'] ?? '',
+        'estado_residencia' => $_GET['estado_residencia'] ?? '',
+        'municipio' => $_GET['municipio'] ?? '',
+        'parroquia' => $_GET['parroquia'] ?? '',
+        'grado_seccion' => $_GET['grado_seccion'] ?? '', // Ej: "2do Grado - U"
     ];
 }
 
@@ -57,7 +63,7 @@ if ($error_tipo === 'duplicado' && isset($_GET['mensaje'])) {
 $secciones = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
 $opciones_secciones = '<option value="">Seleccione</option>';
 while ($sec = $secciones->fetch_assoc()) {
-    $valor = $sec['sala'] . ' - ' . $sec['nombre']; // ej: "2do - A"
+    $valor = $sec['sala'] . ' - ' . $sec['nombre'];
     $opciones_secciones .= '<option value="' . htmlspecialchars($valor) . '">' . htmlspecialchars($valor) . '</option>';
 }
 ?>
@@ -84,7 +90,6 @@ while ($sec = $secciones->fetch_assoc()) {
             </div>
 
             <form id="wizardForm" action="procesar_inscripcion.php" method="POST">
-                <!-- Campo oculto para el procesador -->
                 <input type="hidden" name="madre_cedula_temp" id="madre_cedula_temp">
                 <input type="hidden" name="fecha_ingreso_prefill" id="fecha_ingreso_prefill" value="<?= htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual) ?>">
                 
@@ -380,8 +385,7 @@ while ($sec = $secciones->fetch_assoc()) {
                                 <tr>
                                     <th style="min-width:130px;">Año Escolar</th>
                                     <th>Grado y Sección</th>
-                                    <th>Reg.</th>
-                                    <th>Rep.</th>
+                                    <th>Condición</th>
                                     <th>C</th>
                                     <th>F</th>
                                     <th>P</th>
@@ -393,7 +397,6 @@ while ($sec = $secciones->fetch_assoc()) {
                                 </tr>
                             </thead>
                             <tbody id="historial-body">
-                                <!-- Fila por defecto (año actual) -->
                                 <tr class="fila-historial" data-es-ultima="1">
                                     <td>
                                         <select name="ano_escolar[]" class="form-select form-select-sm" required>
@@ -410,21 +413,21 @@ while ($sec = $secciones->fetch_assoc()) {
                                         </select>
                                     </td>
                                     <td>
-                                        <select name="grado_seccion[]" class="form-select form-select-sm grado-seccion-select" required>
-                                            <?= $opciones_secciones ?>
-                                        </select>
+                                        <?php if (!empty($prefill_data['grado_seccion'])): ?>
+                                            <!-- Si hay precarga, mostramos el valor fijo -->
+                                            <input type="text" class="form-control form-control-sm bg-light" value="<?= htmlspecialchars($prefill_data['grado_seccion']) ?>" readonly>
+                                            <input type="hidden" name="grado_seccion[]" value="<?= htmlspecialchars($prefill_data['grado_seccion']) ?>">
+                                        <?php else: ?>
+                                            <select name="grado_seccion[]" id="grado_seccion_historial" class="form-select form-select-sm grado-seccion-select" required>
+                                                <?= $opciones_secciones ?>
+                                            </select>
+                                        <?php endif; ?>
                                     </td>
                                     <td>
-                                        <select name="registro[]" class="form-select form-select-sm">
-                                            <option value="">Seleccione</option>
-                                            <option value="Si">Si</option>
-                                            <option value="No">No</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select name="repite[]" class="form-select form-select-sm">
-                                            <option value="No">No</option>
-                                            <option value="Si">Sí</option>
+                                        <select name="condicion[]" class="form-select form-select-sm" required>
+                                            <option value="">Seleccione...</option>
+                                            <option value="Regular">Regular (No repite)</option>
+                                            <option value="Repitiente">Repitiente</option>
                                         </select>
                                     </td>
                                     <td><input type="text" name="c[]" class="form-control form-control-sm" placeholder="C"></td>
@@ -486,6 +489,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (cedulaBaseField) cedulaBaseField.value = '<?= htmlspecialchars($prefill_data['ci']) ?>';
         if (fechaNacField) fechaNacField.value = '<?= $prefill_data['fn'] ?>';
         
+        // Ya no necesitamos asignar valor al select porque usamos input text fijo
         if (cedulaBaseField) {
             cedulaBaseField.dispatchEvent(new Event('input', { bubbles: true }));
             cedulaBaseField.dispatchEvent(new Event('change', { bubbles: true }));
@@ -562,51 +566,61 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('cedula_escolar_hidden').value = ce;
     }
 
-    // ===== NUEVA FUNCIÓN: COPIAR CÉDULA A PADRES =====
-    function copiarCedulaAPadres() {
-        const tipo = document.getElementById('tipo_cedula_base').value;
-        const cedula = document.getElementById('cedula_base').value.trim();
-        const inputMadre = document.getElementById('madre_cedula');
-        const inputPadre = document.getElementById('padre_cedula');
-        if (tipo === 'madre' && inputMadre) {
-            inputMadre.value = cedula;
-            inputMadre.disabled = true;
-            if (inputPadre) {
-                inputPadre.disabled = false;
-                inputPadre.value = '';
-            }
-        } else if (tipo === 'padre' && inputPadre) {
-            inputPadre.value = cedula;
-            inputPadre.disabled = true;
-            if (inputMadre) {
-                inputMadre.disabled = false;
-                inputMadre.value = '';
-            }
-        } else {
-            if (inputMadre) inputMadre.disabled = false;
-            if (inputPadre) inputPadre.disabled = false;
+   function copiarCedulaAPadres() {
+    const tipo = document.getElementById('tipo_cedula_base').value;
+    const cedula = document.getElementById('cedula_base').value.trim();
+    const inputMadre = document.getElementById('madre_cedula');
+    const inputPadre = document.getElementById('padre_cedula');
+    if (tipo === 'madre' && inputMadre) {
+        inputMadre.value = cedula;
+        inputMadre.readOnly = true;   // <--- Cambio aquí
+        if (inputPadre) {
+            inputPadre.readOnly = false;
+            inputPadre.value = '';
         }
+    } else if (tipo === 'padre' && inputPadre) {
+        inputPadre.value = cedula;
+        inputPadre.readOnly = true;   // <--- Cambio aquí
+        if (inputMadre) {
+            inputMadre.readOnly = false;
+            inputMadre.value = '';
+        }
+    } else {
+        if (inputMadre) inputMadre.readOnly = false;
+        if (inputPadre) inputPadre.readOnly = false;
     }
+}function copiarCedulaAPadres() {
+    const tipo = document.getElementById('tipo_cedula_base').value;
+    const cedula = document.getElementById('cedula_base').value.trim();
+    const inputMadre = document.getElementById('madre_cedula');
+    const inputPadre = document.getElementById('padre_cedula');
+    if (tipo === 'madre' && inputMadre) {
+        inputMadre.value = cedula;
+        inputMadre.readOnly = true;   // <--- Cambio aquí
+        if (inputPadre) {
+            inputPadre.readOnly = false;
+            inputPadre.value = '';
+        }
+    } else if (tipo === 'padre' && inputPadre) {
+        inputPadre.value = cedula;
+        inputPadre.readOnly = true;   // <--- Cambio aquí
+        if (inputMadre) {
+            inputMadre.readOnly = false;
+            inputMadre.value = '';
+        }
+    } else {
+        if (inputMadre) inputMadre.readOnly = false;
+        if (inputPadre) inputPadre.readOnly = false;
+    }
+}
 
-    // Sincronizar eventos
     document.getElementById('cedula_base')?.addEventListener('input', function() {
         generarCedulaEscolar();
-        sincronizarCedula();
         copiarCedulaAPadres();
     });
-    document.getElementById('tipo_cedula_base')?.addEventListener('change', function() {
-        sincronizarCedula();
-        copiarCedulaAPadres();
-    });
+    document.getElementById('tipo_cedula_base')?.addEventListener('change', copiarCedulaAPadres);
     document.getElementById('fecha_nacimiento')?.addEventListener('change', generarCedulaEscolar);
     document.getElementById('orden_nacimiento')?.addEventListener('input', generarCedulaEscolar);
-
-    // Función original sincronizarCedula (para compatibilidad)
-    function sincronizarCedula() {
-        const tipo = document.getElementById('tipo_cedula_base')?.value;
-        const cedula = document.getElementById('cedula_base')?.value;
-        // No sobrescribir si ya está deshabilitado
-    }
 
     // ---------- VALIDACIÓN DE PADRES EN STEP 3 ----------
     document.getElementById('nextStep3')?.addEventListener('click', function(e) {
@@ -684,18 +698,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     showStep(0);
 
-    // ---------- TABLA DINÁMICA (agregar fila AL FINAL) ----------
+    // ---------- TABLA DINÁMICA ----------
     const agregarBtn = document.getElementById('agregarFila');
     const historialBody = document.getElementById('historial-body');
 
     function agregarFilaHistorial() {
         const filas = historialBody.querySelectorAll('.fila-historial');
         const ultimaFila = filas[filas.length - 1];
-        
         if (!ultimaFila) return;
-        
         const newRow = ultimaFila.cloneNode(true);
-        
         newRow.querySelectorAll('input, select').forEach(inp => {
             if (inp.type === 'text' || inp.type === 'number' || inp.type === 'date') {
                 inp.value = '';
@@ -704,9 +715,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 inp.selectedIndex = 0;
             }
         });
-        
         // Antigua última fila → HISTÓRICO
-        const celdaActualUltima = ultimaFila.querySelector('td:nth-child(11)');
+        const celdaActualUltima = ultimaFila.querySelector('td:nth-child(10)');
         if (celdaActualUltima) {
             celdaActualUltima.innerHTML = `
                 <span class="badge bg-secondary" style="font-size:0.7rem;">
@@ -716,7 +726,6 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             ultimaFila.dataset.esUltima = '0';
         }
-        
         const celdaAccionUltima = ultimaFila.querySelector('td:last-child');
         if (celdaAccionUltima) {
             celdaAccionUltima.innerHTML = `
@@ -725,9 +734,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </button>
             `;
         }
-        
         // Nueva fila → ACTUAL
-        const celdaActualNueva = newRow.querySelector('td:nth-child(11)');
+        const celdaActualNueva = newRow.querySelector('td:nth-child(10)');
         if (celdaActualNueva) {
             celdaActualNueva.innerHTML = `
                 <span class="badge bg-success" style="font-size:0.75rem;">
@@ -736,7 +744,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 <input type="hidden" name="es_actual[]" value="1">
             `;
         }
-        
         const celdaAccionNueva = newRow.querySelector('td:last-child');
         if (celdaAccionNueva) {
             celdaAccionNueva.innerHTML = `
@@ -745,15 +752,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 </span>
             `;
         }
-        
         newRow.dataset.esUltima = '1';
         historialBody.appendChild(newRow);
-        
         const todasLasFilas = historialBody.querySelectorAll('.fila-historial');
         todasLasFilas.forEach((f, idx) => {
             f.dataset.esUltima = (idx === todasLasFilas.length - 1) ? '1' : '0';
         });
-        
         mostrarMensaje('Nuevo año agregado. Complete los datos del nuevo año actual (la última fila).');
     }
 
@@ -765,22 +769,19 @@ document.addEventListener('DOMContentLoaded', function() {
         if (btnEliminar) {
             const fila = btnEliminar.closest('.fila-historial');
             const totalFilas = document.querySelectorAll('#historial-body .fila-historial').length;
-            
             if (totalFilas > 1) {
                 if (fila.dataset.esUltima === '1') {
                     alert('No se puede eliminar el año actual. Agregue un nuevo año primero.');
                     return;
                 }
                 fila.remove();
-                
                 const filasRestantes = document.querySelectorAll('#historial-body .fila-historial');
                 filasRestantes.forEach((f, idx) => {
                     f.dataset.esUltima = (idx === filasRestantes.length - 1) ? '1' : '0';
                 });
-                
                 const ultimaFila = filasRestantes[filasRestantes.length - 1];
                 if (ultimaFila) {
-                    const celdaActual = ultimaFila.querySelector('td:nth-child(11)');
+                    const celdaActual = ultimaFila.querySelector('td:nth-child(10)');
                     if (celdaActual) {
                         celdaActual.innerHTML = `
                             <span class="badge bg-success" style="font-size:0.75rem;">
@@ -805,21 +806,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // ---------- BOTÓN GUARDAR INSCRIPCIÓN ----------
+    // ---------- BOTÓN GUARDAR ----------
     document.getElementById('btnGuardarInscripcion')?.addEventListener('click', function(e) {
         e.preventDefault();
-        
         const form = document.getElementById('wizardForm');
-        
-        // 1. Verificar que haya al menos un año escolar marcado como actual
         const actuales = document.querySelectorAll('input[name="es_actual[]"][value="1"]');
         if (actuales.length === 0) {
             alert('Error: Debe haber al menos un año escolar marcado como "Actual".');
             showStep(3);
             return;
         }
-        
-        // 2. Verificar que los padres tengan al menos uno completado
         const madreNombre = document.getElementById('madre_nombre')?.value.trim() || '';
         const padreNombre = document.getElementById('padre_nombre')?.value.trim() || '';
         if (!madreNombre && !padreNombre) {
@@ -827,8 +823,6 @@ document.addEventListener('DOMContentLoaded', function() {
             showStep(2);
             return;
         }
-        
-        // 3. Verificar validación del formulario
         if (!form.checkValidity()) {
             const primerInvalido = form.querySelector(':invalid');
             if (primerInvalido) {
@@ -841,29 +835,68 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             return;
         }
-        
-        // 4. Generar cédula escolar antes de enviar
         generarCedulaEscolar();
-        
-        // 5. Mostrar indicador de carga
         const btn = this;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Guardando...';
-        
-        // 6. Enviar el formulario
         form.submit();
     });
 
-    // ---------- VALIDACIÓN FINAL DEL FORMULARIO (respaldo) ----------
-    const wizardForm = document.getElementById('wizardForm');
-    if (wizardForm) {
-        // Remover eventos anteriores (si los hay)
-        wizardForm.removeEventListener('submit', wizardForm._submitHandler);
-        // No agregar nuevo submit, el botón maneja todo
+    // ============================================================================
+    // FUNCIONES PARA "OTRO"
+    // ============================================================================
+    function configurarOtro(selectId, inputId) {
+        const select = document.getElementById(selectId);
+        const input = document.getElementById(inputId);
+        if (!select || !input) return;
+        select.addEventListener('change', function() {
+            if (this.value === 'OTRO') {
+                this.style.display = 'none';
+                input.style.display = 'block';
+                input.value = '';
+                input.focus();
+                input.required = true;
+            } else {
+                this.style.display = 'block';
+                input.style.display = 'none';
+                input.value = '';
+                input.required = false;
+            }
+        });
+        input.addEventListener('blur', function() {
+            if (this.value.trim() === '') {
+                select.style.display = 'block';
+                this.style.display = 'none';
+                this.required = false;
+                select.value = '';
+            }
+        });
+    }
+
+    function inicializarCampoOtro(selectId, inputId, valorActual) {
+        const select = document.getElementById(selectId);
+        const input = document.getElementById(inputId);
+        if (!select || !input) return;
+        const opciones = Array.from(select.options).map(o => o.value);
+        if (valorActual && !opciones.includes(valorActual) && valorActual !== 'OTRO' && valorActual !== '') {
+            select.style.display = 'none';
+            input.style.display = 'block';
+            input.value = valorActual;
+            select.value = 'OTRO';
+            input.required = true;
+        } else {
+            if (opciones.includes(valorActual)) {
+                select.value = valorActual;
+            }
+            select.style.display = 'block';
+            input.style.display = 'none';
+            input.value = '';
+            input.required = false;
+        }
     }
 
     // ============================================================================
-    // DATOS GEOGRÁFICOS (resumido)
+    // DATOS GEOGRÁFICOS (carga mediante AJAX)
     // ============================================================================
     const paisesLista = [
         'Venezuela', 'Argentina', 'Bolivia', 'Brasil', 'Chile', 'Colombia',
@@ -936,7 +969,6 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!select) return;
         select.innerHTML = '<option value="">Cargando...</option>';
         select.disabled = true;
-        
         fetch(url)
             .then(response => {
                 if (!response.ok) throw new Error('HTTP error ' + response.status);
@@ -963,94 +995,41 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    function configurarOtro(selectId, inputId) {
-        const select = document.getElementById(selectId);
-        let input = document.getElementById(inputId);
-        if (!select || !input) return;
-        
-        select.addEventListener('change', function() {
-            if (this.value === 'OTRO') {
-                this.style.display = 'none';
-                input.style.display = 'block';
-                input.value = '';
-                input.focus();
-                input.required = true;
-            } else {
-                this.style.display = 'block';
-                input.style.display = 'none';
-                input.value = '';
-                input.required = false;
-            }
-        });
-        
-        input.addEventListener('blur', function() {
-            if (this.value.trim() === '') {
-                select.style.display = 'block';
-                this.style.display = 'none';
-                this.required = false;
-                select.value = '';
-            }
-        });
-    }
-
     function inicializarGeografia() {
         const selectPais = document.getElementById('pais_nacimiento');
         if (selectPais) {
             cargarSelectDesdeEndpoint('ajax_geografico.php?action=get_paises', 'pais_nacimiento', 'Venezuela', paisesLista);
-            configurarOtro('pais_nacimiento', 'input_pais_nacimiento');
         }
-        
         const selectRepPais = document.getElementById('rep_pais_nacimiento');
         if (selectRepPais) {
             cargarSelectDesdeEndpoint('ajax_geografico.php?action=get_paises', 'rep_pais_nacimiento', 'Venezuela', paisesLista);
-            configurarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
         }
-        
         const estadoSelects = [
-            { id: 'estado_nacimiento', inputId: 'input_estado_nacimiento', fallback: estadosVenezuela },
-            { id: 'estado_residencia', inputId: 'input_estado_residencia', fallback: estadosVenezuela },
-            { id: 'rep_estado_nacimiento', inputId: 'input_rep_estado_nacimiento', fallback: estadosVenezuela },
-            { id: 'rep_estado_residencia', inputId: 'input_rep_estado_residencia', fallback: estadosVenezuela }
+            { id: 'estado_nacimiento', fallback: estadosVenezuela },
+            { id: 'estado_residencia', fallback: estadosVenezuela },
+            { id: 'rep_estado_nacimiento', fallback: estadosVenezuela },
+            { id: 'rep_estado_residencia', fallback: estadosVenezuela }
         ];
-        
-        estadoSelects.forEach(({ id, inputId, fallback }) => {
+        estadoSelects.forEach(({ id, fallback }) => {
             const select = document.getElementById(id);
             if (select) {
                 cargarSelectDesdeEndpoint('ajax_geografico.php?action=get_estados', id, '', fallback);
-                configurarOtro(id, inputId);
             }
         });
-        
         const municipioSelect = document.getElementById('municipio');
-        if (municipioSelect) {
-            municipioSelect.disabled = true;
-            configurarOtro('municipio', 'input_municipio');
-        }
-        
+        if (municipioSelect) municipioSelect.disabled = true;
         const repMunicipioSelect = document.getElementById('rep_municipio');
-        if (repMunicipioSelect) {
-            repMunicipioSelect.disabled = true;
-            configurarOtro('rep_municipio', 'input_rep_municipio');
-        }
-        
+        if (repMunicipioSelect) repMunicipioSelect.disabled = true;
         const parroquiaSelect = document.getElementById('parroquia');
-        if (parroquiaSelect) {
-            parroquiaSelect.disabled = true;
-            configurarOtro('parroquia', 'input_parroquia');
-        }
-        
+        if (parroquiaSelect) parroquiaSelect.disabled = true;
         const repParroquiaSelect = document.getElementById('rep_parroquia');
-        if (repParroquiaSelect) {
-            repParroquiaSelect.disabled = true;
-            configurarOtro('rep_parroquia', 'input_rep_parroquia');
-        }
-        
+        if (repParroquiaSelect) repParroquiaSelect.disabled = true;
+
         function actualizarMunicipios(estadoId, municipioId, parroquiaId) {
             const estadoSelect = document.getElementById(estadoId);
             const municipioSelect = document.getElementById(municipioId);
             const parroquiaSelect = document.getElementById(parroquiaId);
             if (!estadoSelect || !municipioSelect || !parroquiaSelect) return;
-            
             const estado = estadoSelect.value;
             if (!estado || estado === 'OTRO') {
                 municipioSelect.innerHTML = '<option value="">Primero seleccione un estado</option>';
@@ -1059,34 +1038,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 parroquiaSelect.disabled = true;
                 return;
             }
-            
             const url = 'ajax_geografico.php?action=get_municipios&estado=' + encodeURIComponent(estado);
             const fallback = municipiosPorEstado[estado] || [];
             cargarSelectDesdeEndpoint(url, municipioId, '', fallback);
             municipioSelect.disabled = false;
-            
             parroquiaSelect.innerHTML = '<option value="">Primero seleccione un municipio</option>';
             parroquiaSelect.disabled = true;
         }
-        
+
         function actualizarParroquias(municipioId, parroquiaId) {
             const municipioSelect = document.getElementById(municipioId);
             const parroquiaSelect = document.getElementById(parroquiaId);
             if (!municipioSelect || !parroquiaSelect) return;
-            
             const municipio = municipioSelect.value;
             if (!municipio || municipio === 'OTRO') {
                 parroquiaSelect.innerHTML = '<option value="">Primero seleccione un municipio</option>';
                 parroquiaSelect.disabled = true;
                 return;
             }
-            
             const url = 'ajax_geografico.php?action=get_parroquias&municipio=' + encodeURIComponent(municipio);
             const fallback = parroquiasPorMunicipio[municipio] || [];
             cargarSelectDesdeEndpoint(url, parroquiaId, '', fallback);
             parroquiaSelect.disabled = false;
         }
-        
+
         document.getElementById('estado_nacimiento')?.addEventListener('change', function() {
             actualizarMunicipios('estado_nacimiento', 'municipio', 'parroquia');
         });
@@ -1096,7 +1071,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('municipio')?.addEventListener('change', function() {
             actualizarParroquias('municipio', 'parroquia');
         });
-        
         document.getElementById('rep_estado_nacimiento')?.addEventListener('change', function() {
             actualizarMunicipios('rep_estado_nacimiento', 'rep_municipio', 'rep_parroquia');
         });
@@ -1106,7 +1080,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('rep_municipio')?.addEventListener('change', function() {
             actualizarParroquias('rep_municipio', 'rep_parroquia');
         });
-        
         setTimeout(function() {
             ['estado_nacimiento', 'estado_residencia', 'rep_estado_nacimiento', 'rep_estado_residencia'].forEach(id => {
                 const select = document.getElementById(id);
@@ -1118,6 +1091,46 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     inicializarGeografia();
+
+    // ============================================================================
+    // INICIALIZAR "OTRO" DESPUÉS DE CARGAR SELECTS
+    // ============================================================================
+    setTimeout(function() {
+        <?php if (!empty($prefill_data)): ?>
+            inicializarCampoOtro('pais_nacimiento', 'input_pais_nacimiento', '<?php echo htmlspecialchars($prefill_data['pais_nacimiento'] ?? ''); ?>');
+            inicializarCampoOtro('estado_nacimiento', 'input_estado_nacimiento', '<?php echo htmlspecialchars($prefill_data['estado_nacimiento'] ?? ''); ?>');
+            inicializarCampoOtro('estado_residencia', 'input_estado_residencia', '<?php echo htmlspecialchars($prefill_data['estado_residencia'] ?? ''); ?>');
+            inicializarCampoOtro('municipio', 'input_municipio', '<?php echo htmlspecialchars($prefill_data['municipio'] ?? ''); ?>');
+            inicializarCampoOtro('parroquia', 'input_parroquia', '<?php echo htmlspecialchars($prefill_data['parroquia'] ?? ''); ?>');
+            inicializarCampoOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento', '<?php echo htmlspecialchars($prefill_data['rep_pais_nacimiento'] ?? ''); ?>');
+            inicializarCampoOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento', '<?php echo htmlspecialchars($prefill_data['rep_estado_nacimiento'] ?? ''); ?>');
+            inicializarCampoOtro('rep_estado_residencia', 'input_rep_estado_residencia', '<?php echo htmlspecialchars($prefill_data['rep_estado_residencia'] ?? ''); ?>');
+            inicializarCampoOtro('rep_municipio', 'input_rep_municipio', '<?php echo htmlspecialchars($prefill_data['rep_municipio'] ?? ''); ?>');
+            inicializarCampoOtro('rep_parroquia', 'input_rep_parroquia', '<?php echo htmlspecialchars($prefill_data['rep_parroquia'] ?? ''); ?>');
+        <?php else: ?>
+            inicializarCampoOtro('pais_nacimiento', 'input_pais_nacimiento', '');
+            inicializarCampoOtro('estado_nacimiento', 'input_estado_nacimiento', '');
+            inicializarCampoOtro('estado_residencia', 'input_estado_residencia', '');
+            inicializarCampoOtro('municipio', 'input_municipio', '');
+            inicializarCampoOtro('parroquia', 'input_parroquia', '');
+            inicializarCampoOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento', '');
+            inicializarCampoOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento', '');
+            inicializarCampoOtro('rep_estado_residencia', 'input_rep_estado_residencia', '');
+            inicializarCampoOtro('rep_municipio', 'input_rep_municipio', '');
+            inicializarCampoOtro('rep_parroquia', 'input_rep_parroquia', '');
+        <?php endif; ?>
+        configurarOtro('pais_nacimiento', 'input_pais_nacimiento');
+        configurarOtro('estado_nacimiento', 'input_estado_nacimiento');
+        configurarOtro('estado_residencia', 'input_estado_residencia');
+        configurarOtro('municipio', 'input_municipio');
+        configurarOtro('parroquia', 'input_parroquia');
+        configurarOtro('rep_pais_nacimiento', 'input_rep_pais_nacimiento');
+        configurarOtro('rep_estado_nacimiento', 'input_rep_estado_nacimiento');
+        configurarOtro('rep_estado_residencia', 'input_rep_estado_residencia');
+        configurarOtro('rep_municipio', 'input_rep_municipio');
+        configurarOtro('rep_parroquia', 'input_rep_parroquia');
+    }, 700);
+
     setTimeout(generarCedulaEscolar, 100);
 
     function mostrarMensaje(texto) {
@@ -1128,13 +1141,11 @@ document.addEventListener('DOMContentLoaded', function() {
             <strong>${texto}</strong>
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
-        
         const tabla = document.getElementById('tablaHistorial');
         const container = tabla.parentElement;
         const existingAlert = container.querySelector('.alert-success');
         if (existingAlert) existingAlert.remove();
         container.insertBefore(alertDiv, tabla.nextSibling);
-        
         setTimeout(() => {
             if (alertDiv.parentElement) {
                 alertDiv.classList.remove('show');
@@ -1143,7 +1154,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     }
 
-    // Ejecutar copia inicial de cédula si hay valor precargado
     setTimeout(copiarCedulaAPadres, 200);
 });
 </script>

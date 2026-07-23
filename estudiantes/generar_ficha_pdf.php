@@ -462,8 +462,8 @@ ob_start();
                 <tr>
                     <td>20<?= htmlspecialchars($ano1) ?> -<br>20<?= htmlspecialchars($ano2) ?></td>
                     <td><?= htmlspecialchars(formatearCaso($ins['grado_seccion'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars(formatearCaso($ins['registro'] ?? '')) ?></td>
-                    <td><?= htmlspecialchars(formatearCaso($ins['repite'] ?? '')) ?></td>
+                    <td><?= ($ins['registro'] == 'Regular') ? 'X' : '' ?></td>
+<td><?= ($ins['repite'] == 'Si') ? 'X' : '' ?></td>
                     <td><?= htmlspecialchars($ins['c'] ?? '') ?></td>
                     <td><?= htmlspecialchars($ins['f'] ?? '') ?></td>
                     <td><?= htmlspecialchars($ins['p'] ?? '') ?></td>

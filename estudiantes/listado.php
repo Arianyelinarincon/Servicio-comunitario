@@ -9,91 +9,6 @@ require_once '../config/configuracion.php';
 
 $periodo_escolar_actual = obtenerPeriodoEscolar();
 
-// ========== FUNCIÓN PARA VERIFICAR CAMPOS COMPLETOS (MEJORADA) ==========
-function verificarCamposCompletos($datos) {
-    $faltantes = [];
-    
-    $campos_estudiante = [
-        'nombre' => 'Nombre',
-        'apellido' => 'Apellido',
-        'fecha_nacimiento' => 'Fecha Nac.',
-        'genero' => 'Sexo',
-        'cedula_escolar' => 'Cédula Escolar',
-    ];
-    
-    $campos_representante = [
-        'rep_nombre' => 'Nombre',
-        'rep_cedula' => 'Cédula',
-        'rep_telefono' => 'Teléfono',
-    ];
-    
-    $campos_sala = [
-        'sala' => 'Sala/Grado',
-        'seccion_id' => 'Sección',
-    ];
-    
-    $campos_padres = [
-        'madre_nombre' => 'Madre (nombre)',
-        'padre_nombre' => 'Padre (nombre)',
-    ];
-    
-    $campos_condicionales = [];
-    if (!empty($datos['enfermedad']) && $datos['enfermedad'] === 'Si') {
-        $campos_condicionales['enfermedad_cual'] = 'Enfermedad (cuál)';
-    }
-    if (!empty($datos['educacion_fisica']) && $datos['educacion_fisica'] === 'No') {
-        $campos_condicionales['educacion_fisica_porque'] = 'Ed. Física (por qué no)';
-    }
-    if (!empty($datos['alergia']) && $datos['alergia'] === 'Si') {
-        $campos_condicionales['alergia_cual'] = 'Alergia (cuál)';
-    }
-    
-    $faltantes_por_grupo = [];
-    
-    foreach ($campos_estudiante as $campo => $label) {
-        if (empty($datos[$campo]) && $datos[$campo] !== '0') {
-            $faltantes_por_grupo['Estudiante'][] = $label;
-        }
-    }
-    
-    foreach ($campos_representante as $campo => $label) {
-        if (empty($datos[$campo]) && $datos[$campo] !== '0') {
-            $faltantes_por_grupo['Representante'][] = $label;
-        }
-    }
-    
-    foreach ($campos_sala as $campo => $label) {
-        if (!isset($datos[$campo]) || $datos[$campo] === '' || $datos[$campo] === NULL) {
-            $faltantes_por_grupo['Sala/Sección'][] = $label;
-        }
-    }
-    
-    $madre = !empty($datos['madre_nombre']);
-    $padre = !empty($datos['padre_nombre']);
-    if (!$madre && !$padre) {
-        $faltantes_por_grupo['Padres'][] = 'Madre o Padre (al menos uno)';
-    }
-    
-    foreach ($campos_condicionales as $campo => $label) {
-        if (empty($datos[$campo])) {
-            $faltantes_por_grupo['Condicionales'][] = $label;
-        }
-    }
-    
-    $faltantes_plano = [];
-    foreach ($faltantes_por_grupo as $grupo => $items) {
-        foreach ($items as $item) {
-            $faltantes_plano[] = $grupo . ': ' . $item;
-        }
-    }
-    
-    return [
-        'por_grupo' => $faltantes_por_grupo,
-        'plano' => $faltantes_plano,
-        'total' => count($faltantes_plano)
-    ];
-}
-
 // CSRF token
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -102,11 +17,51 @@ if (empty($_SESSION['csrf_token'])) {
 // ========== MANEJAR PETICIONES AJAX ==========
 if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     $sala = isset($_GET['sala']) ? trim($_GET['sala']) : '';
-    $busqueda = isset($_GET['busqueda']) ? '%' . trim($_GET['busqueda']) . '%' : '';
+    $busqueda = isset($_GET['busqueda']) ? trim($_GET['busqueda']) : '';
     $filtro_anio = isset($_GET['anio']) ? trim($_GET['anio']) : '';
 
+    // ===== CONSULTA PARA CONTAR (INDEPENDIENTE) =====
+    $sql_count = "
+        SELECT COUNT(DISTINCT e.id) AS total,
+               SUM(CASE WHEN e.genero = 'V' THEN 1 ELSE 0 END) AS varones,
+               SUM(CASE WHEN e.genero = 'H' THEN 1 ELSE 0 END) AS hembras
+        FROM estudiantes e
+        WHERE e.estatus = 'Activo'
+          AND EXISTS (SELECT 1 FROM inscripciones i WHERE i.estudiante_id = e.id)
+    ";
+    $params_count = [];
+    $types_count = "";
+
+    if ($sala) {
+        $sql_count .= " AND e.sala = ?";
+        $params_count[] = $sala;
+        $types_count .= "s";
+    }
+    if ($busqueda) {
+        $sql_count .= " AND (e.nombre LIKE ? OR e.apellido LIKE ? OR e.cedula_escolar LIKE ?)";
+        $like = '%' . $busqueda . '%';
+        $params_count[] = $like;
+        $params_count[] = $like;
+        $params_count[] = $like;
+        $types_count .= "sss";
+    }
+    if ($filtro_anio) {
+        $sql_count .= " AND EXISTS (SELECT 1 FROM inscripciones i2 WHERE i2.estudiante_id = e.id AND i2.ano_escolar = ?)";
+        $params_count[] = $filtro_anio;
+        $types_count .= "s";
+    }
+
+    $stmt_count = $conexion->prepare($sql_count);
+    if ($params_count) {
+        $stmt_count->bind_param($types_count, ...$params_count);
+    }
+    $stmt_count->execute();
+    $counts = $stmt_count->get_result()->fetch_assoc();
+    $stmt_count->close();
+
+    // ===== CONSULTA PARA LA TABLA =====
     $sql = "
-        SELECT DISTINCT e.*, 
+        SELECT DISTINCT e.id, e.nombre, e.apellido, e.cedula_escolar, e.sala, e.genero,
                r.nombre_completo AS rep_nombre,
                r.cedula AS rep_cedula,
                r.telefono AS rep_telefono,
@@ -131,9 +86,10 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     }
     if ($busqueda) {
         $sql .= " AND (e.nombre LIKE ? OR e.apellido LIKE ? OR e.cedula_escolar LIKE ?)";
-        $params[] = $busqueda;
-        $params[] = $busqueda;
-        $params[] = $busqueda;
+        $like = '%' . $busqueda . '%';
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
         $types .= "sss";
     }
     if ($filtro_anio) {
@@ -141,8 +97,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         $params[] = $filtro_anio;
         $types .= "s";
     }
-    // ===== ORDEN: Año más reciente arriba, luego alfabético =====
-    $sql .= " ORDER BY e.sala, e.nombre, e.apellido";
+    
+    $sql .= " ORDER BY ano_escolar_actual DESC, e.sala, e.nombre, e.apellido";
 
     $stmt = $conexion->prepare($sql);
     if ($params) {
@@ -173,30 +129,33 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                 <?php if ($result && $result->num_rows > 0): 
                     $contador = 1;
                     while($e = $result->fetch_assoc()): 
-                        $datos_verificar = [
-                            'nombre' => $e['nombre'],
-                            'apellido' => $e['apellido'],
-                            'fecha_nacimiento' => $e['fecha_nacimiento'],
-                            'genero' => $e['genero'],
-                            'cedula_escolar' => $e['cedula_escolar'],
-                            'rep_nombre' => $e['rep_nombre'],
-                            'rep_cedula' => $e['rep_cedula'],
-                            'rep_telefono' => $e['rep_telefono'],
-                            'sala' => $e['sala'],
-                            'seccion_id' => $e['seccion_id'],
-                            'madre_nombre' => $e['madre_nombre'],
-                            'padre_nombre' => $e['padre_nombre'],
-                            'enfermedad' => $e['enfermedad'],
-                            'enfermedad_cual' => $e['enfermedad_cual'],
-                            'educacion_fisica' => $e['educacion_fisica'],
-                            'educacion_fisica_porque' => $e['educacion_fisica_porque'],
-                            'alergia' => $e['alergia'],
-                            'alergia_cual' => $e['alergia_cual'],
-                        ];
-                        $resultado_verificacion = verificarCamposCompletos($datos_verificar);
-                        $faltantes_plano = $resultado_verificacion['plano'];
-                        $faltantes_por_grupo = $resultado_verificacion['por_grupo'];
-                        $completa = ($resultado_verificacion['total'] == 0);
+                        $estado = obtenerEstadoCompleto($e['id'], $conexion);
+                        $ficha_ok = $estado['ficha']['completa'];
+                        $boletin_ok = $estado['boletin']['completo'];
+                        $faltantes_ficha = $estado['ficha']['faltantes'];
+                        $faltantes_bol = $estado['boletin']['faltantes'];
+                        
+                        $tooltip = '';
+                        $clase_badge = '';
+                        $icono = '';
+                        $texto_estado = '';
+                        
+                        if (!$ficha_ok) {
+                            $clase_badge = 'bg-danger';
+                            $icono = 'fa-exclamation-triangle';
+                            $tooltip = '⚠️ Ficha incompleta. Faltan: ' . implode(', ', $faltantes_ficha);
+                            $texto_estado = 'Ficha incompleta';
+                        } elseif (!$boletin_ok) {
+                            $clase_badge = 'bg-warning text-dark';
+                            $icono = 'fa-clock';
+                            $tooltip = '✅ Ficha completa, pero faltan datos para boletín: ' . implode(', ', $faltantes_bol);
+                            $texto_estado = 'Faltan datos boletín';
+                        } else {
+                            $clase_badge = 'bg-success';
+                            $icono = 'fa-check-circle';
+                            $tooltip = '✅ Completamente al día.';
+                            $texto_estado = 'Completa';
+                        }
                         
                         $mapa_salas = [
                             'sala4' => 'Sala 4 Años',
@@ -214,23 +173,21 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                         <td class="text-center fw-bold text-muted"><?= $contador++ ?></td>
                         <td><strong><?= htmlspecialchars($e['nombre'] . ' ' . $e['apellido']) ?></strong></td>
                         <td>
-                            <?php if ($completa): ?>
-                                <span class="text-success" title="✅ Inscripción completa">
-                                    <i class="fas fa-check-circle fa-lg"></i>
+                            <span class="badge <?= $clase_badge ?> estado-icono" 
+                                  style="cursor:help; font-size:0.8rem; padding:5px 10px;"
+                                  data-bs-toggle="tooltip"
+                                  data-bs-placement="left"
+                                  data-bs-html="true"
+                                  title="<?= htmlspecialchars($tooltip) ?>">
+                                <i class="fas <?= $icono ?> me-1"></i> <?= $texto_estado ?>
+                            </span>
+                            <?php if (!$ficha_ok): ?>
+                                <span class="badge bg-danger rounded-pill ms-1" style="font-size:0.6rem;">
+                                    <?= count($faltantes_ficha) ?>
                                 </span>
-                            <?php else: ?>
-                                <span class="text-warning estado-icono" 
-                                      style="cursor:help; position:relative;"
-                                      data-bs-toggle="popover"
-                                      data-bs-placement="left"
-                                      data-bs-trigger="hover focus"
-                                      data-bs-html="true"
-                                      data-bs-content="<?= htmlspecialchars(construirContenidoPopover($faltantes_por_grupo)) ?>"
-                                      title="❌ Inscripción incompleta">
-                                    <i class="fas fa-exclamation-triangle fa-lg"></i>
-                                    <span class="badge bg-danger rounded-pill ms-1" style="font-size:0.6rem;">
-                                        <?= $resultado_verificacion['total'] ?>
-                                    </span>
+                            <?php elseif (!$boletin_ok): ?>
+                                <span class="badge bg-warning text-dark rounded-pill ms-1" style="font-size:0.6rem;">
+                                    <?= count($faltantes_bol) ?>
                                 </span>
                             <?php endif; ?>
                         </td>
@@ -244,7 +201,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
                             <a href="ver_ficha.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-info" target="_blank" title="Ver ficha completa"><i class="fas fa-eye"></i></a>
                             <a href="editar_estudiantes.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-primary" title="Editar datos"><i class="fas fa-edit"></i></a>
                             <?php if ($_SESSION['rol'] === 'super_admin' || $_SESSION['rol'] === 'administrador' || $_SESSION['rol'] === 'directiva'): ?>
-                                <a href="eliminar_estudiante_completo.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-danger" title="Eliminar estudiante (con confirmación avanzada)" onclick="return confirm('¿Está seguro de eliminar este estudiante? Se eliminarán TODOS sus registros asociados (boletines, asistencia, inscripciones, rendimiento).')">
+                                <a href="eliminar_estudiante_completo.php?id=<?= $e['id'] ?>" class="btn btn-sm btn-danger" title="Eliminar estudiante" onclick="return confirm('¿Está seguro de eliminar este estudiante? Se eliminarán TODOS sus registros asociados.')">
                                     <i class="fas fa-trash-alt"></i>
                                 </a>
                             <?php endif; ?>
@@ -259,21 +216,16 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     </div>
     <?php
     $html = ob_get_clean();
-    echo $html;
-    exit;
-}
 
-// ========== FUNCIÓN PARA CONSTRUIR EL CONTENIDO DEL POPOVER ==========
-function construirContenidoPopover($faltantes_por_grupo) {
-    $html = '<div style="font-size:0.8rem; max-width:300px;">';
-    $html .= '<strong class="text-danger">⚠️ Faltan datos:</strong><ul style="padding-left:15px; margin-top:5px; margin-bottom:0;">';
-    foreach ($faltantes_por_grupo as $grupo => $items) {
-        if (!empty($items)) {
-            $html .= '<li><strong>' . htmlspecialchars($grupo) . ':</strong> ' . htmlspecialchars(implode(', ', $items)) . '</li>';
-        }
-    }
-    $html .= '</ul></div>';
-    return $html;
+    // Devolver JSON con HTML y estadísticas
+    header('Content-Type: application/json');
+    echo json_encode([
+        'html' => $html,
+        'total' => (int)($counts['total'] ?? 0),
+        'varones' => (int)($counts['varones'] ?? 0),
+        'hembras' => (int)($counts['hembras'] ?? 0)
+    ]);
+    exit;
 }
 
 // ========== MANEJAR ELIMINACIÓN ==========
@@ -365,21 +317,33 @@ if (empty($anios_disponibles)) {
         border-color: #002d54;
         box-shadow: 0 0 0 3px rgba(0,45,84,0.15);
     }
-    .popover {
+    .tooltip-inner {
         max-width: 350px;
+        text-align: left;
         font-size: 0.85rem;
-    }
-    .popover-body {
-        padding: 10px 14px;
-    }
-    .popover-body ul {
-        margin-bottom: 0;
     }
     .estado-icono {
         transition: transform 0.2s;
     }
     .estado-icono:hover {
-        transform: scale(1.1);
+        transform: scale(1.05);
+    }
+    .estadisticas-sutiles {
+        font-size: 0.85rem;
+        color: rgba(255,255,255,0.8);
+        display: flex;
+        gap: 18px;
+        align-items: center;
+    }
+    .estadisticas-sutiles span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .estadisticas-sutiles .badge {
+        font-size: 0.8rem;
+        padding: 2px 8px;
+        border-radius: 20px;
     }
 </style>
 
@@ -427,8 +391,8 @@ if (empty($anios_disponibles)) {
                             <?php
                             $orden_salas = ['sala4', 'sala5', '1ro', '2do', '3ro', '4to', '5to', '6to'];
                             $mapa_salas = [
-                                'sala4' => 'Sala de 4 años',
-                                'sala5' => 'Sala de 5 años',
+                                'sala4' => 'Sala 4 años',
+                                'sala5' => 'Sala 5 años',
                                 '1ro' => '1er Grado',
                                 '2do' => '2do Grado',
                                 '3ro' => '3er Grado',
@@ -468,7 +432,16 @@ if (empty($anios_disponibles)) {
     <!-- Tabla -->
     <div class="card card-tabla">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i> Registro de Estudiantes <span class="badge bg-light text-dark ms-2" id="contador-total">0</span></h6>
+            <h6 class="mb-0">
+                <i class="fas fa-list-ul me-2"></i> Registro de Estudiantes
+                <span class="badge bg-light text-dark ms-2" id="contador-total">0</span>
+            </h6>
+            <!-- Estadísticas sutiles -->
+            <div class="estadisticas-sutiles">
+                <span><i class="fas fa-male text-info"></i> Varones: <span id="estadistica-varones" class="badge bg-info text-dark">0</span></span>
+                <span><i class="fas fa-female text-danger"></i> Hembras: <span id="estadistica-hembras" class="badge bg-danger text-white">0</span></span>
+                <span><i class="fas fa-users text-warning"></i> Total: <span id="estadistica-total" class="badge bg-light text-dark">0</span></span>
+            </div>
             <small class="opacity-75"><i class="fas fa-clock me-1"></i> Filtro automático</small>
         </div>
         <div class="card-body p-0" id="tabla-container">
@@ -488,6 +461,9 @@ const anioSelect = document.getElementById('anioSelect');
 const tablaContainer = document.getElementById('tabla-container');
 const contadorTotal = document.getElementById('contador-total');
 const contadorFooter = document.getElementById('contador-footer');
+const estadisticaTotal = document.getElementById('estadistica-total');
+const estadisticaVarones = document.getElementById('estadistica-varones');
+const estadisticaHembras = document.getElementById('estadistica-hembras');
 let timeoutId = null;
 
 function cargarTabla() {
@@ -511,21 +487,26 @@ function cargarTabla() {
     params.append('ajax', '1');
 
     fetch('listado.php?' + params.toString())
-        .then(response => response.text())
-        .then(html => {
-            tablaContainer.innerHTML = html;
-            const filas = tablaContainer.querySelectorAll('tbody tr');
-            const total = filas.length;
+        .then(response => response.json())
+        .then(data => {
+            tablaContainer.innerHTML = data.html;
+            // Actualizar contadores
+            const total = data.total || 0;
+            const varones = data.varones || 0;
+            const hembras = data.hembras || 0;
+            
             contadorTotal.textContent = total;
             contadorFooter.textContent = total;
+            estadisticaTotal.textContent = total;
+            estadisticaVarones.textContent = varones;
+            estadisticaHembras.textContent = hembras;
             
-            if (typeof bootstrap !== 'undefined' && bootstrap.Popover) {
-                const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
-                popoverTriggerList.map(function (popoverTriggerEl) {
-                    return new bootstrap.Popover(popoverTriggerEl, {
-                        trigger: 'hover focus',
+            if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.map(function (el) {
+                    return new bootstrap.Tooltip(el, {
                         html: true,
-                        container: 'body'
+                        placement: 'left'
                     });
                 });
             }
@@ -543,18 +524,12 @@ function cargarTabla() {
 busquedaInput.addEventListener('input', function() {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(cargarTabla, 400);
-    this.focus();
 });
 
 salaSelect.addEventListener('change', cargarTabla);
 anioSelect.addEventListener('change', cargarTabla);
 
 document.addEventListener('DOMContentLoaded', function() {
-    if (busquedaInput) {
-        busquedaInput.focus();
-        const length = busquedaInput.value.length;
-        busquedaInput.setSelectionRange(length, length);
-    }
     cargarTabla();
 });
 </script>

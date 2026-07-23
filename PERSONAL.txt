@@ -1,0 +1,39 @@
+CEDULA 	NOMBRE Y APELLIDO 	FECHA DE INGRESO	SEXO	TIPO PERSONAL 	CODIGO RAC 	CARGO	RUTAPDF
+9796097	SARA LEAL	1/12/2001	F	D	1126DI	DOC. VI   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF\Sara Leal.pdf
+4519280	MARIANELA CAMARILLO	3/10/2022	F	D	1121DI	DOC. I   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+7606106	CHIRINOS SANDRA	16/9/2013	F	D	1122DI	DOC. II  /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF\Sandra Chirinos.pdf
+7614367	LOPEZ GUADALUPE	1/11/2005	F	D	1124DI	DOC. IV  /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF\Guadalupe Lopez.pdf
+7795395	BERDY YAMILE	15/10/2002	F	D	1134DH	DOC. IV  /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+7891437	PALMA MARTINA C.	3/3/2009	F	D	1145DH	DOC. V   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+10450745	PACHECO MARIA	10/10/2001	F	D	1125DI	DOC. V   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+11867667	HERNANDEZ DESIREE	1/7/2021	F	D	1141DH	DOC. I   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+12441977	DELGADO SILVIA	1/10/2016	F	D	1121DI	DOC. I   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+14416870	VISBAL MARIA G.	1/1/2009	F	D	1113DI	DOC. III /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+15525528	RINCON N ROSYANIE K	16/5/2005	F	D	1114DI	DOC. IV  /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+18494718	CONTRERAS ANGELA	16/11/2016	F	D	1111DI	DOC. I   /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+19458038	GONZALEZ PEDRO	16/9/2008	M	D	4120DI	DOC. (NG)/AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+20661457	JUNIOR SERRUDO	3/10/2022	M	D	4140DH	DOC. (NG)/AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+WILLIAN SANTIAGO	7978302	1/10/2016	M	A	310000	PRROFESIONAL UNIV. III	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF\Willian Santiago.pdf
+8508890	MARIELA ARRIAS	16/9/2003	F	A	100000	BACHILLER I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+18203897	YANARA ARO	01/10/23	F	A	300000	PRROFESIONAL UNIV. I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+7894704	VILLARREAL RIVERO RAFAEL	16/9/2013	M	O	8032N	OBRERO GENERAL II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+9703966	GODOY OMER	1/12/2018	M	O	8031N	OBRERO GENERAL I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+11662408	ITURBE CARMONA JACKELINA	16/9/2012	F	O	8032N	OBRERO GENERAL II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+18281320	HECTOR BRICEÑO	16/5/2022	M	O	8031N	OBRERO GENERAL I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+5837676	YEGUEZ SALVADOR	1/10/2016	M	D	1132DH	DOC. II/AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+7970522	NAYA RINCON	16/9/2005	F	D	1154DH	DOC. IV/AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+10284256	ROSA SOLANO	1/12/2018	F	D	1132DH	DOC. II  /AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+13741025	MAYRA MEJIA	1/10/2016	F	D	1122DB	DOC II/AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+16151386	LAURA SANCHEZ	1/10/2016	F	D	2127DI	TSU EN EDUCACION	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+23745590	NIZMAR HERRERA	1/12/2018	F	D	1142DH	DOC.II/AULA	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+8509537	BENEY MANZANILLA	1/10/2016	F	O	8033N	OBRERO GENERAL III	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+9947231	MARIELA RONDON	16/9/2013	F	O	8035N	OBRERO GENERAL I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+17805764	YAMILET LEON		F	O	8034N	OBRERO GENERAL IV	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+24946238	KELLY RAMIREZ	1/11/2022	F	O	8031N	OBRERO GENERAL I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+27972051	ANGEL URDANETA	1/11/2022	M	O	8031N	OBRERO GENERAL I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+10405724	YADIRA DIAZ	1/9/2014	F	C	8991N	COCINERA II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+11284120	MARIA ESPINOZA	1/9/2014	F	C	8991N	COCINERA II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+11288631	ERIKA FUENMAYOR	1/9/2014	F	C	8991N	COCINERA II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+11605302	LISBETH PRIETO	1/9/2014	F	C	8991N	COCINERA II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+12801033	LEONARDO SEGOVIA	1/9/2014	M	C	8991N	COCINERA II	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF
+17804163	GERALDIN HERNANDEZ	1/2/2016	F	C	8990N	COCINERA I	C:\Users\PC Personal\Downloads\Colegio\Colegio actual\PDF

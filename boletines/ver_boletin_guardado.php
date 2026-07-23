@@ -1,6 +1,6 @@
 <?php
 session_start();
-if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin'])) {
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
 }
@@ -11,15 +11,18 @@ if (!$id) {
     die("ID de boletín no válido.");
 }
 
-// Obtener datos del boletín y del estudiante
+// ========== CONSULTA CORREGIDA: INCLUYE DOCENTE ==========
 $stmt = $conexion->prepare("
     SELECT b.*, 
            CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante,
            e.cedula_escolar, e.sala,
-           r.nombre_completo AS representante
+           r.nombre_completo AS representante,
+           p.nombre AS docente
     FROM boletines b
     JOIN estudiantes e ON b.estudiante_id = e.id
     LEFT JOIN representantes r ON e.representante_id = r.id
+    LEFT JOIN secciones s ON e.seccion_id = s.id
+    LEFT JOIN profesores p ON p.seccion = s.id
     WHERE b.id = ?
 ");
 $stmt->bind_param("i", $id);
@@ -38,7 +41,7 @@ $estudiante = htmlspecialchars($boletin['nombre_estudiante']);
 $ce = htmlspecialchars($boletin['cedula_escolar']);
 $grupo = htmlspecialchars($boletin['sala']);
 $ano_escolar = htmlspecialchars($boletin['periodo']);
-$docente = ''; // No se guarda en boletines
+$docente = htmlspecialchars($boletin['docente'] ?? 'No asignado');
 $representante = htmlspecialchars($boletin['representante'] ?? 'No registrado');
 $observacion = nl2br(htmlspecialchars($boletin['observacion'] ?? ''));
 

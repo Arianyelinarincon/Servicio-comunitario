@@ -1,9 +1,9 @@
 <?php
 session_start();
-if (!isset($_SESSION['estudiante'])) {
-    // header("Location: index.php");
-    // exit();
-}
+// if (!isset($_SESSION['estudiante'])) {
+//     header("Location: index.php");
+//     exit();
+// }
 
 require_once '../estadisticas/dompdf/autoload.inc.php';
 require_once '../config/conexion.php';
@@ -15,13 +15,80 @@ use Dompdf\Options;
 // ========== OBTENER PERIODO ESCOLAR ==========
 $periodo_escolar_actual = obtenerPeriodoEscolar();
 
-// Recuperar datos de la sesión
-$estudiante = htmlspecialchars($_SESSION['estudiante'] ?? '');
-$ce = htmlspecialchars($_SESSION['ce'] ?? '');
-$grupo = htmlspecialchars($_SESSION['grupo'] ?? '');
-$ano_escolar = htmlspecialchars($_SESSION['ano_escolar'] ?? $periodo_escolar_actual);
-$docente = htmlspecialchars($_SESSION['docente'] ?? '');
-$representante = htmlspecialchars($_SESSION['representante'] ?? '');
+// ========== OBTENER DATOS DEL ESTUDIANTE DESDE BD ==========
+$estudiante_id = $_SESSION['estudiante_id'] ?? 0;
+$estudiante_nombre = $_SESSION['estudiante'] ?? '';
+$ce = $_SESSION['ce'] ?? '';
+$ano_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
+$docente = $_SESSION['docente'] ?? 'No asignado';
+$representante = $_SESSION['representante'] ?? 'No registrado';
+$seccion = 'U';
+$sala_codigo = '';
+$grado_legible = '';
+
+// Nombres legibles para salas / grados
+$nombres_salas = [
+    'sala4' => 'Sala 4 Años',
+    'sala5' => 'Sala 5 Años',
+    '1ro'   => '1er Grado',
+    '2do'   => '2do Grado',
+    '3ro'   => '3er Grado',
+    '4to'   => '4to Grado',
+    '5to'   => '5to Grado',
+    '6to'   => '6to Grado'
+];
+
+// Si no tenemos estudiante_id, intentar obtenerlo
+if (!$estudiante_id && isset($_SESSION['estudiante'])) {
+    $nombre_est = $_SESSION['estudiante'];
+    $ce_est = $_SESSION['ce'];
+    $stmt_buscar = $conexion->prepare("SELECT id FROM estudiantes WHERE CONCAT(nombre, ' ', apellido) = ? AND cedula_escolar = ? LIMIT 1");
+    if ($stmt_buscar) {
+        $stmt_buscar->bind_param("ss", $nombre_est, $ce_est);
+        $stmt_buscar->execute();
+        $res = $stmt_buscar->get_result();
+        if ($fila = $res->fetch_assoc()) {
+            $estudiante_id = $fila['id'];
+            $_SESSION['estudiante_id'] = $estudiante_id;
+        }
+        $stmt_buscar->close();
+    }
+}
+
+if ($estudiante_id > 0) {
+    $stmt = $conexion->prepare("SELECT e.sala, s.nombre AS seccion_nombre
+                                FROM estudiantes e
+                                LEFT JOIN secciones s ON e.seccion_id = s.id
+                                WHERE e.id = ?");
+    if ($stmt) {
+        $stmt->bind_param("i", $estudiante_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        if ($row = $res->fetch_assoc()) {
+            $sala_codigo = $row['sala'] ?? '';
+            $seccion = $row['seccion_nombre'] ?? 'U';
+            $grado_legible = $nombres_salas[$sala_codigo] ?? $sala_codigo;
+        }
+        $stmt->close();
+    }
+}
+
+// Si no se pudo obtener de la BD, usar lo que haya en sesión
+if (empty($grado_legible)) {
+    $sala_codigo = $_SESSION['sala_codigo'] ?? '';
+    $grado_legible = $nombres_salas[$sala_codigo] ?? $sala_codigo;
+    $seccion = $_SESSION['seccion'] ?? 'U';
+}
+
+// ===== FORMATO DEL GRUPO CON SECCIÓN ENTRE COMILLAS =====
+$grupo_formateado = $grado_legible . ' "' . $seccion . '"';
+
+// ========== VARIABLES DE CONTENIDO ==========
+$estudiante = htmlspecialchars($estudiante_nombre);
+$ce = htmlspecialchars($ce);
+$ano_escolar = htmlspecialchars($ano_escolar);
+$docente = htmlspecialchars($docente);
+$representante = htmlspecialchars($representante);
 $observacion = nl2br(htmlspecialchars($_SESSION['observacion'] ?? ''));
 
 $m1_proy = htmlspecialchars($_SESSION['m1_proyecto'] ?? '');
@@ -39,11 +106,9 @@ $m3_form = nl2br(htmlspecialchars($_SESSION['m3_formacion'] ?? ''));
 $m3_rel = nl2br(htmlspecialchars($_SESSION['m3_relacion'] ?? ''));
 $m3_sug = nl2br(htmlspecialchars($_SESSION['m3_sugerencias'] ?? ''));
 
-// ========== LOGO - RUTA ABSOLUTA ==========
+// ========== LOGO ==========
 $logo_path = 'C:/xampp/htdocs/Servicio-comunitario/includes/image/logo1.png';
 $logo_html = '';
-
-// Verificar si la extensión GD está cargada
 if (extension_loaded('gd')) {
     if (file_exists($logo_path)) {
         try {
@@ -51,7 +116,6 @@ if (extension_loaded('gd')) {
             $finfo = finfo_open(FILEINFO_MIME_TYPE);
             $mime_type = finfo_file($finfo, $logo_path);
             finfo_close($finfo);
-            
             if ($mime_type && strpos($mime_type, 'image/') === 0) {
                 $logo_base64 = 'data:' . $mime_type . ';base64,' . base64_encode($logo_data);
                 $logo_html = '<img src="' . $logo_base64 . '" style="width:75px; height:auto; display:block; margin:0 auto;" alt="Logo">';
@@ -103,7 +167,6 @@ ob_start();
             padding: 0 15px; 
             vertical-align: top;
         }
-        .linea-inferior { border-bottom: 1px solid #000; }
         .texto-negrita { font-weight: bold; }
         .caja-observacion-fija {
             height: 220px;
@@ -156,13 +219,6 @@ ob_start();
         }
         .titulos-portada h1 { font-size: 13pt; margin-top: 30px; }
         .titulos-portada h2 { font-size: 11pt; margin: 10px 0 0 0; font-weight: normal; }
-        .datos-estudiante {
-            margin-top: 140px;
-            width: 100%;
-            font-size: 11pt;
-            border-collapse: collapse;
-        }
-        .datos-estudiante td { padding: 8px 0; }
         .titulo-momento {
             text-align: center;
             font-weight: bold;
@@ -210,6 +266,7 @@ ob_start();
 </head>
 <body>
 
+<!-- PRIMERA PÁGINA (CARA EXTERIOR) -->
 <table class="tabla-triptico">
     <tr>
         <td class="columna-triptico">
@@ -245,12 +302,12 @@ ob_start();
                     <div class="cita-autor">Proverbios 22:6</div>
                 </div>
                 <div class="bloque-cita-medio">
-                    <div class="cita-texto">"Pocos conocen su utlidad"</div>
-                    <div class="cita-autor">Frase de simon Rodriguez</div>
+                    <div class="cita-texto">"Pocos conocen su utilidad"</div>
+                    <div class="cita-autor">Frase de Simón Rodríguez</div>
                 </div>
                 <div class="bloque-cita-abajo">
-                    <div class="cita-texto">"La enseñanza de las buenas costumbres o habitos sociales es tan esencial como la instrucción"</div>
-                    <div class="cita-autor">Pensamiento de simon bolivar</div>
+                    <div class="cita-texto">"La enseñanza de las buenas costumbres o hábitos sociales es tan esencial como la instrucción"</div>
+                    <div class="cita-autor">Pensamiento de Simón Bolívar</div>
                 </div>
             </div>
         </td>
@@ -272,39 +329,25 @@ ob_start();
                 <h1>BOLETIN INFORMATIVO<br>INICIAL</h1>
                 <h2>AÑO ESCOLAR <?php echo $ano_escolar; ?></h2>
             </div>
+
+            <!-- ===== SECCIÓN MODIFICADA: DATOS DEL ESTUDIANTE SIN LÍNEAS Y CON GRUPO FORMATEADO ===== -->
             
-            <table class="datos-estudiante">
-                <tr>
-                    <td style="width: 25%;">Estudiante:</td>
-                    <td style="width: 75%;" class="linea-inferior"><?php echo $estudiante; ?></td>
-                </tr>
-                <tr>
-                    <td>C.E:</td>
-                    <td class="linea-inferior" style="width: 35%;"><?php echo $ce; ?></td>
-                </tr>
-                <tr>
-                    <td colspan="2">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <tr>
-                                <td style="width: 20%;">Grupo:</td>
-                                <td style="width: 80%;" class="linea-inferior"><?php echo $grupo; ?></td>
-                            </tr>
-                        </table>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Docente:</td>
-                    <td class="linea-inferior"><?php echo $docente; ?></td>
-                </tr>
-                <tr>
-                    <td>Representante:</td>
-                    <td class="linea-inferior"><?php echo $representante; ?></td>
-                </tr>
-            </table>
+
+<!-- ===== SECCIÓN MODIFICADA: DATOS DEL ESTUDIANTE SIN LÍNEAS Y CON GRUPO EN UNA SOLA LÍNEA ===== -->
+<div style="font-size: 10.5pt; line-height: 2.0; text-align: left; padding: 0 10px; margin-top: 140px;">
+    <div><strong>Estudiante:</strong> <?php echo $estudiante; ?></div>
+    <div>
+        <span style="display: inline-block; width: 50%;"><strong>C.E:</strong> <?php echo $ce; ?></span>
+        <span style="display: inline-block; width: 45%; white-space: nowrap;"><strong>Grupo:</strong> <?php echo $grupo_formateado; ?></span>
+    </div>
+    <div><strong>Docente:</strong> <?php echo $docente; ?></div>
+    <div><strong>Representante:</strong> <?php echo $representante; ?></div>
+</div>
         </td>
     </tr>
 </table>
 
+<!-- SEGUNDA PÁGINA (CARA INTERIOR) -->
 <div class="page-break"></div>
 
 <table class="tabla-triptico">
@@ -428,59 +471,51 @@ ob_start();
 $html = ob_get_clean();
 
 // ========== GUARDAR BOLETÍN EN BD ==========
-$estudiante_id = $_SESSION['estudiante_id'] ?? 0;
-if (!$estudiante_id && isset($_SESSION['estudiante'])) {
-    $nombre_est = $_SESSION['estudiante'];
-    $ce_est = $_SESSION['ce'];
-    $stmt_buscar = $conexion->prepare("SELECT id FROM estudiantes WHERE CONCAT(nombre, ' ', apellido) = ? AND cedula_escolar = ? LIMIT 1");
-    $stmt_buscar->bind_param("ss", $nombre_est, $ce_est);
-    $stmt_buscar->execute();
-    $res_buscar = $stmt_buscar->get_result();
-    if ($fila = $res_buscar->fetch_assoc()) {
-        $estudiante_id = $fila['id'];
-        $_SESSION['estudiante_id'] = $estudiante_id;
-    }
-    $stmt_buscar->close();
-}
-
-if ($estudiante_id) {
+if ($estudiante_id > 0) {
     $tipo = $_SESSION['tipo_boletin'] ?? 'inicial';
     $periodo_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
     
-    $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
-    $stmt_del->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
-    $stmt_del->execute();
-    $stmt_del->close();
-    
-    $obs = $_SESSION['observacion'] ?? '';
-    $m1_proy = $_SESSION['m1_proyecto'] ?? '';
-    $m1_form = $_SESSION['m1_formacion'] ?? '';
-    $m1_rel = $_SESSION['m1_relacion'] ?? '';
-    $m1_sug = $_SESSION['m1_sugerencias'] ?? '';
-    $m2_proy = $_SESSION['m2_proyecto'] ?? '';
-    $m2_form = $_SESSION['m2_formacion'] ?? '';
-    $m2_rel = $_SESSION['m2_relacion'] ?? '';
-    $m2_sug = $_SESSION['m2_sugerencias'] ?? '';
-    $m3_proy = $_SESSION['m3_proyecto'] ?? '';
-    $m3_form = $_SESSION['m3_formacion'] ?? '';
-    $m3_rel = $_SESSION['m3_relacion'] ?? '';
-    $m3_sug = $_SESSION['m3_sugerencias'] ?? '';
-    
-    $stmt_bol = $conexion->prepare("INSERT INTO boletines 
-        (estudiante_id, periodo, tipo_boletin, observacion, 
-         m1_proyecto, m1_formacion, m1_relacion, m1_sugerencias,
-         m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
-         m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    $tipos = 'i' . str_repeat('s', 15);
-    $stmt_bol->bind_param($tipos, 
-        $estudiante_id, $periodo_escolar, $tipo, $obs,
-        $m1_proy, $m1_form, $m1_rel, $m1_sug,
-        $m2_proy, $m2_form, $m2_rel, $m2_sug,
-        $m3_proy, $m3_form, $m3_rel, $m3_sug
-    );
-    $stmt_bol->execute();
-    $stmt_bol->close();
+    $check = $conexion->query("SHOW TABLES LIKE 'boletines'");
+    if ($check && $check->num_rows > 0) {
+        $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
+        if ($stmt_del) {
+            $stmt_del->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
+            $stmt_del->execute();
+            $stmt_del->close();
+        }
+        
+        $obs = $_SESSION['observacion'] ?? '';
+        $m1_proy = $_SESSION['m1_proyecto'] ?? '';
+        $m1_form = $_SESSION['m1_formacion'] ?? '';
+        $m1_rel = $_SESSION['m1_relacion'] ?? '';
+        $m1_sug = $_SESSION['m1_sugerencias'] ?? '';
+        $m2_proy = $_SESSION['m2_proyecto'] ?? '';
+        $m2_form = $_SESSION['m2_formacion'] ?? '';
+        $m2_rel = $_SESSION['m2_relacion'] ?? '';
+        $m2_sug = $_SESSION['m2_sugerencias'] ?? '';
+        $m3_proy = $_SESSION['m3_proyecto'] ?? '';
+        $m3_form = $_SESSION['m3_formacion'] ?? '';
+        $m3_rel = $_SESSION['m3_relacion'] ?? '';
+        $m3_sug = $_SESSION['m3_sugerencias'] ?? '';
+        
+        $stmt_bol = $conexion->prepare("INSERT INTO boletines 
+            (estudiante_id, periodo, tipo_boletin, observacion, 
+             m1_proyecto, m1_formacion, m1_relacion, m1_sugerencias,
+             m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
+             m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt_bol) {
+            $tipos = 'i' . str_repeat('s', 15);
+            $stmt_bol->bind_param($tipos, 
+                $estudiante_id, $periodo_escolar, $tipo, $obs,
+                $m1_proy, $m1_form, $m1_rel, $m1_sug,
+                $m2_proy, $m2_form, $m2_rel, $m2_sug,
+                $m3_proy, $m3_form, $m3_rel, $m3_sug
+            );
+            $stmt_bol->execute();
+            $stmt_bol->close();
+        }
+    }
 }
 
 $dompdf->setPaper('letter', 'landscape');

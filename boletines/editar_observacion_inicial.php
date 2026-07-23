@@ -1,67 +1,64 @@
 <?php
 session_start();
-if (!isset($_SESSION['estudiante'])) {
-    header('Location: paso1_portada.php?tipo=inicial');
-    exit;
+if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva'])) {
+    header("Location: /servicio-comunitario/profesores/Login/login.php");
+    exit();
 }
 
 require_once '../config/conexion.php';
 
-// Guardar observación
+$boletin_id = isset($_GET['boletin_id']) ? intval($_GET['boletin_id']) : 0;
+if ($boletin_id <= 0) die('ID de boletín no válido');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $_SESSION['observacion'] = htmlspecialchars($_POST['observacion']);
-    
-    // Guardar en BD
-    $estudiante_id = $_SESSION['estudiante_id'];
-    $periodo = $_SESSION['ano_escolar'] ?? '2025 / 2026';
-    $tipo = 'inicial';
-    
-    // Verificar si ya existe
-    $stmt = $conexion->prepare("SELECT id FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
-    $stmt->bind_param("iss", $estudiante_id, $periodo, $tipo);
-    $stmt->execute();
-    $existe = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-    
-    if ($existe) {
-        // Actualizar
-        $stmt = $conexion->prepare("UPDATE boletines SET observacion = ? WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
-        $stmt->bind_param("siss", $_SESSION['observacion'], $estudiante_id, $periodo, $tipo);
-        $stmt->execute();
-        $stmt->close();
+    $observacion = trim($_POST['observacion'] ?? '');
+    $sql = "UPDATE boletines SET observacion = ? WHERE id = ? AND tipo_boletin = 'inicial'";
+    $stmt = $conexion->prepare($sql);
+    $stmt->bind_param('si', $observacion, $boletin_id);
+    if ($stmt->execute()) {
+        $_SESSION['observacion'] = $observacion;
+        $_SESSION['mensaje_exito'] = 'Observación actualizada correctamente.';
     } else {
-        // Insertar nuevo
-        $stmt = $conexion->prepare("INSERT INTO boletines (estudiante_id, periodo, tipo_boletin, observacion) VALUES (?, ?, ?, ?)");
-        $stmt->bind_param("isss", $estudiante_id, $periodo, $tipo, $_SESSION['observacion']);
-        $stmt->execute();
-        $stmt->close();
+        $_SESSION['mensaje_error'] = 'Error al guardar: ' . $conexion->error;
     }
-    
-    header('Location: panel_boletin_inicial.php');
+    header('Location: panel_boletin_inicial.php?editar_id=' . $boletin_id);
     exit;
 }
 
+$stmt = $conexion->prepare("SELECT observacion FROM boletines WHERE id = ?");
+$stmt->bind_param('i', $boletin_id);
+$stmt->execute();
+$datos = $stmt->get_result()->fetch_assoc();
+if (!$datos) die('Boletín no encontrado');
+
 include '../includes/header.php';
 ?>
-<div style="font-family: Arial, sans-serif; background: rgb(240, 242, 245); padding: 20px;">
-    <div style="background: white; padding: 30px; border-radius: 8px; max-width: 900px; margin: 0 auto;">
-        <h2 style="color: rgb(26, 35, 126); text-align: center;">Editar Observación General</h2>
-        <p style="text-align: center; color: #666;">Estudiante: <strong><?php echo htmlspecialchars($_SESSION['estudiante']); ?></strong></p>
-        
-        <form method="POST">
-            <p style="font-weight: bold;">Observación General (Columna Izquierda de la hoja exterior):</p>
-            <textarea name="observacion" rows="5" required style="width: 100%; padding: 8px; border: 1px solid #ccc; box-sizing: border-box;"><?php echo htmlspecialchars($_SESSION['observacion'] ?? ''); ?></textarea>
-            
-            <br><br>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button type="submit" style="background: rgb(26, 35, 126); color: white; padding: 15px 30px; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; font-weight: bold;">
-                    💾 Guardar Observación
-                </button>
-                <a href="panel_boletin_inicial.php" style="background: #6c757d; color: white; padding: 15px 30px; border: none; cursor: pointer; border-radius: 4px; font-size: 16px; font-weight: bold; text-decoration: none; display: inline-block;">
-                    ⬅️ Cancelar / Volver
-                </a>
-            </div>
-        </form>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Observación - Inicial</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+<div class="container mt-5">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4><i class="fas fa-edit"></i> Editar Observación General - Inicial</h4>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="observacion" class="form-label">Observación General</label>
+                    <textarea class="form-control" id="observacion" name="observacion" rows="5"><?= htmlspecialchars($datos['observacion'] ?? '') ?></textarea>
+                </div>
+                <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> Guardar</button>
+                <a href="panel_boletin_inicial.php?editar_id=<?= $boletin_id ?>" class="btn btn-secondary">Cancelar</a>
+            </form>
+        </div>
     </div>
 </div>
+</body>
+</html>
 <?php include '../includes/footer.php'; ?>

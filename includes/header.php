@@ -111,7 +111,10 @@ if (!isset($_SESSION['usuario_id']) || $_SESSION['usuario_id'] == 0) {
                 <!-- PROFESORES -->
                 <li><a href="/servicio-comunitario/profesores/panel_profesor.php"><i class="fas fa-users me-2"></i> Profesores</a></li>
                 
-                <!-- SEGURIDAD (para super_admin y directiva) -->
+                <!-- ========== NUEVO ENLACE A SECCIONES ========== -->
+                <li><a href="/servicio-comunitario/config/secciones.php"><i class="fas fa-layer-group me-2"></i> Secciones</a></li>
+                
+                <!-- SEGURIDAD (solo para super_admin y directiva) -->
                 <?php if ($rol_normalizado === 'super_admin' || $rol_normalizado === 'superadmin' || $rol_normalizado === 'directiva'): ?>
                     <li><a href="/servicio-comunitario/profesores/gestionar_permisos.php"><i class="fas fa-shield-alt me-2"></i> Seguridad</a></li>
                 <?php endif; ?>

@@ -49,19 +49,7 @@ include '../includes/header.php';
             </a>
         </div>
 
-        <!-- REPORTE DE RENDIMIENTO FINAL -->
-        <div class="col-md-3 mb-4">
-            <a href="reporte_rendimiento_final.php" class="text-decoration-none">
-                <div class="card p-4 dashboard-card text-center border-success">
-                    <div class="icon-box text-success"><i class="fas fa-clipboard-check fa-3x"></i></div>
-                    <h5 class="fw-bold mt-3">Rendimiento Final</h5>
-                    <p class="text-muted">Reporte de aprobados con boletín completo</p>
-                </div>
-            </a>
-        </div>
-    </div>
-</div>
-
+        
 <style>
     .dashboard-card {
         transition: transform 0.3s ease, box-shadow 0.3s ease;

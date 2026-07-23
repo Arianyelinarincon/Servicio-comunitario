@@ -6,47 +6,6 @@ if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 's
 }
 require_once __DIR__ . '/../config/conexion.php';
 
-// ========== AJAX para cargar secciones ==========
-if (isset($_GET['ajax']) && $_GET['ajax'] == 'secciones') {
-    header('Content-Type: application/json');
-    $sala = $_GET['sala'] ?? '';
-    $secciones = [];
-    if ($sala) {
-        // ========== SALAS 4 Y 5: SOLO SECCIÓN "U" ==========
-        if ($sala === 'sala4' || $sala === 'sala5') {
-            // Buscar o crear la sección "U" para esa sala
-            $stmt = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? AND nombre = 'U'");
-            $stmt->bind_param("s", $sala);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            if ($row = $result->fetch_assoc()) {
-                $secciones[] = $row;
-            } else {
-                // Si no existe la sección "U", la creamos
-                $stmt2 = $conexion->prepare("INSERT INTO secciones (sala, nombre) VALUES (?, 'U')");
-                $stmt2->bind_param("s", $sala);
-                $stmt2->execute();
-                $new_id = $conexion->insert_id;
-                $stmt2->close();
-                $secciones[] = ['id' => $new_id, 'nombre' => 'U'];
-            }
-            $stmt->close();
-        } else {
-            // Otras salas: mostrar todas las secciones
-            $stmt = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
-            $stmt->bind_param("s", $sala);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            while ($row = $result->fetch_assoc()) {
-                $secciones[] = $row;
-            }
-            $stmt->close();
-        }
-    }
-    echo json_encode($secciones);
-    exit;
-}
-
 include('../includes/header.php');
 ?>
 
@@ -95,24 +54,28 @@ include('../includes/header.php');
                         <label class="form-label fw-semibold">Dirección</label>
                         <textarea name="direccion" class="form-control" rows="2"></textarea>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Sala / Grado <span class="text-danger">*</span></label>
-                        <select name="sala" id="sala" class="form-select" required onchange="cargarSecciones()">
-                            <option value="">Seleccione...</option>
-                            <option value="sala4">Sala 4 años</option>
-                            <option value="sala5">Sala 5 años</option>
-                            <option value="1ro">1er Grado</option>
-                            <option value="2do">2do Grado</option>
-                            <option value="3ro">3er Grado</option>
-                            <option value="4to">4to Grado</option>
-                            <option value="5to">5to Grado</option>
-                            <option value="6to">6to Grado</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-semibold">Sección <span class="text-danger">*</span></label>
-                        <select name="seccion" id="seccion" class="form-select" required>
-                            <option value="">Primero seleccione sala</option>
+                    <div class="col-md-12">
+                        <label class="form-label fw-semibold">Sección (Grado - Sección) <span class="text-danger">*</span></label>
+                        <select name="seccion_id" id="seccion_id" class="form-select" required>
+                            <option value="">Seleccione una sección...</option>
+                            <?php
+                            $secciones = $conexion->query("SELECT id, sala, nombre FROM secciones ORDER BY sala, nombre");
+                            while ($sec = $secciones->fetch_assoc()) {
+                                $sala_nombre = '';
+                                switch ($sec['sala']) {
+                                    case 'sala4': $sala_nombre = 'Sala 4 años'; break;
+                                    case 'sala5': $sala_nombre = 'Sala 5 años'; break;
+                                    case '1ro': $sala_nombre = '1er Grado'; break;
+                                    case '2do': $sala_nombre = '2do Grado'; break;
+                                    case '3ro': $sala_nombre = '3er Grado'; break;
+                                    case '4to': $sala_nombre = '4to Grado'; break;
+                                    case '5to': $sala_nombre = '5to Grado'; break;
+                                    case '6to': $sala_nombre = '6to Grado'; break;
+                                    default: $sala_nombre = $sec['sala'];
+                                }
+                                echo '<option value="' . $sec['id'] . '">' . $sala_nombre . ' - Sección ' . $sec['nombre'] . '</option>';
+                            }
+                            ?>
                         </select>
                     </div>
                 </div>
@@ -124,29 +87,5 @@ include('../includes/header.php');
         </div>
     </div>
 </div>
-
-<script>
-function cargarSecciones() {
-    const sala = document.getElementById('sala').value;
-    const seccionSelect = document.getElementById('seccion');
-    if (!sala) {
-        seccionSelect.innerHTML = '<option value="">Primero seleccione sala</option>';
-        return;
-    }
-    seccionSelect.innerHTML = '<option value="">Cargando...</option>';
-    fetch(`agregar_profesor.php?ajax=secciones&sala=${encodeURIComponent(sala)}`)
-        .then(res => res.json())
-        .then(data => {
-            let options = '<option value="">Seleccione sección...</option>';
-            data.forEach(sec => {
-                options += `<option value="${sec.id}">${sec.nombre}</option>`;
-            });
-            seccionSelect.innerHTML = options;
-        })
-        .catch(() => {
-            seccionSelect.innerHTML = '<option value="">Error al cargar</option>';
-        });
-}
-</script>
 
 <?php include('../includes/footer.php'); ?>

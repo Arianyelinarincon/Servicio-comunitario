@@ -15,48 +15,35 @@ $_SESSION['tipo_boletin'] = 'inicial';
 
 // Búsqueda AJAX para autocompletado
 if (isset($_GET['buscar_estudiante'])) {
-    $termino = $_GET['buscar_estudiante'] . '%';
+    $termino = trim($_GET['buscar_estudiante']);
     $periodo_actual = $_GET['periodo'] ?? $periodo_escolar_actual;
+    
     $ano_inicio = substr($periodo_actual, 0, 4);
     $like_periodo = $ano_inicio . '%';
+    $buscar = "%$termino%";
     
-    // ===== CORRECCIÓN: SOLO ESTUDIANTES CON TODOS LOS DATOS COMPLETOS =====
-    // Incluye: inscripcion_completa, sala, seccion, docente, al menos 1 padre
-    $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, r.nombre_completo AS rep_nombre,
-                   s.nombre AS grupo, p.nombre AS doc_nombre, p.apellido AS doc_apellido
+    $sql = "SELECT e.id, e.nombre, e.apellido, e.cedula_escolar, e.sala,
+                   r.nombre_completo AS rep_nombre,
+                   s.nombre AS grupo, 
+                   CONCAT(p.nombre, ' ', p.apellido) AS docente_nombre
             FROM estudiantes e
             LEFT JOIN representantes r ON e.representante_id = r.id
             LEFT JOIN secciones s ON e.seccion_id = s.id
             LEFT JOIN profesores p ON p.seccion = s.id
-            WHERE CONCAT(e.nombre, ' ', e.apellido) LIKE ?
-              AND e.inscripcion_completa = 1
+            WHERE LOWER(CONCAT(IFNULL(e.nombre,''), ' ', IFNULL(e.apellido,''))) LIKE LOWER(?)
               AND e.estatus = 'Activo'
               AND e.sala IN ('sala4', 'sala5')
               AND e.sala IS NOT NULL AND e.sala != ''
               AND e.seccion_id IS NOT NULL AND e.seccion_id > 0
-              -- ===== NUEVO: DEBE TENER AL MENOS UN PADRE =====
               AND (e.madre_nombre IS NOT NULL AND e.madre_nombre != '' 
                    OR e.padre_nombre IS NOT NULL AND e.padre_nombre != '')
-              AND EXISTS (
-                  SELECT 1 FROM profesores p2 
-                  WHERE p2.seccion = e.seccion_id AND p2.sala = e.sala AND p2.estatus = 'Activo'
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM egresos eg 
-                  WHERE eg.estudiante_id = e.id 
-                    AND eg.sala = e.sala 
-                    AND eg.seccion_id = e.seccion_id 
-                    AND eg.periodo LIKE ?
-              )
-              AND EXISTS (
-                  SELECT 1 FROM inscripciones i
-                  WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?
-              )
+              AND EXISTS (SELECT 1 FROM profesores p2 WHERE p2.seccion = e.seccion_id AND p2.estatus = 'Activo')
+              AND e.fecha_egreso IS NULL
+              AND EXISTS (SELECT 1 FROM inscripciones i WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?)
             ORDER BY e.apellido, e.nombre
             LIMIT 10";
     $stmt = $conexion->prepare($sql);
-    $buscar = "%$termino%";
-    $stmt->bind_param("sss", $buscar, $like_periodo, $like_periodo);
+    $stmt->bind_param("ss", $buscar, $like_periodo);
     $stmt->execute();
     $result = $stmt->get_result();
     $sugerencias = [];
@@ -66,7 +53,8 @@ if (isset($_GET['buscar_estudiante'])) {
             'nombre_completo' => $row['nombre'] . ' ' . $row['apellido'],
             'ce' => $row['cedula_escolar'],
             'grupo' => $row['grupo'] ?? 'N/A',
-            'docente' => ($row['doc_nombre'] ?? '') . ' ' . ($row['doc_apellido'] ?? ''),
+            'sala' => $row['sala'],
+            'docente' => $row['docente_nombre'] ?? 'Sin asignar',
             'representante' => $row['rep_nombre'] ?? 'N/A'
         ];
     }
@@ -82,34 +70,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ano_inicio = substr($periodo_actual, 0, 4);
     $like_periodo = $ano_inicio . '%';
     
-    // ===== CORRECCIÓN: VERIFICAR TODOS LOS DATOS COMPLETOS =====
-    $stmt_check = $conexion->prepare("SELECT e.id
+    $stmt_check = $conexion->prepare("SELECT e.id, e.sala, s.nombre AS seccion_nombre
                                       FROM estudiantes e
+                                      LEFT JOIN secciones s ON e.seccion_id = s.id
                                       WHERE e.id = ? 
-                                        AND e.inscripcion_completa = 1 
                                         AND e.estatus = 'Activo'
                                         AND e.sala IN ('sala4', 'sala5')
                                         AND e.sala IS NOT NULL AND e.sala != ''
                                         AND e.seccion_id IS NOT NULL AND e.seccion_id > 0
                                         AND (e.madre_nombre IS NOT NULL AND e.madre_nombre != '' 
                                              OR e.padre_nombre IS NOT NULL AND e.padre_nombre != '')
-                                        AND EXISTS (
-                                            SELECT 1 FROM profesores p2 
-                                            WHERE p2.seccion = e.seccion_id AND p2.sala = e.sala AND p2.estatus = 'Activo'
-                                        )
-                                        AND NOT EXISTS (
-                                            SELECT 1 FROM egresos eg 
-                                            WHERE eg.estudiante_id = e.id 
-                                              AND eg.sala = e.sala 
-                                              AND eg.seccion_id = e.seccion_id 
-                                              AND eg.periodo LIKE ?
-                                        )
-                                        AND EXISTS (
-                                            SELECT 1 FROM inscripciones i
-                                            WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?
-                                        )
+                                        AND EXISTS (SELECT 1 FROM profesores p2 WHERE p2.seccion = e.seccion_id AND p2.estatus = 'Activo')
+                                        AND e.fecha_egreso IS NULL
+                                        AND EXISTS (SELECT 1 FROM inscripciones i WHERE i.estudiante_id = e.id AND i.ano_escolar LIKE ?)
                                       LIMIT 1");
-    $stmt_check->bind_param("iss", $estudiante_id, $like_periodo, $like_periodo);
+    $stmt_check->bind_param("is", $estudiante_id, $like_periodo);
     $stmt_check->execute();
     $existe = $stmt_check->get_result()->fetch_assoc();
     if (!$existe) {
@@ -117,11 +92,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Guardar en sesión - DOCENTE COMPLETO (viene del POST)
     $_SESSION['estudiante'] = htmlspecialchars($_POST['estudiante']);
     $_SESSION['ce'] = htmlspecialchars($_POST['ce']);
-    $_SESSION['grupo'] = htmlspecialchars($_POST['grupo']);
+    $_SESSION['seccion'] = htmlspecialchars($_POST['grupo']);
+    $_SESSION['sala_codigo'] = htmlspecialchars($existe['sala']);
+    $_SESSION['seccion_nombre'] = htmlspecialchars($existe['seccion_nombre'] ?? 'U');
     $_SESSION['ano_escolar'] = htmlspecialchars($_POST['ano_escolar'] ?? $periodo_escolar_actual);
-    $_SESSION['docente'] = htmlspecialchars($_POST['docente']);
+    $_SESSION['docente'] = htmlspecialchars($_POST['docente']); // <-- COMPLETO (nombre + apellido)
     $_SESSION['representante'] = htmlspecialchars($_POST['representante']);
     $_SESSION['estudiante_id'] = intval($_POST['estudiante_id']);
     
@@ -139,6 +117,7 @@ include '../includes/header.php';
     <title>Seleccionar Estudiante - Boletín Inicial</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        /* (Mismos estilos que ya tenías, no los repito por brevedad) */
         :root {
             --primary: #1a237e;
             --primary-dark: #0d1555;
@@ -158,262 +137,43 @@ include '../includes/header.php';
             --radius-sm: 6px;
             --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        .portada-container {
-            padding: 25px 30px;
-            max-width: 850px;
-            margin: 0 auto;
-        }
-
-        .card-portada {
-            background: #ffffff;
-            border-radius: var(--radius);
-            padding: 30px 35px;
-            box-shadow: var(--shadow-md);
-            border: 1px solid var(--gray-200);
-            transition: var(--transition);
-            margin-top: 10px;
-        }
-
-        .card-portada:hover {
-            box-shadow: var(--shadow-lg);
-        }
-
-        .card-portada h2 {
-            color: var(--primary);
-            text-align: center;
-            margin-bottom: 25px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            border-bottom: 2px solid var(--primary);
-            padding-bottom: 15px;
-            font-size: 22px;
-            font-weight: 700;
-        }
-
-        .card-portada h2 i {
-            color: var(--primary);
-        }
-
-        .grid-portada {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-        }
-
-        .caja-busqueda {
-            position: relative;
-        }
-
-        .sugerencias {
-            position: absolute;
-            background: #ffffff;
-            border: 1px solid var(--gray-300);
-            max-height: 200px;
-            overflow-y: auto;
-            width: 100%;
-            z-index: 1000;
-            display: none;
-            border-radius: var(--radius-sm);
-            box-shadow: var(--shadow-lg);
-            margin-top: 2px;
-        }
-
-        .sugerencias div {
-            padding: 10px 14px;
-            cursor: pointer;
-            border-bottom: 1px solid var(--gray-200);
-            transition: var(--transition);
-            font-size: 14px;
-            color: var(--gray-700);
-        }
-
-        .sugerencias div:hover {
-            background: var(--primary-light);
-            color: var(--primary);
-        }
-
-        .sugerencias div:last-child {
-            border-bottom: none;
-        }
-
-        .grupo-form {
-            margin-bottom: 5px;
-        }
-
-        .grupo-form label {
-            font-weight: 600;
-            color: var(--gray-700);
-            display: block;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-
-        .grupo-form label i {
-            color: var(--primary);
-            width: 18px;
-            text-align: center;
-            margin-right: 4px;
-        }
-
-        .grupo-form input {
-            width: 100%;
-            padding: 10px 12px;
-            border: 2px solid var(--gray-300);
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            transition: var(--transition);
-            box-sizing: border-box;
-            color: var(--gray-700);
-        }
-
-        .grupo-form input:focus {
-            border-color: var(--primary);
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.15);
-        }
-
-        .grupo-form input[readonly] {
-            background: var(--gray-100);
-            color: var(--gray-600);
-        }
-
-        .btn-seleccionar {
-            background: var(--primary);
-            color: #ffffff;
-            padding: 12px 35px;
-            border: none;
-            border-radius: var(--radius-sm);
-            float: right;
-            margin-top: 20px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn-seleccionar:hover:enabled {
-            background: var(--primary-dark);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
-        }
-
-        .btn-seleccionar:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
-
-        .btn-seleccionar i {
-            font-size: 14px;
-        }
-
-        .alerta-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-            padding: 12px 16px;
-            border-radius: var(--radius-sm);
-            margin-top: 15px;
-            display: none;
-            text-align: center;
-            font-size: 14px;
-        }
-
-        .alerta-error i {
-            margin-right: 6px;
-        }
-
-        .alerta-info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            padding: 10px 16px;
-            border-radius: var(--radius-sm);
-            margin-top: 10px;
-            text-align: center;
-            font-size: 13px;
-        }
-
-        .alerta-info i {
-            margin-right: 6px;
-        }
-
-        .clearfix {
-            clear: both;
-            overflow: hidden;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .card-portada {
-            animation: fadeIn 0.5s ease;
-        }
-
-        @media (max-width: 768px) {
-            .portada-container {
-                padding: 12px 15px;
-            }
-            .card-portada {
-                padding: 20px;
-            }
-            .card-portada h2 {
-                font-size: 19px;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .grid-portada {
-                grid-template-columns: 1fr;
-            }
-            .card-portada {
-                padding: 16px;
-            }
-            .card-portada h2 {
-                font-size: 17px;
-            }
-            .btn-seleccionar {
-                width: 100%;
-                float: none;
-                justify-content: center;
-            }
-        }
-
-        .badge-info {
-            background: #17a2b8;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 500;
-        }
+        .portada-container { padding: 25px 30px; max-width: 850px; margin: 0 auto; }
+        .card-portada { background: #fff; border-radius: var(--radius); padding: 30px 35px; box-shadow: var(--shadow-md); border: 1px solid var(--gray-200); transition: var(--transition); margin-top: 10px; }
+        .card-portada:hover { box-shadow: var(--shadow-lg); }
+        .card-portada h2 { color: var(--primary); text-align: center; margin-bottom: 25px; display: flex; align-items: center; justify-content: center; gap: 10px; border-bottom: 2px solid var(--primary); padding-bottom: 15px; font-size: 22px; font-weight: 700; }
+        .grid-portada { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .caja-busqueda { position: relative; }
+        .sugerencias { position: absolute; background: #fff; border: 1px solid var(--gray-300); max-height: 200px; overflow-y: auto; width: 100%; z-index: 1000; display: none; border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); margin-top: 2px; }
+        .sugerencias div { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--gray-200); transition: var(--transition); font-size: 14px; color: var(--gray-700); }
+        .sugerencias div:hover { background: var(--primary-light); color: var(--primary); }
+        .grupo-form { margin-bottom: 5px; }
+        .grupo-form label { font-weight: 600; color: var(--gray-700); display: block; margin-bottom: 5px; font-size: 14px; }
+        .grupo-form input { width: 100%; padding: 10px 12px; border: 2px solid var(--gray-300); border-radius: var(--radius-sm); font-size: 14px; transition: var(--transition); box-sizing: border-box; color: var(--gray-700); }
+        .grupo-form input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 3px rgba(26, 35, 126, 0.15); }
+        .grupo-form input[readonly] { background: var(--gray-100); color: var(--gray-600); }
+        .btn-seleccionar { background: var(--primary); color: #fff; padding: 12px 35px; border: none; border-radius: var(--radius-sm); float: right; margin-top: 20px; font-size: 16px; font-weight: 600; cursor: pointer; transition: var(--transition); display: inline-flex; align-items: center; gap: 8px; }
+        .btn-seleccionar:hover:enabled { background: var(--primary-dark); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .btn-seleccionar:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+        .alerta-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 12px 16px; border-radius: var(--radius-sm); margin-top: 15px; display: none; text-align: center; font-size: 14px; }
+        .alerta-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 10px 16px; border-radius: var(--radius-sm); margin-top: 10px; text-align: center; font-size: 13px; }
+        .clearfix { clear: both; overflow: hidden; }
+        .badge-info { background: #17a2b8; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 500; }
+        @media (max-width: 768px) { .portada-container { padding: 12px 15px; } .card-portada { padding: 20px; } .card-portada h2 { font-size: 19px; } }
+        @media (max-width: 576px) { .grid-portada { grid-template-columns: 1fr; } .card-portada { padding: 16px; } .card-portada h2 { font-size: 17px; } .btn-seleccionar { width: 100%; float: none; justify-content: center; } }
     </style>
 </head>
 <body>
     <div class="portada-container">
         <div class="card-portada">
-            <h2>
-                <i class="fas fa-user-graduate"></i>
-                Seleccionar Estudiante - Boletín Inicial
-            </h2>
+            <h2><i class="fas fa-user-graduate"></i> Seleccionar Estudiante - Boletín Inicial</h2>
             <div style="text-align:center; margin-bottom:15px;">
                 <span class="badge-info"><i class="fas fa-graduation-cap"></i> Solo estudiantes de Sala 4 y Sala 5</span>
-                <span class="badge-info" style="margin-left:8px; background:#28a745;"><i class="fas fa-check-circle"></i> Con inscripción completa, grado, sección, docente y al menos un padre</span>
+                <span class="badge-info" style="margin-left:8px; background:#28a745;"><i class="fas fa-check-circle"></i> Requisitos: Grado, Sección, Docente asignado y al menos un padre/madre</span>
             </div>
-            
             <div class="alerta-info">
                 <i class="fas fa-info-circle"></i> 
-                <strong>Nota:</strong> Solo aparecen estudiantes con <strong>inscripción completa</strong>, <strong>grado</strong>, <strong>sección</strong>, <strong>docente asignado</strong> y <strong>al menos un padre registrado</strong>.
+                <strong>Nota:</strong> Solo aparecen estudiantes con <strong>grado</strong>, <strong>sección</strong>, <strong>docente asignado</strong> y <strong>al menos un padre/madre registrado</strong>. No es necesario tener la ficha completa.
             </div>
-            
             <form method="POST">
                 <div class="grid-portada">
                     <div class="grupo-form">
@@ -443,10 +203,11 @@ include '../includes/header.php';
                         <label><i class="fas fa-user-tie"></i> Representante:</label>
                         <input type="text" name="representante" id="representante" readonly>
                     </div>
+                    <input type="hidden" name="sala" id="sala">
                     <input type="hidden" name="estudiante_id" id="estudiante_id">
                 </div>
                 <div id="mensaje_error" class="alerta-error">
-                    <i class="fas fa-exclamation-triangle"></i> Estudiante no encontrado o no tiene todos los datos completos (grado, sección, docente, padre/madre).
+                    <i class="fas fa-exclamation-triangle"></i> Estudiante no encontrado o no cumple con los requisitos mínimos (grado, sección, docente, padre/madre).
                 </div>
                 <div class="clearfix">
                     <button type="submit" id="btn_siguiente" class="btn-seleccionar" disabled>
@@ -467,18 +228,14 @@ include '../includes/header.php';
         const btnSiguiente = document.getElementById('btn_siguiente');
         const mensajeError = document.getElementById('mensaje_error');
         const estudianteIdInput = document.getElementById('estudiante_id');
+        const salaInput = document.getElementById('sala');
         const anoEscolarInput = document.getElementById('ano_escolar');
 
         function limpiarCampos() {
-            ceInput.value = ''; 
-            grupoInput.value = ''; 
-            docenteInput.value = ''; 
-            representanteInput.value = '';
-            estudianteIdInput.value = '';
-            btnSiguiente.disabled = true; 
-            mensajeError.style.display = 'none';
+            ceInput.value = ''; grupoInput.value = ''; docenteInput.value = ''; representanteInput.value = '';
+            estudianteIdInput.value = ''; salaInput.value = '';
+            btnSiguiente.disabled = true; mensajeError.style.display = 'none';
         }
-        
         function seleccionarEstudiante(data) {
             inputEstudiante.value = data.nombre_completo;
             ceInput.value = data.ce;
@@ -486,28 +243,19 @@ include '../includes/header.php';
             docenteInput.value = data.docente;
             representanteInput.value = data.representante;
             estudianteIdInput.value = data.id;
+            salaInput.value = data.sala;
             btnSiguiente.disabled = false;
             sugerenciasDiv.style.display = 'none';
             mensajeError.style.display = 'none';
         }
-        
         inputEstudiante.addEventListener('input', function() {
             const texto = this.value.trim();
             const periodo = anoEscolarInput.value.trim();
-            if (texto.length < 2) { 
-                sugerenciasDiv.style.display = 'none'; 
-                limpiarCampos(); 
-                return; 
-            }
+            if (texto.length < 2) { sugerenciasDiv.style.display = 'none'; limpiarCampos(); return; }
             fetch('?buscar_estudiante=' + encodeURIComponent(texto) + '&periodo=' + encodeURIComponent(periodo))
                 .then(res => res.json())
                 .then(data => {
-                    if (data.length === 0) { 
-                        sugerenciasDiv.style.display = 'none'; 
-                        limpiarCampos(); 
-                        mensajeError.style.display = 'block'; 
-                        return; 
-                    }
+                    if (data.length === 0) { sugerenciasDiv.style.display = 'none'; limpiarCampos(); mensajeError.style.display = 'block'; return; }
                     sugerenciasDiv.innerHTML = '';
                     data.forEach(est => {
                         const div = document.createElement('div');
@@ -518,12 +266,8 @@ include '../includes/header.php';
                     sugerenciasDiv.style.display = 'block';
                     mensajeError.style.display = 'none';
                 })
-                .catch(() => { 
-                    sugerenciasDiv.style.display = 'none'; 
-                    mensajeError.style.display = 'block'; 
-                });
+                .catch(() => { sugerenciasDiv.style.display = 'none'; mensajeError.style.display = 'block'; });
         });
-        
         document.addEventListener('click', function(e) {
             if (!sugerenciasDiv.contains(e.target) && e.target !== inputEstudiante) {
                 sugerenciasDiv.style.display = 'none';

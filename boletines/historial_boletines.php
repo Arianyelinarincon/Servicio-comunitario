@@ -41,7 +41,7 @@ function obtenerTipoBoletinPorSala($sala) {
 }
 
 // ========== CONSULTA PRINCIPAL ==========
-$sql = "SELECT b.*, 
+$sql = "SELECT DISTINCT b.*, 
                CONCAT(e.nombre, ' ', e.apellido) AS nombre_estudiante,
                e.cedula_escolar,
                e.sala,
@@ -83,30 +83,26 @@ if ($types) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-// ========== OBTENER PERÍODOS DISPONIBLES ÚNICOS ==========
+// ========== OBTENER PERÍODOS DISPONIBLES ==========
 $periodos_disponibles = [];
 $res_periodos = $conexion->query("SELECT DISTINCT periodo FROM boletines ORDER BY periodo DESC");
 while ($row = $res_periodos->fetch_assoc()) {
-    // Limpiar formato: convertir "2025 / 2026" a "2025-2026"
     $periodo_limpio = trim($row['periodo']);
     $periodo_limpio = str_replace(' / ', '-', $periodo_limpio);
     $periodo_limpio = str_replace('/', '-', $periodo_limpio);
-    // Validar formato
     if (preg_match('/^\d{4}-\d{4}$/', $periodo_limpio)) {
         $periodos_disponibles[] = $periodo_limpio;
     } else {
         $periodos_disponibles[] = $row['periodo'];
     }
 }
-// Eliminar duplicados
 $periodos_disponibles = array_unique($periodos_disponibles);
-
-// Si no hay periodos, agregar el actual
 if (empty($periodos_disponibles)) {
     $periodos_disponibles[] = $periodo_escolar_actual;
 }
 ?>
 
+<!-- Estilos y HTML (igual que antes) -->
 <style>
     :root { --primary-gradient: linear-gradient(135deg, #002d54 0%, #004a7c 100%); }
     .page-header {
@@ -255,7 +251,7 @@ if (empty($periodos_disponibles)) {
         </div>
     </div>
 
-    <!-- Filtros con búsqueda en tiempo real -->
+    <!-- Filtros -->
     <div class="card card-filtros">
         <div class="card-body p-4">
             <form method="GET" action="historial_boletines.php" id="filtroForm" autocomplete="off">
@@ -268,10 +264,7 @@ if (empty($periodos_disponibles)) {
                         <label class="small fw-bold text-muted"><i class="fas fa-calendar-alt me-1"></i> Período Escolar</label>
                         <select name="periodo" id="periodoSelect" class="form-select shadow-none">
                             <option value="">Todos</option>
-                            <?php 
-                            // Mostrar años únicos de la base de datos
-                            foreach ($periodos_disponibles as $p): 
-                                // Limpiar formato para mostrar
+                            <?php foreach ($periodos_disponibles as $p): 
                                 $p_clean = trim($p);
                                 $selected = ($periodo == $p_clean) ? 'selected' : '';
                             ?>
@@ -295,7 +288,7 @@ if (empty($periodos_disponibles)) {
         </div>
     </div>
 
-    <!-- Tabla de boletines -->
+    <!-- Tabla -->
     <div class="card card-tabla">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i> Registro de Boletines <span class="badge bg-light text-dark ms-2" id="contador-boletines"><?= $result->num_rows ?> boletín(es)</span></h6>
@@ -324,34 +317,21 @@ if (empty($periodos_disponibles)) {
                                 $tipo_nombre = ($tipo_detectado == 'inicial') ? 'Inicial' : 'Primaria';
                                 $sala_nombre = $nombres_salas[$row['sala']] ?? $row['sala'];
                                 
-                                $lapsos_completos = 0;
+                                // ========== CÁLCULO CORREGIDO DE LAPSOS COMPLETOS ==========
+                                if ($tipo_detectado == 'inicial') {
+                                    // Inicial: requiere proyecto y formación (mismo criterio que el panel)
+                                    $m1_ok = !empty($row['m1_proyecto']) && !empty($row['m1_formacion']);
+                                    $m2_ok = !empty($row['m2_proyecto']) && !empty($row['m2_formacion']);
+                                    $m3_ok = !empty($row['m3_proyecto']) && !empty($row['m3_formacion']);
+                                } else {
+                                    // Primaria: requiere proyecto, formación y sugerencias
+                                    $m1_ok = !empty($row['m1_proyecto']) && !empty($row['m1_formacion']) && !empty($row['m1_sugerencias']);
+                                    $m2_ok = !empty($row['m2_proyecto']) && !empty($row['m2_formacion']) && !empty($row['m2_sugerencias']);
+                                    $m3_ok = !empty($row['m3_proyecto']) && !empty($row['m3_formacion']) && !empty($row['m3_sugerencias']);
+                                }
 
-// Para Inicial: verificar todos los campos del momento (proyecto, formacion, relacion, sugerencias)
-if ($row['tipo_boletin'] == 'inicial' || $tipo_detectado == 'inicial') {
-    // Momento 1
-    if (!empty($row['m1_proyecto']) && !empty($row['m1_formacion']) && !empty($row['m1_relacion']) && !empty($row['m1_sugerencias'])) {
-        $lapsos_completos++;
-    }
-    // Momento 2
-    if (!empty($row['m2_proyecto']) && !empty($row['m2_formacion']) && !empty($row['m2_relacion']) && !empty($row['m2_sugerencias'])) {
-        $lapsos_completos++;
-    }
-    // Momento 3
-    if (!empty($row['m3_proyecto']) && !empty($row['m3_formacion']) && !empty($row['m3_relacion']) && !empty($row['m3_sugerencias'])) {
-        $lapsos_completos++;
-    }
-} else {
-    // Para Primaria: verificar proyectos, formacion y sugerencias
-    if (!empty($row['m1_proyecto']) && !empty($row['m1_formacion']) && !empty($row['m1_sugerencias'])) {
-        $lapsos_completos++;
-    }
-    if (!empty($row['m2_proyecto']) && !empty($row['m2_formacion']) && !empty($row['m2_sugerencias'])) {
-        $lapsos_completos++;
-    }
-    if (!empty($row['m3_proyecto']) && !empty($row['m3_formacion']) && !empty($row['m3_sugerencias'])) {
-        $lapsos_completos++;
-    }
-}
+                                $lapsos_completos = ($m1_ok ? 1 : 0) + ($m2_ok ? 1 : 0) + ($m3_ok ? 1 : 0);
+                                $estados_lapsos = [1 => $m1_ok, 2 => $m2_ok, 3 => $m3_ok];
                             ?>
                             <tr data-id="<?= $row['id'] ?>">
                                 <td><strong><?= htmlspecialchars($row['nombre_estudiante']) ?></strong></td>
@@ -363,8 +343,8 @@ if ($row['tipo_boletin'] == 'inicial' || $tipo_detectado == 'inicial') {
                                 <td>
                                     <div class="puntos-lapsos">
                                         <?php for ($i = 1; $i <= 3; $i++): ?>
-                                            <span class="punto <?= ($i <= $lapsos_completos) ? 'completado' : 'incompleto' ?>" 
-                                                  title="Lapso <?= $i ?> <?= ($i <= $lapsos_completos) ? 'completado' : 'pendiente' ?>"></span>
+                                            <span class="punto <?= $estados_lapsos[$i] ? 'completado' : 'incompleto' ?>" 
+                                                  title="Momento/Lapso <?= $i ?> <?= $estados_lapsos[$i] ? 'completado' : 'pendiente' ?>"></span>
                                         <?php endfor; ?>
                                         <span class="punto-label"><?= $lapsos_completos ?>/3</span>
                                     </div>
@@ -396,7 +376,7 @@ if ($row['tipo_boletin'] == 'inicial' || $tipo_detectado == 'inicial') {
     </div>
 </div>
 
-<!-- Modal de Confirmación de Eliminación -->
+<!-- Modal Eliminar -->
 <div class="modal fade modal-confirmacion" id="modalEliminarBoletin" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -425,7 +405,6 @@ if ($row['tipo_boletin'] == 'inicial' || $tipo_detectado == 'inicial') {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // ===== BÚSQUEDA EN TIEMPO REAL =====
     const busquedaInput = document.getElementById('busquedaInput');
     const periodoSelect = document.getElementById('periodoSelect');
     const tipoSelect = document.getElementById('tipoSelect');
@@ -443,7 +422,6 @@ document.addEventListener('DOMContentLoaded', function() {
         let contadorVisible = 0;
         
         filas.forEach(function(fila) {
-            // Saltar fila de "No hay boletines"
             if (fila.querySelector('td[colspan]')) return;
             
             const texto = fila.textContent.toLowerCase();
@@ -451,34 +429,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const tipoFila = fila.querySelector('td:nth-child(5)')?.textContent?.trim() || '';
             
             let visible = true;
-            
-            // Filtro por búsqueda
-            if (busqueda && !texto.includes(busqueda)) {
-                visible = false;
-            }
-            
-            // Filtro por período
-            if (periodo && periodoFila !== periodo) {
-                visible = false;
-            }
-            
-            // Filtro por tipo
+            if (busqueda && !texto.includes(busqueda)) visible = false;
+            if (periodo && periodoFila !== periodo) visible = false;
             if (tipo) {
                 const tipoNormalizado = tipo === 'inicial' ? 'Inicial' : 'Primaria';
-                if (tipoFila !== tipoNormalizado) {
-                    visible = false;
-                }
+                if (tipoFila !== tipoNormalizado) visible = false;
             }
             
             fila.style.display = visible ? '' : 'none';
             if (visible) contadorVisible++;
         });
         
-        // Actualizar contadores
         contador.textContent = contadorVisible + ' boletín(es)';
         totalBoletines.textContent = contadorVisible;
         
-        // Mostrar mensaje si no hay resultados
         let mensajeVacio = tbody.querySelector('.mensaje-vacio');
         if (contadorVisible === 0) {
             if (!mensajeVacio) {
@@ -488,29 +452,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 tbody.appendChild(mensajeVacio);
             }
         } else {
-            if (mensajeVacio) {
-                mensajeVacio.remove();
-            }
+            if (mensajeVacio) mensajeVacio.remove();
         }
     }
 
-    // Eventos en tiempo real
-    if (busquedaInput) {
-        busquedaInput.addEventListener('input', function() {
-            clearTimeout(timeoutId);
-            timeoutId = setTimeout(filtrarTabla, 300);
-        });
-    }
-    
-    if (periodoSelect) {
-        periodoSelect.addEventListener('change', filtrarTabla);
-    }
-    
-    if (tipoSelect) {
-        tipoSelect.addEventListener('change', filtrarTabla);
-    }
+    busquedaInput?.addEventListener('input', function() {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(filtrarTabla, 300);
+    });
+    periodoSelect?.addEventListener('change', filtrarTabla);
+    tipoSelect?.addEventListener('change', filtrarTabla);
 
-    // ===== ELIMINAR BOLETÍN =====
+    // Eliminar
     const modalEliminar = new bootstrap.Modal(document.getElementById('modalEliminarBoletin'));
     let boletinIdAEliminar = null;
 
@@ -543,10 +496,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 modalEliminar.hide();
                 mostrarNotificacion('Boletín eliminado correctamente.', 'success');
-                // Eliminar fila
                 const fila = document.querySelector(`tr[data-id="${boletinIdAEliminar}"]`);
                 if (fila) fila.remove();
-                // Actualizar contador
                 filtrarTabla();
             } else {
                 mostrarNotificacion('Error: ' + (data.error || 'No se pudo eliminar'), 'danger');
@@ -569,12 +520,9 @@ document.addEventListener('DOMContentLoaded', function() {
         alerta.style.maxWidth = '400px';
         alerta.innerHTML = `${mensaje} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
         document.body.appendChild(alerta);
-        setTimeout(() => {
-            alerta.remove();
-        }, 4000);
+        setTimeout(() => alerta.remove(), 4000);
     }
 
-    // Ejecutar filtro inicial
     filtrarTabla();
 });
 </script>

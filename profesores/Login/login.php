@@ -157,11 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             top: 38px;
             color: #777;
             font-size: 16px;
-<<<<<<< HEAD
             pointer-events: none;
-=======
-            z-index: 5;
->>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
         }
         .input-group input {
             width: 100%;
@@ -268,20 +264,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
         <form action="" method="POST" autocomplete="off">
             <div class="input-group">
-<<<<<<< HEAD
                 <label for="usuario"><i class="fas fa-user-circle"></i> USUARIO</label>
-=======
-                <label for="usuario"><i class="fas fa-user-circle" style="margin-right: 5px;"></i> USUARIO</label>
->>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
                 <i class="fas fa-user input-icon"></i>
                 <input type="text" id="usuario" name="usuario" placeholder="Ingrese su usuario" required autofocus>
             </div>
             <div class="input-group">
-<<<<<<< HEAD
                 <label for="password"><i class="fas fa-lock"></i> CONTRASEÑA</label>
-=======
-                <label for="password"><i class="fas fa-lock" style="margin-right: 5px;"></i> CONTRASEÑA</label>
->>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
                 <i class="fas fa-lock input-icon"></i>
                 <input type="password" id="password" name="password" placeholder="••••••••" required>
                 <i class="fas fa-eye toggle-password" id="togglePassword"></i>
@@ -306,10 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             this.classList.toggle('fa-eye-slash');
         });
 
-<<<<<<< HEAD
         // ========== ENFOQUE AUTOMÁTICO ==========
-=======
->>>>>>> 745010dcb8918388404ccf0a8cb0a1efd451db5b
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('usuario').focus();
         });

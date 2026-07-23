@@ -425,6 +425,30 @@ $seccion = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 $nombre_seccion = $seccion['nombre'] ?? 'N/A';
 
+// ========== CORRECCIÓN: INICIALIZAR $datos_clasificacion ==========
+$datos_clasificacion = [];
+if (!empty($resumen['datos_clasificacion'])) {
+    $datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
+    if (!is_array($datos_clasificacion)) {
+        $datos_clasificacion = [];
+    }
+}
+
+// Ahora usar $datos_clasificacion para poblar $venezolano_v, etc.
+$venezolano_v = [];
+$venezolano_h = [];
+$extranjero_v = [];
+$extranjero_h = [];
+
+if ($datos_clasificacion) {
+    foreach ($datos_clasificacion as $edad => $data) {
+        $venezolano_v[$edad] = $data['venezolanos']['V'] ?? 0;
+        $venezolano_h[$edad] = $data['venezolanos']['H'] ?? 0;
+        $extranjero_v[$edad] = $data['extranjeros']['V'] ?? 0;
+        $extranjero_h[$edad] = $data['extranjeros']['H'] ?? 0;
+    }
+}
+
 // ========== OBTENER ASISTENCIA DIARIA ==========
 $periodo = $resumen['periodo'];
 $sala = $resumen['sala'];
@@ -471,22 +495,7 @@ for ($d = 1; $d <= $dias_en_mes; $d++) {
 $meses_es = ["01"=>"Enero","02"=>"Febrero","03"=>"Marzo","04"=>"Abril","05"=>"Mayo","06"=>"Junio","07"=>"Julio","08"=>"Agosto","09"=>"Septiembre","10"=>"Octubre","11"=>"Noviembre","12"=>"Diciembre"];
 $nombre_mes = $meses_es[str_pad($mes_num, 2, '0', STR_PAD_LEFT)] ?? '';
 
-// ========== OBTENER CLASIFICACIÓN ==========
-$datos_clasificacion = json_decode($resumen['datos_clasificacion'], true);
-$venezolano_v = [];
-$venezolano_h = [];
-$extranjero_v = [];
-$extranjero_h = [];
-
-if ($datos_clasificacion) {
-    foreach ($datos_clasificacion as $edad => $data) {
-        $venezolano_v[$edad] = $data['venezolanos']['V'] ?? 0;
-        $venezolano_h[$edad] = $data['venezolanos']['H'] ?? 0;
-        $extranjero_v[$edad] = $data['extranjeros']['V'] ?? 0;
-        $extranjero_h[$edad] = $data['extranjeros']['H'] ?? 0;
-    }
-}
-
+// ========== OBTENER CLASIFICACIÓN (ya tenemos $datos_clasificacion) ==========
 $sala_limpia = strtolower(trim($sala));
 $edades = ($sala_limpia === 'sala4' || $sala_limpia === 'sala5') ? range(4, 6) : range(6, 15);
 

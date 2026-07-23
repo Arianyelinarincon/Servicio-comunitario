@@ -12,8 +12,10 @@ if (!in_array($sala_seleccionada, $salas_permitidas)) {
 $seccion_id = isset($_GET['seccion']) ? intval($_GET['seccion']) : '';
 $profesor_id = isset($_GET['profesor']) ? intval($_GET['profesor']) : '';
 $periodo = isset($_GET['periodo']) ? trim($_GET['periodo']) : '2025-2026';
+
+// ========== CORRECCIÓN: VALIDAR FORMATO DEL PERÍODO ==========
 if (!preg_match('/^\d{4}-\d{4}$/', $periodo)) {
-    $periodo = '2025-2026';
+    $periodo = '2025-2026'; // valor por defecto seguro
 }
 
 if (empty($sala_seleccionada) || empty($seccion_id)) {
@@ -237,7 +239,7 @@ include "../includes/header.php";
                             $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
                             $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
 
-                            // ========== CORRECCIÓN: lógica de APROBADO/APLAZADO ==========
+                            // ========== LÓGICA DE APROBADO/APLAZADO ==========
                             $aprobado_db = $est['aprobado'] ?? ''; // 'SI' o 'NO'
                             $resultado_final = $est['resultado_final'] ?? '';
 

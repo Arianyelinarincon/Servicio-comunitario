@@ -1,7 +1,6 @@
 <?php
 session_start();
 
-// ===== VERIFICAR AUTENTICACIÓN =====
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], ['administrador', 'super_admin', 'directiva', 'admin'])) {
     header("Location: /servicio-comunitario/profesores/Login/login.php");
     exit();
@@ -16,7 +15,6 @@ if ($id <= 0) {
     exit;
 }
 
-// Obtener datos del estudiante
 $sql = "SELECT e.*, s.nombre AS seccion_nombre 
         FROM estudiantes e 
         LEFT JOIN secciones s ON e.seccion_id = s.id 
@@ -33,12 +31,9 @@ if (!$estudiante) {
 }
 
 $periodo_actual = obtenerPeriodoEscolar();
-
-// Calcular próximo periodo
 list($anio_inicio, $anio_fin) = explode('-', $periodo_actual);
 $proximo_periodo = ($anio_inicio + 1) . '-' . ($anio_fin + 1);
 
-// Obtener próximas salas disponibles según la sala actual
 function obtenerSiguientesSalas($sala_actual) {
     $mapa = [
         'sala4' => ['sala5'],
@@ -53,7 +48,6 @@ function obtenerSiguientesSalas($sala_actual) {
     return $mapa[$sala_actual] ?? [$sala_actual];
 }
 
-// Obtener secciones disponibles para la nueva sala
 $salas_siguientes = obtenerSiguientesSalas($estudiante['sala']);
 $secciones_disponibles = [];
 if (!empty($salas_siguientes)) {
@@ -69,7 +63,7 @@ if (!empty($salas_siguientes)) {
     $stmt->close();
 }
 
-// Procesar el pase de año
+// ========== PROCESAR PASE DE AÑO ==========
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nueva_sala = isset($_POST['nueva_sala']) ? trim($_POST['nueva_sala']) : '';
     $nueva_seccion_id = isset($_POST['nueva_seccion']) ? intval($_POST['nueva_seccion']) : 0;
@@ -81,15 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $conexion->begin_transaction();
         try {
-            // ===== 1. REGISTRAR HISTORIAL ACTUAL EN INSCRIPCIONES =====
             $fecha_actual = date('Y-m-d');
             $funcionario = $_SESSION['nombre_profesor'] ?? $_SESSION['usuario'] ?? 'Sistema';
             
-            // Obtener peso y talla del estudiante si existen
-            $peso_actual = !empty($estudiante['peso']) ? floatval($estudiante['peso']) : null;
-            $talla_actual = !empty($estudiante['talla']) ? floatval($estudiante['talla']) : null;
-            
-            // Verificar si ya existe inscripción para este periodo
+            // ===== 1. GUARDAR EL AÑO ACTUAL EN EL HISTORIAL (si no existe) =====
             $sql_check = "SELECT id FROM inscripciones WHERE estudiante_id = ? AND ano_escolar = ?";
             $stmt_check = $conexion->prepare($sql_check);
             $stmt_check->bind_param('is', $id, $periodo_actual);
@@ -98,46 +87,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt_check->close();
             
             if (!$existe) {
-                // Solo insertar si no existe
                 $sql_historial = "INSERT INTO inscripciones 
                     (estudiante_id, ano_escolar, grado_seccion, registro, repite, 
                      c, f, p, peso, talla, fecha_inscripcion, funcionario) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $conexion->prepare($sql_historial);
                 $grado_seccion_actual = $estudiante['sala'] . ' - ' . ($estudiante['seccion_nombre'] ?? '');
-                
-                $registro = '';
-                $repite = 'No';
-                $c_val = '';
-                $f_val = '';
-                $p_val = '';
-                
+                // Variables para bind_param (null en peso y talla)
+                $peso_null = null;
+                $talla_null = null;
                 $stmt->bind_param('isssssssddss', 
-                    $id, 
-                    $periodo_actual,
-                    $grado_seccion_actual,
-                    $registro,
-                    $repite,
-                    $c_val,
-                    $f_val,
-                    $p_val,
-                    $peso_actual,
-                    $talla_actual,
-                    $fecha_actual,
-                    $funcionario
+                    $id, $periodo_actual, $grado_seccion_actual,
+                    '', 'No', '', '', '', $peso_null, $talla_null,
+                    $fecha_actual, $funcionario
                 );
                 $stmt->execute();
                 $stmt->close();
             }
             
-            // ===== 2. ACTUALIZAR ESTUDIANTE CON NUEVA SALA Y SECCIÓN =====
+            // ===== 2. ACTUALIZAR ESTUDIANTE A LA NUEVA SALA Y SECCIÓN =====
             $sql_update = "UPDATE estudiantes SET sala = ?, seccion_id = ? WHERE id = ?";
             $stmt = $conexion->prepare($sql_update);
             $stmt->bind_param('sii', $nueva_sala, $nueva_seccion_id, $id);
             $stmt->execute();
             $stmt->close();
             
-            // ===== 3. ACTUALIZAR EL AÑO ESCOLAR EN EL BOLETÍN =====
+            // ===== 3. CREAR NUEVO REGISTRO EN EL HISTORIAL PARA EL NUEVO PERIODO =====
+            $stmt_sec = $conexion->prepare("SELECT nombre FROM secciones WHERE id = ?");
+            $stmt_sec->bind_param("i", $nueva_seccion_id);
+            $stmt_sec->execute();
+            $sec_res = $stmt_sec->get_result()->fetch_assoc();
+            $nuevo_grado_seccion = $nueva_sala . ' - ' . ($sec_res['nombre'] ?? '');
+            $stmt_sec->close();
+            
+            $sql_nuevo_historial = "INSERT INTO inscripciones 
+                (estudiante_id, ano_escolar, grado_seccion, registro, repite, 
+                 c, f, p, peso, talla, fecha_inscripcion, funcionario) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = $conexion->prepare($sql_nuevo_historial);
+            $peso_null = null;
+            $talla_null = null;
+            $stmt->bind_param('isssssssddss', 
+                $id, 
+                $nuevo_periodo,
+                $nuevo_grado_seccion,
+                '',   // registro vacío
+                'No', // repite por defecto
+                '', '', '', // C, F, P vacíos
+                $peso_null, $talla_null, // peso y talla nulos
+                $fecha_actual,
+                $funcionario
+            );
+            $stmt->execute();
+            $stmt->close();
+            
+            // ===== 4. ACTUALIZAR EL BOLETÍN =====
             $sql_boletin = "SELECT id FROM boletines WHERE estudiante_id = ? AND periodo = ?";
             $stmt = $conexion->prepare($sql_boletin);
             $stmt->bind_param('is', $id, $periodo_actual);
@@ -145,67 +149,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $boletin_existente = $stmt->get_result()->fetch_assoc();
             $stmt->close();
             
-            if ($boletin_existente) {
-                $sql_update_boletin = "UPDATE boletines SET periodo = ? WHERE id = ?";
-                $stmt = $conexion->prepare($sql_update_boletin);
-                $stmt->bind_param('si', $nuevo_periodo, $boletin_existente['id']);
-                $stmt->execute();
-                $stmt->close();
-            }
+            $tipos_inicial = ['sala4', 'sala5'];
+            $nuevo_tipo = in_array($nueva_sala, $tipos_inicial) ? 'inicial' : 'primaria';
             
-            // ===== 4. LIMPIAR BOLETÍN SI SE SOLICITÓ =====
-            if ($limpiar_boletin) {
-                $tipos_inicial = ['sala4', 'sala5'];
-                $nuevo_tipo = in_array($nueva_sala, $tipos_inicial) ? 'inicial' : 'primaria';
-                
-                if ($boletin_existente) {
+            if ($boletin_existente) {
+                if ($limpiar_boletin) {
                     $sql_clear = "UPDATE boletines SET 
                         observacion = NULL,
                         m1_proyecto = NULL, m1_formacion = NULL, m1_relacion = NULL, m1_sugerencias = NULL,
                         m2_proyecto = NULL, m2_formacion = NULL, m2_relacion = NULL, m2_sugerencias = NULL,
                         m3_proyecto = NULL, m3_formacion = NULL, m3_relacion = NULL, m3_sugerencias = NULL,
                         resultado_final = NULL, literal_final = NULL,
-                        tipo_boletin = ?
+                        tipo_boletin = ?, periodo = ?
                         WHERE id = ?";
                     $stmt = $conexion->prepare($sql_clear);
-                    $stmt->bind_param('si', $nuevo_tipo, $boletin_existente['id']);
+                    $stmt->bind_param('ssi', $nuevo_tipo, $nuevo_periodo, $boletin_existente['id']);
                     $stmt->execute();
                     $stmt->close();
                 } else {
-                    $sql_new = "INSERT INTO boletines 
-                        (estudiante_id, periodo, tipo_boletin, observacion, fecha_emision) 
-                        VALUES (?, ?, ?, '', NOW())";
-                    $stmt = $conexion->prepare($sql_new);
-                    $stmt->bind_param('iss', $id, $nuevo_periodo, $nuevo_tipo);
+                    $sql_update_boletin = "UPDATE boletines SET periodo = ? WHERE id = ?";
+                    $stmt = $conexion->prepare($sql_update_boletin);
+                    $stmt->bind_param('si', $nuevo_periodo, $boletin_existente['id']);
                     $stmt->execute();
                     $stmt->close();
                 }
-            }
-            
-            // ===== 5. REGISTRAR EN AUDITORÍA =====
-            $usuario_id = $_SESSION['usuario_id'] ?? 0;
-            $detalles = "Pase de año del estudiante: " . $estudiante['nombre'] . ' ' . $estudiante['apellido'] . 
-                        " (ID: $id). De: " . $estudiante['sala'] . " a: $nueva_sala. Período: $periodo_actual -> $nuevo_periodo";
-            if (function_exists('registrarAuditoria')) {
-                registrarAuditoria($conexion, $usuario_id, 'PASE_DE_AÑO', 'estudiantes', $id, $detalles);
+            } else {
+                $sql_new = "INSERT INTO boletines 
+                    (estudiante_id, periodo, tipo_boletin, observacion, fecha_emision) 
+                    VALUES (?, ?, ?, '', NOW())";
+                $stmt = $conexion->prepare($sql_new);
+                $stmt->bind_param('iss', $id, $nuevo_periodo, $nuevo_tipo);
+                $stmt->execute();
+                $stmt->close();
             }
             
             $conexion->commit();
-            
-            // ===== REDIRIGIR CON MENSAJE DE COMPLETADO =====
             header("Location: ver_ficha.php?id=$id&msg=promovido&historial=pendiente");
             exit;
             
         } catch (Exception $e) {
             $conexion->rollback();
             $error = 'Error al promover el estudiante: ' . $e->getMessage();
+            error_log("🚨 Error en pasar_anio.php: " . $e->getMessage());
         }
     }
 }
 
 include '../includes/header.php';
 
-// Mapeo de nombres de salas
 $mapa_salas = [
     'sala4' => 'Sala de 4 años',
     'sala5' => 'Sala de 5 años',
@@ -252,7 +243,7 @@ $mapa_salas = [
                 </div>
             </div>
             
-            <form method="POST" onsubmit="return confirm('¿Está seguro de pasar de año a este estudiante? Esta acción:\n\n1. Guardará el año actual en el historial escolar\n2. Actualizará el estudiante al nuevo grado\n3. Actualizará el año escolar en el boletín\n\nEl historial escolar quedará pendiente de completar (Reg., C, F, P, Peso, Talla).')">
+            <form method="POST" onsubmit="return confirm('¿Está seguro de pasar de año a este estudiante? Esta acción:\n\n1. Guardará el año actual en el historial escolar\n2. Creará un nuevo registro para el nuevo periodo\n3. Actualizará el estudiante al nuevo grado\n4. Actualizará el año escolar en el boletín\n\nEl historial escolar quedará pendiente de completar (Reg., C, F, P, Peso, Talla).')">
                 <div class="row">
                     <div class="col-md-6">
                         <div class="mb-3">

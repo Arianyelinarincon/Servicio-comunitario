@@ -137,78 +137,83 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         exit;
     }
 
-    // ========== BUSCAR ESTUDIANTES (para egresos e ingresos) ==========
-    if ($action == 'buscar_estudiantes') {
-        $termino = sanitizarEntrada($_POST['termino'] ?? '');
-        $sala = sanitizarEntrada($_POST['sala'] ?? '');
-        $seccion = (int)($_POST['seccion_id'] ?? 0);
-        $periodo = sanitizarEntrada($_POST['periodo'] ?? date('Y-m'));
-        $tipo = sanitizarEntrada($_POST['tipo'] ?? 'egreso');
+    // ========== BUSCAR ESTUDIANTES (EGRESOS E INGRESOS) ==========
+    // ========== BUSCAR ESTUDIANTES (EGRESOS E INGRESOS) ==========
+if ($action == 'buscar_estudiantes') {
+    $termino = sanitizarEntrada($_POST['termino'] ?? '');
+    $sala = sanitizarEntrada($_POST['sala'] ?? '');
+    $seccion = (int)($_POST['seccion_id'] ?? 0);
+    $periodo = sanitizarEntrada($_POST['periodo'] ?? date('Y-m'));
+    $tipo = sanitizarEntrada($_POST['tipo'] ?? 'egreso');
 
-        if (empty($termino) || empty($sala) || $seccion <= 0) {
-            responderJSON(['estudiantes' => []]);
-        }
-
-        $termino = "%$termino%";
-        
-        // ========== CONSULTA BASE ==========
-        $sql = "
-            SELECT id, nombre, apellido, 
-                   COALESCE(cedula, cedula_escolar) AS cedula,
-                   genero, nacionalidad, fecha_nacimiento,
-                   CONCAT(apellido, ' ', nombre) AS nombre_completo,
-                   inscripcion_completa
-            FROM estudiantes
-            WHERE sala = ? AND seccion_id = ? 
-              AND estatus = 'Activo'
-              AND (nombre LIKE ? OR apellido LIKE ? OR COALESCE(cedula, cedula_escolar) LIKE ?)
-        ";
-
-        // ========== FILTRO SEGÚN TIPO ==========
-        if ($tipo === 'egreso') {
-            // Para egresos: SOLO estudiantes con inscripción completa Y que NO tengan egreso en el período
-            $sql .= " AND inscripcion_completa = 1
-                       AND id NOT IN (
-                           SELECT estudiante_id FROM egresos 
-                           WHERE sala = ? AND seccion_id = ? AND periodo = ?
-                       )";
-            $sql .= " ORDER BY apellido, nombre LIMIT 15";
-            $stmt = $conexion->prepare($sql);
-            $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
-            
-        } elseif ($tipo === 'ingreso') {
-            // Para ingresos: SOLO estudiantes SIN inscripción completa (inscripcion_completa = 0)
-            $sql .= " AND inscripcion_completa = 0
-                       AND id NOT IN (
-                           SELECT estudiante_id FROM egresos 
-                           WHERE sala = ? AND seccion_id = ? AND periodo = ?
-                       )";
-            $sql .= " ORDER BY apellido, nombre LIMIT 15";
-            $stmt = $conexion->prepare($sql);
-            $stmt->bind_param("sissssis", $sala, $seccion, $termino, $termino, $termino, $sala, $seccion, $periodo);
-        } else {
-            // Por defecto (sin filtro específico)
-            $sql .= " ORDER BY apellido, nombre LIMIT 15";
-            $stmt = $conexion->prepare($sql);
-            $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
-        }
-
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $estudiantes = [];
-        while ($row = $result->fetch_assoc()) {
-            $estudiantes[] = [
-                'id' => (int)$row['id'],
-                'nombre_completo' => htmlspecialchars($row['nombre_completo']),
-                'cedula' => htmlspecialchars($row['cedula']),
-                'genero' => $row['genero'],
-                'nacionalidad' => $row['nacionalidad'] ?? 'Venezolana',
-                'fecha_nacimiento' => $row['fecha_nacimiento'],
-                'inscripcion_completa' => (int)$row['inscripcion_completa']
-            ];
-        }
-        responderJSON(['estudiantes' => $estudiantes]);
+    if (empty($termino) || empty($sala) || $seccion <= 0) {
+        responderJSON(['estudiantes' => []]);
     }
+
+    $termino = "%$termino%";
+    
+    // ========== CONSULTA BASE (con alias 'e') ==========
+    $sql = "
+        SELECT e.id, e.nombre, e.apellido, 
+               COALESCE(e.cedula, e.cedula_escolar) AS cedula,
+               e.genero, e.nacionalidad, e.fecha_nacimiento,
+               CONCAT(e.apellido, ' ', e.nombre) AS nombre_completo,
+               e.inscripcion_completa
+        FROM estudiantes e
+        WHERE e.sala = ? AND e.seccion_id = ? 
+          AND e.estatus = 'Activo'
+          AND (e.nombre LIKE ? OR e.apellido LIKE ? OR COALESCE(e.cedula, e.cedula_escolar) LIKE ?)
+    ";
+
+    // ========== FILTRO SEGÚN TIPO ==========
+    if ($tipo === 'egreso') {
+    // ===== LÓGICA PARA EGRESOS =====
+    // 1. Debe tener al menos una inscripción (está en listado.php)
+    // 2. No debe tener egreso en el período actual
+    // 3. NO se verifica inscripcion_completa (permite ficha incompleta)
+    // 4. NO se excluye por ingresos (ya que los estudiantes en listado no deberían estar en ingresos)
+    $sql .= " AND EXISTS (SELECT 1 FROM inscripciones i WHERE i.estudiante_id = e.id)
+               AND e.id NOT IN (SELECT estudiante_id FROM egresos WHERE sala = ? AND seccion_id = ? AND periodo = ?)
+               ORDER BY e.apellido, e.nombre LIMIT 15";
+    $stmt = $conexion->prepare($sql);
+    $stmt->bind_param("sissssis", 
+        $sala, $seccion, $termino, $termino, $termino, 
+        $sala, $seccion, $periodo
+    );
+}elseif ($tipo === 'ingreso') {
+        // Para ingresos: SOLO estudiantes SIN inscripción completa
+        // y que no estén en egresos (evitar duplicados)
+        $sql .= " AND e.inscripcion_completa = 0
+                   AND e.id NOT IN (SELECT estudiante_id FROM egresos WHERE sala = ? AND seccion_id = ? AND periodo = ?)
+                   ORDER BY e.apellido, e.nombre LIMIT 15";
+        $stmt = $conexion->prepare($sql);
+        $stmt->bind_param("sissssis", 
+            $sala, $seccion, $termino, $termino, $termino, 
+            $sala, $seccion, $periodo
+        );
+    } else {
+        // Por defecto (sin filtro específico)
+        $sql .= " ORDER BY e.apellido, e.nombre LIMIT 15";
+        $stmt = $conexion->prepare($sql);
+        $stmt->bind_param("sisss", $sala, $seccion, $termino, $termino, $termino);
+    }
+
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $estudiantes = [];
+    while ($row = $result->fetch_assoc()) {
+        $estudiantes[] = [
+            'id' => (int)$row['id'],
+            'nombre_completo' => htmlspecialchars($row['nombre_completo']),
+            'cedula' => htmlspecialchars($row['cedula']),
+            'genero' => $row['genero'],
+            'nacionalidad' => $row['nacionalidad'] ?? 'Venezolana',
+            'fecha_nacimiento' => $row['fecha_nacimiento'],
+            'inscripcion_completa' => (int)$row['inscripcion_completa']
+        ];
+    }
+    responderJSON(['estudiantes' => $estudiantes]);
+}
 
     // ========== CONFIRMAR EGRESO ==========
     if ($action == 'confirmar_egreso') {
@@ -226,8 +231,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             responderJSON(['success' => false, 'error' => 'Datos incompletos']);
         }
         
-        // Verificar que el estudiante esté inscrito completo
-        $stmt = $conexion->prepare("SELECT inscripcion_completa, nombre, apellido, genero, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
+        // Solo se verifica que el estudiante exista
+        $stmt = $conexion->prepare("SELECT id, nombre, apellido, genero, cedula, fecha_nacimiento FROM estudiantes WHERE id = ?");
         $stmt->bind_param("i", $estudiante_id);
         $stmt->execute();
         $estudiante = $stmt->get_result()->fetch_assoc();
@@ -237,11 +242,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
             responderJSON(['success' => false, 'error' => 'Estudiante no encontrado']);
         }
         
-        if ($estudiante['inscripcion_completa'] != 1) {
-            responderJSON(['success' => false, 'error' => 'El estudiante no tiene inscripción completa']);
-        }
-
-        // Verificar duplicado
+        // Verificar que no tenga un egreso previo en este período
         $stmt = $conexion->prepare("SELECT id FROM egresos WHERE estudiante_id = ? AND sala = ? AND seccion_id = ? AND periodo = ?");
         $stmt->bind_param("isis", $estudiante_id, $sala, $seccion, $periodo);
         $stmt->execute();
@@ -258,7 +259,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         $stmt->execute();
         $stmt->close();
         
-        // Actualizar estatus a Inactivo
+        // Cambiar estatus a Inactivo
         $stmt_up = $conexion->prepare("UPDATE estudiantes SET estatus = 'Inactivo' WHERE id = ?");
         $stmt_up->bind_param("i", $estudiante_id);
         $stmt_up->execute();
@@ -391,43 +392,62 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         ]);
     }
 
-    // ========== CARGAR EGRESOS EXISTENTES ==========
-    if ($action == 'cargar_egresos_existentes') {
-        $sala = sanitizarEntrada($_POST['sala'] ?? '');
-        $seccion = (int)($_POST['seccion'] ?? 0);
-        $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
-        
-        if (empty($sala) || $seccion <= 0 || empty($periodo)) {
-            responderJSON(['egresos' => []]);
-        }
-        
-        $stmt = $conexion->prepare("
-            SELECT est.nombre, est.apellido, e.genero, 
-                   COALESCE(est.cedula, est.cedula_escolar, '') AS ci,
-                   est.fecha_nacimiento, e.fecha_egreso,
-                   CONCAT(est.apellido, ' ', est.nombre) AS nombre_completo,
-                   e.id AS egreso_id
-            FROM egresos e
-            JOIN estudiantes est ON e.estudiante_id = est.id
-            WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?
-            ORDER BY e.fecha_egreso DESC
-        ");
-        $stmt->bind_param("sis", $sala, $seccion, $periodo);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $egresos = [];
-        while ($row = $result->fetch_assoc()) {
-            $egresos[] = [
-                'egreso_id' => $row['egreso_id'],
-                'nombre_completo' => $row['nombre_completo'],
-                'genero' => $row['genero'],
-                'ci' => $row['ci'],
-                'fn' => $row['fecha_nacimiento'],
-                'fi' => $row['fecha_egreso']
-            ];
-        }
-        responderJSON(['egresos' => $egresos]);
+  // ========== CARGAR EGRESOS EXISTENTES ==========
+if ($action == 'cargar_egresos_existentes') {
+    $sala = sanitizarEntrada($_POST['sala'] ?? '');
+    $seccion = (int)($_POST['seccion'] ?? 0);
+    $periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+    
+    // Validar parámetros
+    if (empty($sala) || $seccion <= 0 || empty($periodo)) {
+        responderJSON(['success' => false, 'error' => 'Parámetros incompletos: sala, sección y período son requeridos.']);
     }
+    
+    // Verificar que la tabla egresos exista
+    $check = $conexion->query("SHOW TABLES LIKE 'egresos'");
+    if (!$check || $check->num_rows == 0) {
+        responderJSON(['success' => false, 'error' => 'La tabla egresos no existe. Contacte al administrador.']);
+    }
+    
+    // Consulta con manejo de errores
+    $sql = "
+        SELECT est.nombre, est.apellido, e.genero, 
+               COALESCE(est.cedula, est.cedula_escolar, '') AS ci,
+               est.fecha_nacimiento, e.fecha_egreso,
+               CONCAT(est.apellido, ' ', est.nombre) AS nombre_completo,
+               e.id AS egreso_id
+        FROM egresos e
+        JOIN estudiantes est ON e.estudiante_id = est.id
+        WHERE e.sala = ? AND e.seccion_id = ? AND e.periodo = ?
+        ORDER BY e.fecha_egreso DESC
+    ";
+    
+    $stmt = $conexion->prepare($sql);
+    if (!$stmt) {
+        responderJSON(['success' => false, 'error' => 'Error al preparar la consulta: ' . $conexion->error]);
+    }
+    
+    $stmt->bind_param("sis", $sala, $seccion, $periodo);
+    if (!$stmt->execute()) {
+        responderJSON(['success' => false, 'error' => 'Error al ejecutar la consulta: ' . $stmt->error]);
+    }
+    
+    $result = $stmt->get_result();
+    $egresos = [];
+    while ($row = $result->fetch_assoc()) {
+        $egresos[] = [
+            'egreso_id' => $row['egreso_id'],
+            'nombre_completo' => $row['nombre_completo'],
+            'genero' => $row['genero'],
+            'ci' => $row['ci'],
+            'fn' => $row['fecha_nacimiento'],
+            'fi' => $row['fecha_egreso']
+        ];
+    }
+    
+    // Siempre devolver success=true aunque no haya egresos
+    responderJSON(['success' => true, 'egresos' => $egresos]);
+}
 
     exit;
 }
@@ -1255,6 +1275,9 @@ function cargarEgresosExistentes() {
     const periodo = document.getElementById('select-mes').value;
     if (!sala || !seccion || !periodo) return;
     
+    const tbody = document.getElementById('egresos-body');
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Cargando egresos...</td></tr>';
+    
     const formData = new FormData();
     formData.append('action', 'cargar_egresos_existentes');
     formData.append('sala', sala);
@@ -1264,8 +1287,11 @@ function cargarEgresosExistentes() {
     fetch('index.php?ajax=1', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
-            const tbody = document.getElementById('egresos-body');
             tbody.innerHTML = '';
+            if (data.error) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">❌ ${data.error}</td></tr>`;
+                return;
+            }
             if (data.egresos && data.egresos.length > 0) {
                 data.egresos.forEach(eg => {
                     const fila = document.createElement('tr');
@@ -1284,9 +1310,14 @@ function cargarEgresosExistentes() {
                     `;
                     tbody.appendChild(fila);
                 });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No hay egresos registrados para este período.</td></tr>';
             }
         })
-        .catch(err => console.error('Error cargando egresos:', err));
+        .catch(err => {
+            console.error('Error cargando egresos:', err);
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">❌ Error de conexión al cargar egresos.</td></tr>`;
+        });
 }
 
 // ========== AUTOCOMPLETADO PARA EGRESOS ==========
@@ -1348,7 +1379,7 @@ function inicializarAutocompletadoEgreso(fila) {
                         });
                         dropdown.style.display = 'block';
                     } else {
-                        dropdown.innerHTML = '<div class="p-2 text-muted small">No se encontraron estudiantes activos y con inscripción completa para egreso</div>';
+                        dropdown.innerHTML = '<div class="p-2 text-muted small">No se encontraron estudiantes activos con inscripción y sin egreso en este período</div>';
                         dropdown.style.display = 'block';
                     }
                 })
@@ -1531,21 +1562,19 @@ document.addEventListener('click', function(e) {
         formData.append('csrf_token', '<?= $csrf_token ?>');
         
         fetch('index.php?ajax=1', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    mostrarNotificacion('✅ Egreso registrado correctamente', 'success');
-                    fila.remove();
-                    cargarEgresosExistentes();
-                } else {
-                    mostrarNotificacion('❌ ' + (data.error || 'Error'), 'danger');
-                }
-            })
-            .catch(() => mostrarNotificacion('Error de conexión', 'danger'))
-            .finally(() => {
-                btn.disabled = false;
-                btn.innerHTML = '✓';
-            });
+    .then(res => res.json())
+    .then(data => {
+        tbody.innerHTML = '';
+        if (data.error) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">❌ ${data.error}</td></tr>`;
+            return;
+        }
+        // ...
+    })
+    .catch(err => {
+        console.error('Error cargando egresos:', err);
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">❌ Error de conexión al cargar egresos.</td></tr>`;
+    });
     }
     
     // ===== ELIMINAR EGRESO EXISTENTE =====
