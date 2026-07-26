@@ -46,7 +46,6 @@ $modo_edicion = false;
 if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id']) && $tabla_boletines_existe) {
     $id_editar = intval($_GET['editar_id']);
     
-    // SQL corregido con los JOINs correspondientes para docente y representante
     $sql_editar = "SELECT b.*, e.id AS estudiante_id, e.nombre, e.apellido, e.cedula_escolar, e.sala, 
                           s.nombre AS seccion_nombre,
                           r.nombre_completo AS representante_nombre,
@@ -78,7 +77,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id']) && $tabla_boleti
             $seccion = $boletin['seccion_nombre'] ?? 'U';
             $grado_legible = $nombres_salas[$sala_codigo] ?? $sala_codigo;
 
-            // SOBRESCRIBIR LA SESIÓN con los datos exactos del estudiante a editar
             $_SESSION['estudiante'] = $estudiante_nombre;
             $_SESSION['estudiante_id'] = $estudiante_id;
             $_SESSION['ce'] = $ce;
@@ -88,7 +86,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id']) && $tabla_boleti
             $_SESSION['sala_codigo'] = $sala_codigo;
             $_SESSION['seccion'] = $seccion;
 
-            // Cargar campos del boletín en sesión
             $_SESSION['observacion'] = $boletin['observacion'] ?? '';
             $_SESSION['m1_proyecto'] = $boletin['m1_proyecto'] ?? '';
             $_SESSION['m1_formacion'] = $boletin['m1_formacion'] ?? '';
@@ -134,6 +131,18 @@ if (!$modo_edicion) {
             }
             $stmt->close();
         }
+        // Si no existe, CREAR UN NUEVO BOLETÍN VACÍO
+        if ($boletin_id == 0) {
+            $stmt_insert = $conexion->prepare("INSERT INTO boletines (estudiante_id, periodo, tipo_boletin, fecha_emision) VALUES (?, ?, 'inicial', NOW())");
+            if ($stmt_insert) {
+                $stmt_insert->bind_param("is", $estudiante_id, $ano_escolar);
+                if ($stmt_insert->execute()) {
+                    $boletin_id = $conexion->insert_id;
+                }
+                $stmt_insert->close();
+            }
+        }
+        // Cargar datos del boletín (si existe o recién creado)
         if ($boletin_id > 0) {
             $stmt = $conexion->prepare("SELECT * FROM boletines WHERE id = ? AND tipo_boletin = 'inicial'");
             if ($stmt) {
@@ -158,7 +167,7 @@ if (!$modo_edicion) {
                 }
             }
         } else {
-            // No existe, limpiar sesión
+            // Limpiar sesión
             unset($_SESSION['observacion']);
             unset($_SESSION['m1_proyecto'], $_SESSION['m1_formacion'], $_SESSION['m1_relacion'], $_SESSION['m1_sugerencias']);
             unset($_SESSION['m2_proyecto'], $_SESSION['m2_formacion'], $_SESSION['m2_relacion'], $_SESSION['m2_sugerencias']);
@@ -211,9 +220,8 @@ $m3_sugerencias = htmlspecialchars($_SESSION['m3_sugerencias'] ?? '');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Control - Boletín Inicial</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        /* Todos los estilos que ya tenías (no los repito por brevedad, pero deben estar aquí) */
+        /* ========== ESTILOS ========== */
         :root {
             --primary: #1a237e;
             --primary-dark: #0d1555;
@@ -303,6 +311,7 @@ $m3_sugerencias = htmlspecialchars($_SESSION['m3_sugerencias'] ?? '');
         @media (max-width: 768px) { .panel-container { padding: 12px 15px; } .panel-card { padding: 18px 16px; } .panel-header { flex-direction: column; align-items: flex-start; } .panel-header h2 { font-size: 19px; } .estudiante-info { font-size: 13px; padding: 12px 15px; gap: 8px 18px; } .grid-cards { grid-template-columns: 1fr; } }
         @media (max-width: 576px) { .grid-cards { grid-template-columns: 1fr; } .acciones-generales .btn-lg { width: 100%; justify-content: center; } .panel-card { padding: 14px 12px; } .panel-header h2 { font-size: 17px; } }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
 <div class="panel-container">
@@ -472,6 +481,15 @@ $m3_sugerencias = htmlspecialchars($_SESSION['m3_sugerencias'] ?? '');
                     <br><small>Se requiere la observación general y al menos un momento completado.</small>
                 </div>
             <?php endif; ?>
+
+            <!-- Botón Guardar Boletín -->
+            <form method="POST" action="guardar_boletin.php" style="display:inline;">
+                <input type="hidden" name="boletin_id" value="<?= $boletin_id ?>">
+                <input type="hidden" name="tipo" value="inicial">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-save me-2"></i> Guardar Boletín
+                </button>
+            </form>
 
             <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
                 <a href="index.php" class="btn btn-secondary btn-lg">

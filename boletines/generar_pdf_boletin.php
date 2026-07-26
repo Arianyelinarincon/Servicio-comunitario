@@ -331,18 +331,15 @@ ob_start();
             </div>
 
             <!-- ===== SECCIÓN MODIFICADA: DATOS DEL ESTUDIANTE SIN LÍNEAS Y CON GRUPO FORMATEADO ===== -->
-            
-
-<!-- ===== SECCIÓN MODIFICADA: DATOS DEL ESTUDIANTE SIN LÍNEAS Y CON GRUPO EN UNA SOLA LÍNEA ===== -->
-<div style="font-size: 10.5pt; line-height: 2.0; text-align: left; padding: 0 10px; margin-top: 140px;">
-    <div><strong>Estudiante:</strong> <?php echo $estudiante; ?></div>
-    <div>
-        <span style="display: inline-block; width: 50%;"><strong>C.E:</strong> <?php echo $ce; ?></span>
-        <span style="display: inline-block; width: 45%; white-space: nowrap;"><strong>Grupo:</strong> <?php echo $grupo_formateado; ?></span>
-    </div>
-    <div><strong>Docente:</strong> <?php echo $docente; ?></div>
-    <div><strong>Representante:</strong> <?php echo $representante; ?></div>
-</div>
+            <div style="font-size: 10.5pt; line-height: 2.0; text-align: left; padding: 0 10px; margin-top: 140px;">
+                <div><strong>Estudiante:</strong> <?php echo $estudiante; ?></div>
+                <div>
+                    <span style="display: inline-block; width: 50%;"><strong>C.E:</strong> <?php echo $ce; ?></span>
+                    <span style="display: inline-block; width: 45%; white-space: nowrap;"><strong>Grupo:</strong> <?php echo $grupo_formateado; ?></span>
+                </div>
+                <div><strong>Docente:</strong> <?php echo $docente; ?></div>
+                <div><strong>Representante:</strong> <?php echo $representante; ?></div>
+            </div>
         </td>
     </tr>
 </table>
@@ -470,50 +467,76 @@ ob_start();
 <?php
 $html = ob_get_clean();
 
-// ========== GUARDAR BOLETÍN EN BD ==========
+// ========== GUARDAR BOLETÍN EN BD (CORREGIDO: UPDATE si existe, INSERT si no) ==========
 if ($estudiante_id > 0) {
     $tipo = $_SESSION['tipo_boletin'] ?? 'inicial';
     $periodo_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
     
     $check = $conexion->query("SHOW TABLES LIKE 'boletines'");
     if ($check && $check->num_rows > 0) {
-        $stmt_del = $conexion->prepare("DELETE FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
-        if ($stmt_del) {
-            $stmt_del->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
-            $stmt_del->execute();
-            $stmt_del->close();
-        }
-        
-        $obs = $_SESSION['observacion'] ?? '';
-        $m1_proy = $_SESSION['m1_proyecto'] ?? '';
-        $m1_form = $_SESSION['m1_formacion'] ?? '';
-        $m1_rel = $_SESSION['m1_relacion'] ?? '';
-        $m1_sug = $_SESSION['m1_sugerencias'] ?? '';
-        $m2_proy = $_SESSION['m2_proyecto'] ?? '';
-        $m2_form = $_SESSION['m2_formacion'] ?? '';
-        $m2_rel = $_SESSION['m2_relacion'] ?? '';
-        $m2_sug = $_SESSION['m2_sugerencias'] ?? '';
-        $m3_proy = $_SESSION['m3_proyecto'] ?? '';
-        $m3_form = $_SESSION['m3_formacion'] ?? '';
-        $m3_rel = $_SESSION['m3_relacion'] ?? '';
-        $m3_sug = $_SESSION['m3_sugerencias'] ?? '';
-        
-        $stmt_bol = $conexion->prepare("INSERT INTO boletines 
-            (estudiante_id, periodo, tipo_boletin, observacion, 
-             m1_proyecto, m1_formacion, m1_relacion, m1_sugerencias,
-             m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
-             m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt_bol) {
-            $tipos = 'i' . str_repeat('s', 15);
-            $stmt_bol->bind_param($tipos, 
-                $estudiante_id, $periodo_escolar, $tipo, $obs,
-                $m1_proy, $m1_form, $m1_rel, $m1_sug,
-                $m2_proy, $m2_form, $m2_rel, $m2_sug,
-                $m3_proy, $m3_form, $m3_rel, $m3_sug
-            );
-            $stmt_bol->execute();
-            $stmt_bol->close();
+        // Verificar si ya existe un boletín para este estudiante, periodo y tipo
+        $stmt_check = $conexion->prepare("SELECT id FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
+        if ($stmt_check) {
+            $stmt_check->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
+            $stmt_check->execute();
+            $existe = $stmt_check->get_result()->fetch_assoc();
+            $stmt_check->close();
+            
+            $obs = $_SESSION['observacion'] ?? '';
+            $m1_proy = $_SESSION['m1_proyecto'] ?? '';
+            $m1_form = $_SESSION['m1_formacion'] ?? '';
+            $m1_rel = $_SESSION['m1_relacion'] ?? '';
+            $m1_sug = $_SESSION['m1_sugerencias'] ?? '';
+            $m2_proy = $_SESSION['m2_proyecto'] ?? '';
+            $m2_form = $_SESSION['m2_formacion'] ?? '';
+            $m2_rel = $_SESSION['m2_relacion'] ?? '';
+            $m2_sug = $_SESSION['m2_sugerencias'] ?? '';
+            $m3_proy = $_SESSION['m3_proyecto'] ?? '';
+            $m3_form = $_SESSION['m3_formacion'] ?? '';
+            $m3_rel = $_SESSION['m3_relacion'] ?? '';
+            $m3_sug = $_SESSION['m3_sugerencias'] ?? '';
+            
+            if ($existe) {
+                // ACTUALIZAR el boletín existente
+                $stmt_update = $conexion->prepare("UPDATE boletines SET 
+                    observacion = ?, 
+                    m1_proyecto = ?, m1_formacion = ?, m1_relacion = ?, m1_sugerencias = ?,
+                    m2_proyecto = ?, m2_formacion = ?, m2_relacion = ?, m2_sugerencias = ?,
+                    m3_proyecto = ?, m3_formacion = ?, m3_relacion = ?, m3_sugerencias = ?,
+                    fecha_emision = NOW()
+                    WHERE id = ?");
+                if ($stmt_update) {
+                    $stmt_update->bind_param("sssssssssssssi", 
+                        $obs,
+                        $m1_proy, $m1_form, $m1_rel, $m1_sug,
+                        $m2_proy, $m2_form, $m2_rel, $m2_sug,
+                        $m3_proy, $m3_form, $m3_rel, $m3_sug,
+                        $existe['id']
+                    );
+                    $stmt_update->execute();
+                    $stmt_update->close();
+                }
+            } else {
+                // INSERTAR nuevo boletín
+                $stmt_insert = $conexion->prepare("INSERT INTO boletines 
+                    (estudiante_id, periodo, tipo_boletin, observacion, 
+                     m1_proyecto, m1_formacion, m1_relacion, m1_sugerencias,
+                     m2_proyecto, m2_formacion, m2_relacion, m2_sugerencias,
+                     m3_proyecto, m3_formacion, m3_relacion, m3_sugerencias,
+                     fecha_emision)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                if ($stmt_insert) {
+                    $tipos = 'i' . str_repeat('s', 15);
+                    $stmt_insert->bind_param($tipos, 
+                        $estudiante_id, $periodo_escolar, $tipo, $obs,
+                        $m1_proy, $m1_form, $m1_rel, $m1_sug,
+                        $m2_proy, $m2_form, $m2_rel, $m2_sug,
+                        $m3_proy, $m3_form, $m3_rel, $m3_sug
+                    );
+                    $stmt_insert->execute();
+                    $stmt_insert->close();
+                }
+            }
         }
     }
 }

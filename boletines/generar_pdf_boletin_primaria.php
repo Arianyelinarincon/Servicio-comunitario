@@ -20,7 +20,7 @@ $estudiante_id = $_SESSION['estudiante_id'] ?? 0;
 $estudiante_nombre = $_SESSION['estudiante'] ?? '';
 $ce = $_SESSION['ce'] ?? '';
 $ano_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
-$docente = $_SESSION['docente'] ?? 'No asignado'; // <-- viene completo de paso1_portada_primaria.php
+$docente = $_SESSION['docente'] ?? 'No asignado';
 $representante = $_SESSION['representante'] ?? 'No registrado';
 $seccion = 'U';
 $sala_codigo = '';
@@ -70,7 +70,7 @@ $grado_formateado = $grado_legible . ' "' . $seccion . '"';
 $estudiante = htmlspecialchars($estudiante_nombre);
 $ce = htmlspecialchars($ce);
 $ano_escolar = htmlspecialchars($ano_escolar);
-$docente = htmlspecialchars($docente); // nombre completo
+$docente = htmlspecialchars($docente);
 $representante = htmlspecialchars($representante);
 $observacion = nl2br(htmlspecialchars($_SESSION['observacion'] ?? ''));
 
@@ -337,7 +337,7 @@ ob_start();
                 AÑO ESCOLAR <?php echo $ano_escolar; ?>
             </div>
 
-            <!-- ===== SECCIÓN DE DATOS DEL ESTUDIANTE (SIN LÍNEAS, CON GRADO FORMATEADO) ===== -->
+            <!-- ===== SECCIÓN DE DATOS DEL ESTUDIANTE ===== -->
             <div style="font-size: 10.5pt; line-height: 2.0; text-align: left; padding: 0 10px;">
                 <div><strong>Estudiante:</strong> <?php echo $estudiante; ?></div>
                 <div>
@@ -447,13 +447,14 @@ ob_start();
 <?php
 $html = ob_get_clean();
 
-// ========== GUARDAR BOLETÍN EN BD ==========
+// ========== GUARDAR BOLETÍN EN BD (CORREGIDO: UPDATE si existe, INSERT si no) ==========
 if ($estudiante_id > 0) {
     $tipo = 'primaria';
     $periodo_escolar = $_SESSION['ano_escolar'] ?? $periodo_escolar_actual;
     
     $check = $conexion->query("SHOW TABLES LIKE 'boletines'");
     if ($check && $check->num_rows > 0) {
+        // Verificar si ya existe un boletín para este estudiante, periodo y tipo
         $stmt_check = $conexion->prepare("SELECT id FROM boletines WHERE estudiante_id = ? AND periodo = ? AND tipo_boletin = ?");
         if ($stmt_check) {
             $stmt_check->bind_param("iss", $estudiante_id, $periodo_escolar, $tipo);
@@ -475,12 +476,14 @@ if ($estudiante_id > 0) {
             $lit_final = $_SESSION['literal_final'] ?? '';
             
             if ($existe) {
+                // ACTUALIZAR el boletín existente
                 $stmt_update = $conexion->prepare("UPDATE boletines SET 
                     observacion = ?, 
                     m1_proyecto = ?, m1_formacion = ?, m1_sugerencias = ?,
                     m2_proyecto = ?, m2_formacion = ?, m2_sugerencias = ?,
                     m3_proyecto = ?, m3_formacion = ?, m3_sugerencias = ?,
-                    resultado_final = ?, literal_final = ?
+                    resultado_final = ?, literal_final = ?,
+                    fecha_emision = NOW()
                     WHERE id = ?");
                 if ($stmt_update) {
                     $stmt_update->bind_param("ssssssssssssi", 
@@ -495,13 +498,15 @@ if ($estudiante_id > 0) {
                     $stmt_update->close();
                 }
             } else {
+                // INSERTAR nuevo boletín
                 $stmt_insert = $conexion->prepare("INSERT INTO boletines 
                     (estudiante_id, periodo, tipo_boletin, observacion, 
                      m1_proyecto, m1_formacion, m1_sugerencias,
                      m2_proyecto, m2_formacion, m2_sugerencias,
                      m3_proyecto, m3_formacion, m3_sugerencias,
-                     resultado_final, literal_final)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                     resultado_final, literal_final,
+                     fecha_emision)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
                 if ($stmt_insert) {
                     $stmt_insert->bind_param("issssssssssssss", 
                         $estudiante_id, $periodo_escolar, $tipo, $obs,

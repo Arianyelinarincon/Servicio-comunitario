@@ -12,10 +12,8 @@ if (!in_array($sala_seleccionada, $salas_permitidas)) {
 $seccion_id = isset($_GET['seccion']) ? intval($_GET['seccion']) : '';
 $profesor_id = isset($_GET['profesor']) ? intval($_GET['profesor']) : '';
 $periodo = isset($_GET['periodo']) ? trim($_GET['periodo']) : '2025-2026';
-
-// ========== CORRECCIÓN: VALIDAR FORMATO DEL PERÍODO ==========
 if (!preg_match('/^\d{4}-\d{4}$/', $periodo)) {
-    $periodo = '2025-2026'; // valor por defecto seguro
+    $periodo = '2025-2026';
 }
 
 if (empty($sala_seleccionada) || empty($seccion_id)) {
@@ -40,8 +38,7 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 }
 $stmt_sec->close();
 
-// ========== CONSULTA CORREGIDA ==========
-// Incluye b.aprobado para determinar aprobado/aplazado
+// ========== CONSULTA CORREGIDA (sin inscripcion_completa) ==========
 $ano_inicio = substr($periodo, 0, 4);
 $query_est = "
     SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
@@ -51,23 +48,18 @@ $query_est = "
            b.aprobado,
            b.observacion AS observacion_boletin
     FROM estudiantes e
-    INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar LIKE ?
+    INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar = ?
     INNER JOIN boletines b ON e.id = b.estudiante_id 
         AND b.tipo_boletin = 'primaria'
-        AND b.periodo LIKE ?
-        AND b.m1_formacion IS NOT NULL AND b.m1_formacion != ''
-        AND b.m2_formacion IS NOT NULL AND b.m2_formacion != ''
-        AND b.m3_formacion IS NOT NULL AND b.m3_formacion != ''
+        AND b.periodo = ?
     WHERE e.sala = ? 
       AND e.seccion_id = ? 
       AND e.estatus = 'Activo'
-      AND e.inscripcion_completa = 1
     ORDER BY e.nombre ASC, e.apellido ASC
 ";
 
 $stmt_est = $conexion->prepare($query_est);
-$like_periodo = $ano_inicio . '%';
-$stmt_est->bind_param("sssi", $like_periodo, $like_periodo, $sala_seleccionada, $seccion_id);
+$stmt_est->bind_param("sssi", $periodo, $periodo, $sala_seleccionada, $seccion_id);
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
@@ -83,129 +75,75 @@ $total_alumnos = $varones + $hembras;
 
 include "../includes/header.php";
 ?>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
     body { background: #fff; }
-    .hoja-rendimiento {
-        background: white;
-        padding: 20px;
-        margin: 0 auto;
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 11pt;
-    }
-    .encabezado-ministerio {
-        text-align: center;
-        font-weight: bold;
-        margin-bottom: 20px;
-    }
-    .tabla-rendimiento {
+    .hoja-rendimiento { 
+        background: white; 
+        padding: 5px 15px; 
+        margin: 0 auto; 
+        font-family: 'Calibri', 'Arial', sans-serif;
+        font-size: 11pt; }
+    .encabezado-ministerio { 
+        text-align: center; 
+        font-weight: bold; 
+        margin-bottom: 20px; }
+    .tabla-rendimiento { 
         width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
+        border-collapse: collapse; 
+        table-layout: fixed; 
+        font-size: 9pt; }
+    .tabla-rendimiento th, .tabla-rendimiento td { 
+        border: 1px solid #000; 
+        padding: 0.01cm 0.04cm;
+        text-align: center; 
+        vertical-align: middle; 
         font-size: 9pt;
-    }
-    .tabla-rendimiento th, .tabla-rendimiento td {
-        border: 1px solid #000;
-        padding: 2px 1px;
-        text-align: center;
-        vertical-align: middle;
-        word-wrap: break-word;
-        background-color: #fff;
-    }
-    .tabla-rendimiento th {
-        font-weight: bold;
-        text-transform: uppercase;
-        background-color: #fff;
-        white-space: nowrap;
-        font-size: 7.5pt;
-        padding: 2px 1px;
-    }
+        word-wrap: break-word; 
+        background-color: #fff; }
+    .tabla-rendimiento th { font-weight: bold; text-transform: uppercase; background-color: #fff; white-space: nowrap; font-size: 9pt; padding: 2px 1px; }
     .text-left { text-align: left !important; }
-
-    .tabla-rendimiento th:nth-child(1), .tabla-rendimiento td:nth-child(1) { width: 4%; }
-    .tabla-rendimiento th:nth-child(2), .tabla-rendimiento td:nth-child(2) { width: 10%; }
-    .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 22%; }
-    .tabla-rendimiento th:nth-child(4), .tabla-rendimiento td:nth-child(4) { width: 5%; }
-    .tabla-rendimiento th:nth-child(5), .tabla-rendimiento td:nth-child(5) { width: 8%; }
+    .tabla-rendimiento th:nth-child(1), .tabla-rendimiento td:nth-child(1) { width: 2%; }
+    .tabla-rendimiento th:nth-child(2), .tabla-rendimiento td:nth-child(2) { width: 12%; }
+    .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 30%; }
+    .tabla-rendimiento th:nth-child(4), .tabla-rendimiento td:nth-child(4) { width: 4%; }
+    .tabla-rendimiento th:nth-child(5), .tabla-rendimiento td:nth-child(5) { width: 9.42%; }
     .tabla-rendimiento th:nth-child(6), .tabla-rendimiento td:nth-child(6) { width: 8%; }
     .tabla-rendimiento th:nth-child(7), .tabla-rendimiento td:nth-child(7) { width: 7%; }
     .tabla-rendimiento th:nth-child(8), .tabla-rendimiento td:nth-child(8) { width: 7%; }
-    .tabla-rendimiento th:nth-child(9), .tabla-rendimiento td:nth-child(9) { width: 7%; }
+    .tabla-rendimiento th:nth-child(9), .tabla-rendimiento td:nth-child(9) { width: 5%; }
     .tabla-rendimiento th:nth-child(10), .tabla-rendimiento td:nth-child(10) { width: 22%; }
-
-    .x-mark {
-        font-weight: bold;
-        font-size: 12pt;
-        color: #000;
-    }
-    .input-print, .select-print {
-        border: none;
-        background: transparent;
-        width: 100%;
-        text-align: center;
-        font-size: 8.5pt;
-        font-family: inherit;
-        padding: 0;
-        margin: 0;
-        box-sizing: border-box;
-    }
+    .x-mark { font-weight: bold; font-size: 12pt; color: #000; }
+    .input-print, .select-print { border: none; background: transparent; width: 100%; text-align: center; font-size: 8.5pt; font-family: inherit; padding: 0; margin: 0; box-sizing: border-box; }
     .input-print:focus { background-color: #fff9c4; }
-    .btn-accion { text-align: center; margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-    .mensaje-flotante {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 9999;
-    }
-    .btn-edit-obs {
-        background: none;
-        border: none;
-        cursor: pointer;
-        font-size: 10pt;
-        margin-left: 5px;
-        padding: 0 2px;
-        color: #0056b3;
-    }
-    .obs-cell {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        flex-wrap: nowrap;
-    }
+    #botones-accion { text-align: center; margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .mensaje-flotante { position: fixed; top: 20px; right: 20px; z-index: 9999; }
+    .btn-edit-obs { background: none; border: none; cursor: pointer; font-size: 10pt; margin-left: 5px; padding: 0 2px; color: #0056b3; }
+    .obs-cell { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: nowrap; }
     .obs-cell input { flex: 1; min-width: 0; }
-    @media print {
-        body, .hoja-rendimiento { margin: 0; padding: 10px; }
-        .btn-accion { display: none !important; }
-        .btn-edit-obs { display: none !important; }
-        .tabla-rendimiento { font-size: 7pt; }
-        .tabla-rendimiento th, .tabla-rendimiento td { padding: 1px; }
-        .obs-cell input { border: none; background: transparent; }
-        .obs-cell .btn-edit-obs { display: none !important; }
-    }
+    @media print { body, .hoja-rendimiento { margin: 0; padding: 10px; } .btn, #botones-accion { display: none !important; } .btn-edit-obs { display: none !important; } .tabla-rendimiento { font-size: 7pt; } .tabla-rendimiento th, .tabla-rendimiento td { padding: 1px; } .obs-cell input { border: none; background: transparent; } .obs-cell .btn-edit-obs { display: none !important; } }
     .modo-exportacion .btn-edit-obs { display: none !important; }
 </style>
 
 <div class="container-fluid">
     <div class="hoja-rendimiento" id="documento-pdf">
         <div class="encabezado-ministerio">
-            <h5>NÓMINA DE ALUMNOS - RENDIMIENTO FINAL (PRIMARIA)</h5>
-            <p>PERÍODO ESCOLAR: <?= htmlspecialchars($periodo) ?></p>
+             <h5>NOMINA DE ALUMNOS RENDIMIENTO FINAL PERÍODO ESCOLAR: <?= htmlspecialchars($periodo) ?></h5>
+           
         </div>
 
-     <div class="row mb-2">
-    <div class="col-8">
-        <strong>DOCENTE:</strong> <?= mb_strtoupper($nombre_profesor) ?> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-        <strong>GRADO:</strong> <?= htmlspecialchars($sala_seleccionada) ?> "<?= htmlspecialchars($nombre_seccion) ?>"
-    </div>
-    <div class="col-4">
-        <strong>VARONES:</strong> <?= $varones ?>&nbsp; &nbsp;
-        <strong>HEMBRAS:</strong> <?= $hembras ?> &nbsp;&nbsp;  
-        <strong>TOTAL:</strong> <?= $total_alumnos ?> 
-        <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
-    </div>
-</div>
+        <div class="row mb-2">
+            <div class="col-8">
+                <strong>DOCENTE:</strong> <?= mb_strtoupper($nombre_profesor) ?> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                <strong>GRADO:</strong> <?= htmlspecialchars($sala_seleccionada) ?> "<?= htmlspecialchars($nombre_seccion) ?>"
+            </div>
+            <div class="col-4">
+                <strong>VARONES:</strong> <?= $varones ?>&nbsp; &nbsp;
+                <strong>HEMBRAS:</strong> <?= $hembras ?> &nbsp;&nbsp;  
+                <strong>TOTAL:</strong> <?= $total_alumnos ?> 
+                <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
+            </div>
+        </div>
 
         <form id="form-rendimiento">
             <input type="hidden" name="periodo" value="<?= htmlspecialchars($periodo) ?>">
@@ -239,23 +177,29 @@ include "../includes/header.php";
                             $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
                             $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
 
-                            // ========== LÓGICA DE APROBADO/APLAZADO ==========
-                            $aprobado_db = $est['aprobado'] ?? ''; // 'SI' o 'NO'
-                            $resultado_final = $est['resultado_final'] ?? '';
+                            $aprobado_db = $est['aprobado'] ?? '';
+$resultado_final = $est['resultado_final'] ?? '';
+$literal_final = htmlspecialchars($est['literal_final'] ?? '');
 
-                            $es_aprobado = false;
-                            $es_aplazado = false;
+$es_aprobado = false;
+$es_aplazado = false;
 
-                            if ($aprobado_db == 'SI' || in_array($resultado_final, ['Promovido', 'Aprobado'])) {
-                                $es_aprobado = true;
-                            } elseif ($aprobado_db == 'NO' || in_array($resultado_final, ['Aplazado', 'Reprobado'])) {
-                                $es_aplazado = true;
-                            }
+// Prioridad: literal final
+if ($literal_final == 'E') {
+    $es_aplazado = true;
+} elseif (in_array($literal_final, ['A','B','C','D'])) {
+    $es_aprobado = true;
+} else {
+    // Si no hay literal, usar campos de la BD
+    if ($aprobado_db == 'SI' || in_array($resultado_final, ['Promovido', 'Aprobado'])) {
+        $es_aprobado = true;
+    } elseif ($aprobado_db == 'NO' || in_array($resultado_final, ['Aplazado', 'Reprobado'])) {
+        $es_aplazado = true;
+    }
+}
 
-                            $aprobado = $es_aprobado ? 'X' : '';
-                            $aplazado = $es_aplazado ? 'X' : '';
-
-                            $literal_final = htmlspecialchars($est['literal_final'] ?? '');
+$aprobado = $es_aprobado ? 'X' : '';
+$aplazado = $es_aplazado ? 'X' : '';
                             $observacion_boletin = htmlspecialchars($est['observacion_boletin'] ?? '', ENT_QUOTES, 'UTF-8');
                         ?>
                         <tr>
@@ -324,10 +268,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnVolver = document.getElementById('btnVolver');
     const form = document.getElementById('form-rendimiento');
 
-    function getStorageKey() {
-        return 'obs_temp_' + periodo;
-    }
-
+    function getStorageKey() { return 'obs_temp_' + periodo; }
     function guardarObservacionesEnLocalStorage() {
         const inputs = document.querySelectorAll('.obs-input');
         const observaciones = {};
@@ -337,7 +278,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         localStorage.setItem(getStorageKey(), JSON.stringify(observaciones));
     }
-
     function cargarObservacionesDesdeLocalStorage() {
         const data = localStorage.getItem(getStorageKey());
         if (!data) return;
@@ -351,21 +291,16 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch(e) { console.warn(e); }
     }
-
     function limpiarObservaciones() {
-        document.querySelectorAll('.obs-input').forEach(input => {
-            input.value = '';
-        });
+        document.querySelectorAll('.obs-input').forEach(input => { input.value = ''; });
         localStorage.removeItem(getStorageKey());
         mostrarMensaje('Observaciones limpiadas', 'info');
     }
-
     function mostrarMensaje(msg, tipo = 'success') {
         const container = document.getElementById('mensaje-container');
         container.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show">${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
         setTimeout(() => container.innerHTML = '', 4000);
     }
-
     cargarObservacionesDesdeLocalStorage();
     document.querySelectorAll('.obs-input').forEach(input => {
         input.addEventListener('input', guardarObservacionesEnLocalStorage);
@@ -383,10 +318,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     btnLimpiar.addEventListener('click', limpiarObservaciones);
-
-    btnVolver.addEventListener('click', function() {
-        window.location.href = 'primaria.php';
-    });
+    btnVolver.addEventListener('click', function() { window.location.href = 'primaria.php'; });
 
     btnDescargar.addEventListener('click', function() {
         const elemento = document.getElementById('documento-pdf');
@@ -449,12 +381,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (modal) modal.hide();
     });
 
-    // Crear contenedor de mensajes
     const container = document.createElement('div');
     container.id = 'mensaje-container';
     container.className = 'mensaje-flotante';
     document.body.appendChild(container);
 });
 </script>
-
 <?php include "../includes/footer.php"; ?>

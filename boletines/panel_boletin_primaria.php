@@ -46,7 +46,6 @@ $modo_edicion = false;
 if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id']) && $tabla_boletines_existe) {
     $id_editar = intval($_GET['editar_id']);
     
-    // SQL corregido con los JOINs correspondientes para docente y representante
     $sql_editar = "SELECT b.*, e.id AS estudiante_id, e.nombre, e.apellido, e.cedula_escolar, e.sala, 
                           s.nombre AS seccion_nombre,
                           r.nombre_completo AS representante_nombre,
@@ -78,7 +77,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id']) && $tabla_boleti
             $seccion = $boletin['seccion_nombre'] ?? 'U';
             $grado_legible = $nombres_salas[$sala_codigo] ?? $sala_codigo;
 
-            // SOBRESCRIBIR LA SESIÓN con los datos exactos del estudiante a editar
             $_SESSION['estudiante'] = $estudiante_nombre;
             $_SESSION['estudiante_id'] = $estudiante_id;
             $_SESSION['ce'] = $ce;
@@ -88,7 +86,6 @@ if (isset($_GET['editar_id']) && is_numeric($_GET['editar_id']) && $tabla_boleti
             $_SESSION['sala_codigo'] = $sala_codigo;
             $_SESSION['seccion'] = $seccion;
 
-            // Cargar datos del boletín en sesión
             $_SESSION['observacion'] = $boletin['observacion'] ?? '';
             $_SESSION['l1_proyecto'] = $boletin['m1_proyecto'] ?? '';
             $_SESSION['l1_analisis'] = $boletin['m1_formacion'] ?? '';
@@ -133,6 +130,18 @@ if (!$modo_edicion) {
             }
             $stmt->close();
         }
+        // Si no existe, CREAR UN NUEVO BOLETÍN VACÍO
+        if ($boletin_id == 0) {
+            $stmt_insert = $conexion->prepare("INSERT INTO boletines (estudiante_id, periodo, tipo_boletin, fecha_emision) VALUES (?, ?, 'primaria', NOW())");
+            if ($stmt_insert) {
+                $stmt_insert->bind_param("is", $estudiante_id, $ano_escolar);
+                if ($stmt_insert->execute()) {
+                    $boletin_id = $conexion->insert_id;
+                }
+                $stmt_insert->close();
+            }
+        }
+        // Cargar datos del boletín (si existe o recién creado)
         if ($boletin_id > 0) {
             $stmt = $conexion->prepare("SELECT * FROM boletines WHERE id = ? AND tipo_boletin = 'primaria'");
             if ($stmt) {
@@ -156,6 +165,7 @@ if (!$modo_edicion) {
                 }
             }
         } else {
+            // Limpiar sesión
             unset($_SESSION['observacion']);
             unset($_SESSION['l1_proyecto'], $_SESSION['l1_analisis'], $_SESSION['l1_sugerencias']);
             unset($_SESSION['l2_proyecto'], $_SESSION['l2_analisis'], $_SESSION['l2_sugerencias']);
@@ -210,7 +220,6 @@ $literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
     <title>Panel de Control - Boletín Primaria</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        /* Todos los estilos que ya tenías (no los repito por brevedad) */
         :root {
             --primary: #1a237e;
             --primary-dark: #0d1555;
@@ -281,6 +290,8 @@ $literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
         .btn-secondary:hover { background: #5a6268; }
         .btn-danger { background: var(--danger); color: #fff; }
         .btn-danger:hover { background: #bd2130; }
+        .btn-outline-danger { color: #dc3545; border: 1px solid #dc3545; background: transparent; }
+        .btn-outline-danger:hover { background: #dc3545; color: #fff; }
         .btn-sm { padding: 5px 14px; font-size: 11px; }
         .btn-lg { padding: 12px 32px; font-size: 15px; }
         .acciones-generales { border-top: 2px solid var(--gray-200); padding-top: 22px; margin-top: 5px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; }
@@ -352,13 +363,11 @@ $literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
                     <a href="editar_observacion_primaria.php?boletin_id=<?= $boletin_id ?>" class="btn <?php echo $obs_completada ? 'btn-warning' : 'btn-primary'; ?> btn-sm">
                         <?php echo $obs_completada ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
-                    <?php if ($obs_completada): ?>
-                        <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=observacion" 
-                           class="btn btn-danger btn-sm" 
-                           onclick="return confirm('¿Estás seguro de limpiar esta observación? Se perderán los datos.')">
-                            <i class="fas fa-trash-alt"></i> Limpiar
-                        </a>
-                    <?php endif; ?>
+                    <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=observacion" 
+                       class="btn btn-outline-danger btn-sm" 
+                       onclick="return confirm('¿Estás seguro de limpiar esta observación? Se perderán los datos.')">
+                        <i class="fas fa-trash-alt"></i> Limpiar
+                    </a>
                 </div>
             </div>
 
@@ -385,13 +394,11 @@ $literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
                     <a href="editar_lapso1_primaria.php?boletin_id=<?= $boletin_id ?>" class="btn <?php echo $l1_completado ? 'btn-warning' : 'btn-success'; ?> btn-sm">
                         <?php echo $l1_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
-                    <?php if ($l1_completado): ?>
-                        <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=lapso1" 
-                           class="btn btn-danger btn-sm" 
-                           onclick="return confirm('¿Estás seguro de limpiar el Lapso 1? Se perderán los datos.')">
-                            <i class="fas fa-trash-alt"></i> Limpiar
-                        </a>
-                    <?php endif; ?>
+                    <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=lapso1" 
+                       class="btn btn-outline-danger btn-sm" 
+                       onclick="return confirm('¿Estás seguro de limpiar el Lapso 1? Se perderán los datos.')">
+                        <i class="fas fa-trash-alt"></i> Limpiar
+                    </a>
                 </div>
             </div>
 
@@ -418,13 +425,11 @@ $literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
                     <a href="editar_lapso2_primaria.php?boletin_id=<?= $boletin_id ?>" class="btn <?php echo $l2_completado ? 'btn-warning' : 'btn-info'; ?> btn-sm">
                         <?php echo $l2_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
-                    <?php if ($l2_completado): ?>
-                        <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=lapso2" 
-                           class="btn btn-danger btn-sm" 
-                           onclick="return confirm('¿Estás seguro de limpiar el Lapso 2? Se perderán los datos.')">
-                            <i class="fas fa-trash-alt"></i> Limpiar
-                        </a>
-                    <?php endif; ?>
+                    <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=lapso2" 
+                       class="btn btn-outline-danger btn-sm" 
+                       onclick="return confirm('¿Estás seguro de limpiar el Lapso 2? Se perderán los datos.')">
+                        <i class="fas fa-trash-alt"></i> Limpiar
+                    </a>
                 </div>
             </div>
 
@@ -460,18 +465,20 @@ $literal_final = htmlspecialchars($_SESSION['literal_final'] ?? '');
                     <a href="editar_lapso3_primaria.php?boletin_id=<?= $boletin_id ?>" class="btn <?php echo $l3_completado ? 'btn-warning' : 'btn-secondary'; ?> btn-sm">
                         <?php echo $l3_completado ? '<i class="fas fa-edit"></i> Editar' : '<i class="fas fa-plus"></i> Agregar'; ?>
                     </a>
-                    <?php if ($l3_completado): ?>
-                        <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=lapso3" 
-                           class="btn btn-danger btn-sm" 
-                           onclick="return confirm('¿Estás seguro de limpiar el Lapso 3 y el resultado final? Se perderán los datos.')">
-                            <i class="fas fa-trash-alt"></i> Limpiar
-                        </a>
-                    <?php endif; ?>
+                    <a href="limpiar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria&seccion=lapso3" 
+                       class="btn btn-outline-danger btn-sm" 
+                       onclick="return confirm('¿Estás seguro de limpiar el Lapso 3 y el resultado final? Se perderán los datos.')">
+                        <i class="fas fa-trash-alt"></i> Limpiar
+                    </a>
                 </div>
             </div>
         </div>
 
         <div class="acciones-generales">
+            <a href="guardar_boletin.php?id=<?= $boletin_id ?>&tipo=primaria" class="btn btn-primary btn-lg">
+                <i class="fas fa-save"></i> Guardar Boletín
+            </a>
+
             <?php if ($puede_generar_pdf): ?>
                 <a href="generar_pdf_boletin_primaria.php?id=<?= $boletin_id ?>" target="_blank" class="btn btn-success btn-lg">
                     <i class="fas fa-file-pdf"></i> Generar Boletín

@@ -13,7 +13,6 @@ $seccion_id = isset($_GET['seccion']) ? intval($_GET['seccion']) : '';
 $profesor_id = isset($_GET['profesor']) ? intval($_GET['profesor']) : '';
 $periodo = isset($_GET['periodo']) ? trim($_GET['periodo']) : '2025-2026';
 
-// ========== CORRECCIÓN: VALIDAR FORMATO DEL PERÍODO ==========
 if (!preg_match('/^\d{4}-\d{4}$/', $periodo)) {
     $periodo = '2025-2026';
 }
@@ -40,31 +39,24 @@ if ($row = $stmt_sec->get_result()->fetch_assoc()) {
 }
 $stmt_sec->close();
 
-// ========== CONSULTA CORREGIDA ==========
-// - Debe existir inscripción en la tabla inscripciones para el período
-// - Debe tener boletín completo (3 momentos) para el período
-$ano_inicio = substr($periodo, 0, 4);
+// ========== CONSULTA: TODOS LOS ESTUDIANTES CON INSCRIPCIÓN (LEFT JOIN BOLETINES) ==========
 $query_est = "
     SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
            e.fecha_nacimiento, e.lugar_nacimiento
     FROM estudiantes e
-    INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar LIKE ?
-    INNER JOIN boletines b ON e.id = b.estudiante_id 
+    INNER JOIN inscripciones i ON e.id = i.estudiante_id AND i.ano_escolar = ?
+    LEFT JOIN boletines b ON e.id = b.estudiante_id 
         AND b.tipo_boletin = 'inicial'
-        AND b.periodo LIKE ?
-        AND b.m1_formacion IS NOT NULL AND b.m1_formacion != ''
-        AND b.m2_formacion IS NOT NULL AND b.m2_formacion != ''
-        AND b.m3_formacion IS NOT NULL AND b.m3_formacion != ''
+        AND b.periodo = ?
     WHERE e.sala = ? 
       AND e.seccion_id = ? 
       AND e.estatus = 'Activo'
-      AND e.inscripcion_completa = 1
+    GROUP BY e.id
     ORDER BY e.nombre ASC, e.apellido ASC
 ";
 
 $stmt_est = $conexion->prepare($query_est);
-$like_periodo = $ano_inicio . '%';
-$stmt_est->bind_param("sssi", $like_periodo, $like_periodo, $sala_seleccionada, $seccion_id);
+$stmt_est->bind_param("sssi", $periodo, $periodo, $sala_seleccionada, $seccion_id);
 $stmt_est->execute();
 $result_est = $stmt_est->get_result();
 $estudiantes = $result_est->fetch_all(MYSQLI_ASSOC);
@@ -98,9 +90,9 @@ include "../includes/header.php";
     body { background: #fff; }
     .hoja-rendimiento {
         background: white;
-        padding: 20px;
+        padding: 5px 15px; 
         margin: 0 auto;
-        font-family: 'Times New Roman', Times, serif;
+        font-family: 'Calibri', 'Arial', sans-serif;
         font-size: 11pt;
     }
     .encabezado-ministerio {
@@ -114,21 +106,24 @@ include "../includes/header.php";
         table-layout: fixed;
         font-size: 9pt;
     }
-    
     .tabla-rendimiento th, .tabla-rendimiento td {
-        border: 1px solid #000;
-        padding: 2px 1px;
+        border: 0.5px solid #000;
+        padding: 0.01cm 0.04cm;
         text-align: center;
         vertical-align: middle;
         word-wrap: break-word;
         background-color: #fff;
+        font-family: 'Calibri', 'Arial', sans-serif;
+        font-size: 9pt;
+        height: cm;
+        line-height: 1;
     }
     .tabla-rendimiento th {
         font-weight: bold;
         text-transform: uppercase;
         background-color: #fff;
         white-space: nowrap;
-        font-size: 7.5pt;
+        font-size: 9pt;
         padding: 2px 1px;
     }
     .tabla-rendimiento th.lugar, .tabla-rendimiento th.fecha {
@@ -136,7 +131,6 @@ include "../includes/header.php";
         line-height: 1.1;
     }
     .text-left { text-align: left !important; }
-
     .tabla-rendimiento th:nth-child(1), .tabla-rendimiento td:nth-child(1) { width: 4.46%; }
     .tabla-rendimiento th:nth-child(2), .tabla-rendimiento td:nth-child(2) { width: 11.69%; }
     .tabla-rendimiento th:nth-child(3), .tabla-rendimiento td:nth-child(3) { width: 33.29%; }
@@ -151,8 +145,8 @@ include "../includes/header.php";
         background: transparent;
         width: 100%;
         text-align: center;
-        font-size: 8.5pt;
-        font-family: inherit;
+        font-family: 'Calibri', 'Arial', sans-serif;
+        font-size: 11pt;
         padding: 0;
         margin: 0;
         box-sizing: border-box;
@@ -177,7 +171,6 @@ include "../includes/header.php";
         right: 20px;
         z-index: 9999;
     }
-
     .btn-edit-obs {
         background: none;
         border: none;
@@ -201,26 +194,15 @@ include "../includes/header.php";
         flex: 1;
         min-width: 0;
     }
-
     @media print {
         body, .hoja-rendimiento { margin: 0; padding: 10px; }
         .btn, #botones-accion { display: none !important; }
         .btn-edit-obs { display: none !important; }
         .tabla-rendimiento { font-size: 7pt; }
         .tabla-rendimiento th, .tabla-rendimiento td { padding: 1px; }
-        .obs-cell input {
-            border: none;
-            background: transparent;
-        }
-        .obs-cell .btn-edit-obs {
-            display: none !important;
-            width: 0 !important;
-            height: 0 !important;
-            overflow: hidden !important;
-            visibility: hidden !important;
-        }
+        .obs-cell input { border: none; background: transparent; }
+        .obs-cell .btn-edit-obs { display: none !important; width: 0 !important; height: 0 !important; overflow: hidden !important; visibility: hidden !important; }
     }
-
     .modo-exportacion .btn-edit-obs {
         display: none !important;
         width: 0 !important;
@@ -270,7 +252,9 @@ include "../includes/header.php";
                 </thead>
                 <tbody>
                     <?php if(empty($estudiantes)): ?>
-                        <tr><td colspan="8" class="text-center">No hay estudiantes registrados.</td></tr>
+                        <tr><td colspan="8" class="text-center">
+                            <span class="text-danger">⚠️ No hay estudiantes inscritos en el período <?= htmlspecialchars($periodo) ?> para esta sala/sección.</span>
+                        </td></tr>
                     <?php else: ?>
                     <?php foreach($estudiantes as $index => $est):
                         $fecha_nac = $est['fecha_nacimiento'] ? date('d/m/Y', strtotime($est['fecha_nacimiento'])) : '';
@@ -351,8 +335,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('form-rendimiento');
     const periodo = '<?= htmlspecialchars($periodo) ?>';
 
+    // ===== FUNCIONES DE ALMACENAMIENTO LOCAL =====
     function getStorageKey() {
-        return 'obs_temp_' + periodo;
+        return 'obs_temp_' + periodo.replace(/\//g, '-');
     }
 
     function guardarObservacionesEnLocalStorage() {
@@ -380,7 +365,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (editBtn) editBtn.setAttribute('data-obs', observaciones[id]);
                 }
             });
-        } catch(e) { console.warn(e); }
+        } catch(e) { console.warn('Error cargando observaciones:', e); }
     }
 
     function limpiarObservaciones() {
@@ -403,84 +388,100 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    function mostrarMensaje(msg, tipo) {
+        const container = document.getElementById('mensaje-container');
+        const alertClass = tipo === 'success' ? 'alert-success' : (tipo === 'danger' ? 'alert-danger' : 'alert-info');
+        container.innerHTML = `<div class="alert ${alertClass} alert-dismissible fade show">${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        setTimeout(() => container.innerHTML = '', 4000);
+    }
+
+    // ===== INICIALIZAR =====
     cargarObservacionesDesdeLocalStorage();
     activarGuardadoAutomatico();
 
+    // ===== BOTÓN GUARDAR =====
     btnGuardar.addEventListener('click', function() {
         const formData = new FormData(form);
-        fetch('guardar_rendimiento_preinicial.php', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                mostrarMensaje(data.message, data.success ? 'success' : 'danger');
-                if (data.success) localStorage.removeItem(getStorageKey());
-            })
-            .catch(err => mostrarMensaje('Error de conexión', 'danger'));
+        fetch('guardar_rendimiento_preinicial.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            mostrarMensaje(data.message, data.success ? 'success' : 'danger');
+            if (data.success) localStorage.removeItem(getStorageKey());
+        })
+        .catch(err => {
+            console.error(err);
+            mostrarMensaje('Error de conexión', 'danger');
+        });
     });
 
-    if (btnLimpiar) btnLimpiar.addEventListener('click', limpiarObservaciones);
+    // ===== BOTÓN LIMPIAR OBSERVACIONES =====
+    if (btnLimpiar) {
+        btnLimpiar.addEventListener('click', limpiarObservaciones);
+    }
 
+    // ===== BOTÓN VOLVER =====
     if (btnVolver) {
         btnVolver.addEventListener('click', function() {
             window.location.href = 'pre-inicial.php';
         });
     }
 
+    // ===== BOTÓN VER PDF =====
     btnDescargar.addEventListener('click', function() {
         const elemento = document.getElementById('documento-pdf');
         const botones = document.getElementById('botones-accion');
-        
         const botonesEdicion = elemento.querySelectorAll('.btn-edit-obs');
-        botonesEdicion.forEach(btn => {
-            btn.style.display = 'none';
-        });
-        
+
+        // Ocultar elementos que no deben aparecer en el PDF
+        botonesEdicion.forEach(btn => { btn.style.display = 'none'; });
+        botones.style.display = 'none';
+        elemento.classList.add('modo-exportacion');
+
         const grado = '<?= htmlspecialchars($sala_seleccionada . '_' . $nombre_seccion) ?>';
         const docente = '<?= preg_replace('/[^a-zA-Z0-9_]/', '_', strtoupper($nombre_profesor)) ?>';
         const periodo_clean = '<?= preg_replace('/[^0-9-]/', '', $periodo) ?>';
         const nombreArchivo = `Rendimiento_Final_${grado}_${docente}_${periodo_clean}.pdf`;
-        
-        botones.style.display = 'none';
-        elemento.classList.add('modo-exportacion');
-        
+
         const opciones = {
-            margin: 0.05,
+            margin: 0.02,
             filename: nombreArchivo,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, letterRendering: true, useCORS: true },
             jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
         };
-        
-        html2pdf().set(opciones).from(elemento).output('blob').then(blob => {
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank');
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            
-            botonesEdicion.forEach(btn => {
-                btn.style.display = '';
+
+        // Usar html2pdf para generar el PDF y abrirlo en nueva pestaña
+        html2pdf()
+            .set(opciones)
+            .from(elemento)
+            .outputPdf('blob')
+            .then(blob => {
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+                // Restaurar elementos
+                botonesEdicion.forEach(btn => { btn.style.display = ''; });
+                botones.style.display = 'flex';
+                elemento.classList.remove('modo-exportacion');
+            })
+            .catch(err => {
+                console.error(err);
+                botonesEdicion.forEach(btn => { btn.style.display = ''; });
+                botones.style.display = 'flex';
+                elemento.classList.remove('modo-exportacion');
+                mostrarMensaje('Error al generar PDF', 'danger');
             });
-            
-            botones.style.display = 'flex';
-            elemento.classList.remove('modo-exportacion');
-        }).catch(err => {
-            console.error(err);
-            botonesEdicion.forEach(btn => {
-                btn.style.display = '';
-            });
-            botones.style.display = 'flex';
-            elemento.classList.remove('modo-exportacion');
-            mostrarMensaje('Error al generar PDF', 'danger');
-        });
     });
 
-    function mostrarMensaje(msg, tipo) {
-        const container = document.getElementById('mensaje-container');
-        container.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show">${msg} <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
-        setTimeout(() => container.innerHTML = '', 4000);
-    }
-
+    // ===== MODAL OBSERVACIÓN =====
     const modalElement = document.getElementById('modalObservacion');
     let modal = null;
-    if (modalElement) modal = new bootstrap.Modal(modalElement);
+    if (modalElement) {
+        modal = new bootstrap.Modal(modalElement);
+    }
     let currentInput = null;
 
     document.body.addEventListener('click', function(e) {
@@ -512,5 +513,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-
 <?php include "../includes/footer.php"; ?>
