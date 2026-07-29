@@ -10,12 +10,29 @@ require_once '../config/conexion.php';
 $boletin_id = isset($_GET['boletin_id']) ? intval($_GET['boletin_id']) : 0;
 if ($boletin_id <= 0) die('ID de boletín no válido');
 
+// ===== PROCESAR GUARDADO =====
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Verificar que los lapsos 1 y 2 estén completos
+    $stmt_check = $conexion->prepare("SELECT m1_proyecto, m1_formacion, m1_sugerencias, m2_proyecto, m2_formacion, m2_sugerencias FROM boletines WHERE id = ?");
+    $stmt_check->bind_param('i', $boletin_id);
+    $stmt_check->execute();
+    $datos = $stmt_check->get_result()->fetch_assoc();
+    $stmt_check->close();
+
+    $lapso1_completo = !empty($datos['m1_proyecto']) && !empty($datos['m1_formacion']) && !empty($datos['m1_sugerencias']);
+    $lapso2_completo = !empty($datos['m2_proyecto']) && !empty($datos['m2_formacion']) && !empty($datos['m2_sugerencias']);
+
+    if (!$lapso1_completo || !$lapso2_completo) {
+        $_SESSION['mensaje_error'] = '❌ No se puede guardar el literal final porque los lapsos 1 y 2 no están completos. Complete primero los lapsos anteriores.';
+        header('Location: panel_boletin_primaria.php?editar_id=' . $boletin_id);
+        exit;
+    }
+
     $proyecto = trim($_POST['m3_proyecto'] ?? '');
     $analisis = trim($_POST['m3_formacion'] ?? '');
     $sugerencias = trim($_POST['m3_sugerencias'] ?? '');
     $literal = trim($_POST['literal_final'] ?? '');
-    
+
     // Determinar resultado y aprobado según literal
     if (in_array($literal, ['A','B','C','D'])) {
         $resultado = 'Promovido';
@@ -27,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $resultado = '';
         $aprobado = '';
     }
-    
+
     $sql = "UPDATE boletines SET 
             m3_proyecto=?, m3_formacion=?, m3_sugerencias=?, 
             resultado_final=?, literal_final=?, aprobado=? 
@@ -40,14 +57,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['l3_sugerencias'] = $sugerencias;
         $_SESSION['resultado_final'] = $resultado;
         $_SESSION['literal_final'] = $literal;
-        $_SESSION['mensaje_exito'] = 'Lapso 3 y resultado final actualizados correctamente.';
+        $_SESSION['mensaje_exito'] = '✅ Lapso 3 y resultado final actualizados correctamente.';
     } else {
-        $_SESSION['mensaje_error'] = 'Error al guardar: ' . $conexion->error;
+        $_SESSION['mensaje_error'] = '❌ Error al guardar: ' . $conexion->error;
     }
     header('Location: panel_boletin_primaria.php?editar_id=' . $boletin_id);
     exit;
 }
 
+// ===== MOSTRAR FORMULARIO =====
 $stmt = $conexion->prepare("SELECT m3_proyecto, m3_formacion, m3_sugerencias, resultado_final, literal_final FROM boletines WHERE id = ?");
 $stmt->bind_param('i', $boletin_id);
 $stmt->execute();
@@ -71,13 +89,14 @@ include '../includes/header.php';
             <h4><i class="fas fa-edit"></i> Editar Lapso 3 y Resultado Final - Primaria</h4>
         </div>
         <div class="card-body">
+            <?php if (isset($_SESSION['mensaje_error'])): ?>
+                <div class="alert alert-danger"><?= htmlspecialchars($_SESSION['mensaje_error']) ?></div>
+                <?php unset($_SESSION['mensaje_error']); ?>
+            <?php endif; ?>
             <div class="alert alert-info" role="alert">
                 <i class="fas fa-info-circle me-2"></i> 
-                <strong>Importante:</strong> 
-                Seleccione primero el <strong>Literal Final</strong> para que el sistema determine automáticamente 
-                la situación académica del estudiante (Promovido o Aplazado).
+                <strong>Importante:</strong> Para guardar el literal final, <strong>los lapsos 1 y 2 deben estar completos</strong> (proyecto, análisis y sugerencias).
             </div>
-
             <form method="POST">
                 <div class="mb-3">
                     <label for="m3_proyecto" class="form-label">Proyectos de Aprendizaje</label>
@@ -94,7 +113,7 @@ include '../includes/header.php';
                 <hr>
                 <h5>Resultado Final</h5>
                 <div class="mb-3">
-                    <label for="resultado_final" class="form-label">Situación del Estudiante (se calcula automáticamente)</label>
+                    <label for="resultado_final_display" class="form-label">Situación del Estudiante (se calcula automáticamente)</label>
                     <input type="text" id="resultado_final_display" class="form-control" readonly 
                            value="<?= htmlspecialchars($datos['resultado_final'] ?? '') ?>" 
                            style="background: #f8f9fa; font-weight: bold; color: #1a237e;">

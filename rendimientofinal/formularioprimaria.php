@@ -43,6 +43,9 @@ $ano_inicio = substr($periodo, 0, 4);
 $query_est = "
     SELECT e.id, e.cedula, e.cedula_escolar, e.nombre, e.apellido, e.genero, 
            e.fecha_nacimiento, e.lugar_nacimiento,
+           b.m1_proyecto, b.m1_formacion, b.m1_sugerencias,
+           b.m2_proyecto, b.m2_formacion, b.m2_sugerencias,
+           b.m3_proyecto, b.m3_formacion, b.m3_sugerencias,
            b.resultado_final,
            b.literal_final,
            b.aprobado,
@@ -177,29 +180,38 @@ include "../includes/header.php";
                             $genero = mb_strtoupper(htmlspecialchars($est['genero'] ?? ''));
                             $lugar_nac = mb_strtoupper(htmlspecialchars($est['lugar_nacimiento'] ?? 'N/A'));
 
-                            $aprobado_db = $est['aprobado'] ?? '';
-$resultado_final = $est['resultado_final'] ?? '';
-$literal_final = htmlspecialchars($est['literal_final'] ?? '');
+                            // ========== VERIFICAR LAPSOS COMPLETOS ==========
+                            $lapso1_completo = !empty($est['m1_proyecto']) && !empty($est['m1_formacion']) && !empty($est['m1_sugerencias']);
+                            $lapso2_completo = !empty($est['m2_proyecto']) && !empty($est['m2_formacion']) && !empty($est['m2_sugerencias']);
+                            $lapso3_completo = !empty($est['m3_proyecto']) && !empty($est['m3_formacion']) && !empty($est['m3_sugerencias']);
+                            $todos_lapsos_completos = $lapso1_completo && $lapso2_completo && $lapso3_completo;
 
-$es_aprobado = false;
-$es_aplazado = false;
+                            // Variables para mostrar
+                            $aprobado = '';
+                            $aplazado = '';
+                            $literal_final_mostrar = '';
+                            $resultado_mostrar = '';
 
-// Prioridad: literal final
-if ($literal_final == 'E') {
-    $es_aplazado = true;
-} elseif (in_array($literal_final, ['A','B','C','D'])) {
-    $es_aprobado = true;
-} else {
-    // Si no hay literal, usar campos de la BD
-    if ($aprobado_db == 'SI' || in_array($resultado_final, ['Promovido', 'Aprobado'])) {
-        $es_aprobado = true;
-    } elseif ($aprobado_db == 'NO' || in_array($resultado_final, ['Aplazado', 'Reprobado'])) {
-        $es_aplazado = true;
-    }
-}
+                            if ($todos_lapsos_completos) {
+                                // Solo si todos los lapsos están completos, mostramos el literal y el estado
+                                $literal_final_mostrar = htmlspecialchars($est['literal_final'] ?? '');
+                                $resultado_mostrar = htmlspecialchars($est['resultado_final'] ?? '');
+                                
+                                // Determinar si es aprobado o aplazado según literal
+                                if ($literal_final_mostrar == 'E') {
+                                    $aplazado = 'X';
+                                } elseif (in_array($literal_final_mostrar, ['A','B','C','D'])) {
+                                    $aprobado = 'X';
+                                } else {
+                                    // Si no hay literal, usar campos de la BD
+                                    if ($est['aprobado'] == 'SI' || in_array($resultado_mostrar, ['Promovido', 'Aprobado'])) {
+                                        $aprobado = 'X';
+                                    } elseif ($est['aprobado'] == 'NO' || in_array($resultado_mostrar, ['Aplazado', 'Reprobado'])) {
+                                        $aplazado = 'X';
+                                    }
+                                }
+                            }
 
-$aprobado = $es_aprobado ? 'X' : '';
-$aplazado = $es_aplazado ? 'X' : '';
                             $observacion_boletin = htmlspecialchars($est['observacion_boletin'] ?? '', ENT_QUOTES, 'UTF-8');
                         ?>
                         <tr>
@@ -211,7 +223,7 @@ $aplazado = $es_aplazado ? 'X' : '';
                             <td><?= $fecha_nac ?></td>
                             <td><span class="x-mark"><?= $aprobado ?></span></td>
                             <td><span class="x-mark"><?= $aplazado ?></span></td>
-                            <td><span class="x-mark"><?= $literal_final ?></span></td>
+                            <td><span class="x-mark"><?= $literal_final_mostrar ?></span></td>
                             <td>
                                 <div class="obs-cell">
                                     <input type="text" name="observacion[<?= $est['id'] ?>]" class="input-print obs-input" data-id="<?= $est['id'] ?>" value="<?= $observacion_boletin ?>">

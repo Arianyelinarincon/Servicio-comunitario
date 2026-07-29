@@ -216,20 +216,7 @@ include '../includes/header.php';
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="card h-100 shadow-sm border-0 hover-card">
-                <div class="card-body text-center py-5">
-                    <div class="icon-circle bg-info mb-3">
-                        <i class="fas fa-history fa-3x text-white"></i>
-                    </div>
-                    <h4 class="fw-bold">Historial de Movimientos</h4>
-                    <p class="text-muted">Registro de todas las acciones realizadas en el sistema</p>
-                    <a href="historial_auditoria.php" class="btn btn-info text-white px-4">
-                        <i class="fas fa-arrow-right me-2"></i> Ver Historial
-                    </a>
-                </div>
-            </div>
-        </div>
+        
     </div>
 
     <!-- ===== MODAL: GESTIONAR USUARIOS ===== -->
