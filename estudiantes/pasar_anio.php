@@ -93,13 +93,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $conexion->prepare($sql_historial);
                 $grado_seccion_actual = $estudiante['sala'] . ' - ' . ($estudiante['seccion_nombre'] ?? '');
-                // Variables para bind_param (null en peso y talla)
+                
+                // ========== CORRECCIÓN: usar variables en lugar de literales ==========
+                $registro = '';
+                $repite = 'No';
+                $c = '';
+                $f = '';
+                $p = '';
                 $peso_null = null;
                 $talla_null = null;
-                $stmt->bind_param('isssssssddss', 
-                    $id, $periodo_actual, $grado_seccion_actual,
-                    '', 'No', '', '', '', $peso_null, $talla_null,
-                    $fecha_actual, $funcionario
+                
+                $stmt->bind_param(
+                    'isssssssddss',
+                    $id,
+                    $periodo_actual,
+                    $grado_seccion_actual,
+                    $registro,
+                    $repite,
+                    $c,
+                    $f,
+                    $p,
+                    $peso_null,
+                    $talla_null,
+                    $fecha_actual,
+                    $funcionario
                 );
                 $stmt->execute();
                 $stmt->close();
@@ -125,16 +142,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  c, f, p, peso, talla, fecha_inscripcion, funcionario) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conexion->prepare($sql_nuevo_historial);
-            $peso_null = null;
-            $talla_null = null;
-            $stmt->bind_param('isssssssddss', 
-                $id, 
+            
+            // ========== CORRECCIÓN: usar variables en lugar de literales ==========
+            $registro2 = '';
+            $repite2 = 'No';
+            $c2 = '';
+            $f2 = '';
+            $p2 = '';
+            $peso_null2 = null;
+            $talla_null2 = null;
+            
+            $stmt->bind_param(
+                'isssssssddss',
+                $id,
                 $nuevo_periodo,
                 $nuevo_grado_seccion,
-                '',   // registro vacío
-                'No', // repite por defecto
-                '', '', '', // C, F, P vacíos
-                $peso_null, $talla_null, // peso y talla nulos
+                $registro2,
+                $repite2,
+                $c2,
+                $f2,
+                $p2,
+                $peso_null2,
+                $talla_null2,
                 $fecha_actual,
                 $funcionario
             );

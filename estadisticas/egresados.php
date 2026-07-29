@@ -69,6 +69,207 @@ function logError($mensaje, $contexto = []) {
 if ($esAjax) {
     $action = sanitizarEntrada($_POST['action'] ?? '');
     
+    // ===== CARGAR SECCIONES (para el select de sección) =====
+    if ($action === 'cargar_secciones') {
+        $sala = sanitizarEntrada($_POST['sala'] ?? '');
+        if (empty($sala)) responderJSON(['secciones' => []]);
+        $stmt = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
+        $stmt->bind_param("s", $sala);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $secciones = [];
+        while ($row = $result->fetch_assoc()) {
+            $secciones[] = ['id' => (int)$row['id'], 'nombre' => htmlspecialchars($row['nombre'])];
+        }
+        responderJSON(['secciones' => $secciones]);
+    }
+    
+    // ===== CARGAR EGRESOS FILTRADOS (nuevo) =====
+    if ($action === 'cargar_egresos') {
+        $filtro_sala = sanitizarEntrada($_POST['sala'] ?? '');
+        $filtro_seccion = filter_var($_POST['seccion'] ?? 0, FILTER_VALIDATE_INT);
+        $filtro_periodo = sanitizarEntrada($_POST['periodo'] ?? '');
+        $filtro_busqueda = sanitizarEntrada($_POST['busqueda'] ?? '');
+        $pagina = filter_var($_POST['pagina'] ?? 1, FILTER_VALIDATE_INT) ?: 1;
+        $por_pagina = 20;
+        $offset = ($pagina - 1) * $por_pagina;
+        
+        // Construir consulta
+        $where = [];
+        $params = [];
+        $tipos = '';
+        
+        if (!empty($filtro_sala)) {
+            $where[] = "e.sala = ?";
+            $params[] = $filtro_sala;
+            $tipos .= 's';
+        }
+        if (!empty($filtro_seccion)) {
+            $where[] = "e.seccion_id = ?";
+            $params[] = $filtro_seccion;
+            $tipos .= 'i';
+        }
+        if (!empty($filtro_periodo)) {
+            $where[] = "e.periodo = ?";
+            $params[] = $filtro_periodo;
+            $tipos .= 's';
+        }
+        if (!empty($filtro_busqueda)) {
+            $termino = "%$filtro_busqueda%";
+            $where[] = "(est.nombre LIKE ? OR est.apellido LIKE ? OR est.cedula LIKE ? OR CONCAT(est.apellido, ' ', est.nombre) LIKE ?)";
+            $params[] = $termino; $params[] = $termino; $params[] = $termino; $params[] = $termino;
+            $tipos .= 'ssss';
+        }
+        
+        // Siempre filtrar por inscripción completa (para mostrar solo egresos de estudiantes que estuvieron completos)
+        $where[] = "est.inscripcion_completa = 1";
+        
+        $whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+        
+        // Contar total
+        $sql_count = "SELECT COUNT(*) as total FROM egresos e LEFT JOIN estudiantes est ON e.estudiante_id = est.id $whereSQL";
+        $stmt_count = $conexion->prepare($sql_count);
+        if (!empty($params)) $stmt_count->bind_param($tipos, ...$params);
+        $stmt_count->execute();
+        $total_egresos = $stmt_count->get_result()->fetch_assoc()['total'];
+        $total_paginas = ceil($total_egresos / $por_pagina);
+        
+        // Consulta principal
+        $sql = "
+            SELECT 
+                e.id AS egreso_id,
+                e.estudiante_id,
+                e.sala,
+                e.seccion_id,
+                e.periodo,
+                e.fecha_egreso,
+                e.motivo,
+                e.genero AS genero_egreso,
+                est.nombre,
+                est.apellido,
+                est.cedula,
+                est.nacionalidad,
+                est.genero AS genero_est,
+                est.fecha_nacimiento,
+                sec.nombre AS nombre_seccion
+            FROM egresos e 
+            LEFT JOIN estudiantes est ON e.estudiante_id = est.id 
+            LEFT JOIN secciones sec ON e.seccion_id = sec.id
+            $whereSQL
+            ORDER BY e.fecha_egreso DESC, e.id DESC
+            LIMIT ? OFFSET ?
+        ";
+        
+        $params_paginados = $params;
+        $params_paginados[] = $por_pagina;
+        $params_paginados[] = $offset;
+        $tipos_paginados = $tipos . 'ii';
+        
+        $stmt = $conexion->prepare($sql);
+        if (!empty($params_paginados)) $stmt->bind_param($tipos_paginados, ...$params_paginados);
+        $stmt->execute();
+        $egresos = $stmt->get_result();
+        
+        // Generar HTML de la tabla
+        $html_tabla = '';
+        if ($total_egresos > 0) {
+            $nombres_salas = [
+                'sala4' => 'Sala 4 Años', 'sala5' => 'Sala 5 Años',
+                '1ro' => '1° Grado', '2do' => '2° Grado', '3ro' => '3° Grado',
+                '4to' => '4° Grado', '5to' => '5° Grado', '6to' => '6° Grado'
+            ];
+            $contador = $offset + 1;
+            ob_start();
+            ?>
+            <div class="table-responsive">
+                <table class="table table-hover table-egresos mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:5%">#</th>
+                            <th style="width:16%">Estudiante</th>
+                            <th style="width:9%">Cédula</th>
+                            <th style="width:7%">Género</th>
+                            <th style="width:10%">Sala / Sección</th>
+                            <th style="width:8%">Período</th>
+                            <th style="width:9%">F. Egreso</th>
+                            <th style="width:14%">Motivo</th>
+                            <th style="width:7%">Estatus</th>
+                            <th style="width:15%">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php while ($egreso = $egresos->fetch_assoc()): 
+                            $nombre_completo = htmlspecialchars(($egreso['apellido'] ?? '') . ' ' . ($egreso['nombre'] ?? 'Estudiante eliminado'));
+                            $sala_nombre = $nombres_salas[$egreso['sala']] ?? htmlspecialchars($egreso['sala']);
+                        ?>
+                            <tr id="fila-egreso-<?= $egreso['egreso_id'] ?>">
+                                <td class="text-center fw-bold text-muted"><?= $contador++ ?></td>
+                                <td><strong><?= $nombre_completo ?></strong></td>
+                                <td><span class="font-monospace"><?= htmlspecialchars($egreso['cedula'] ?? 'N/A') ?></span></td>
+                                <td>
+                                    <?php $gen = $egreso['genero_egreso'] ?? $egreso['genero_est'] ?? '';
+                                    if ($gen === 'V'): ?><span class="text-primary fw-bold"><i class="fas fa-male me-1"></i> Varón</span>
+                                    <?php elseif ($gen === 'H'): ?><span class="text-danger fw-bold"><i class="fas fa-female me-1"></i> Hembra</span>
+                                    <?php else: ?><span class="text-muted">N/A</span><?php endif; ?>
+                                </td>
+                                <td><span class="badge-sala"><?= $sala_nombre ?></span><?php if ($egreso['nombre_seccion']): ?><br><small class="info-egreso">Sec. <?= htmlspecialchars($egreso['nombre_seccion']) ?></small><?php endif; ?></td>
+                                <td class="text-center"><span class="font-monospace small"><?= htmlspecialchars($egreso['periodo']) ?></span></td>
+                                <td class="text-center"><?= date('d/m/Y', strtotime($egreso['fecha_egreso'])) ?></td>
+                                <td><?= htmlspecialchars($egreso['motivo'] ?? 'No especificado') ?></td>
+                                <td class="text-center"><span class="badge badge-estatus"><i class="fas fa-user-slash me-1"></i> Inactivo</span></td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-revertir btn-sm" onclick="revertirEgreso(<?= $egreso['egreso_id'] ?>, '<?= addslashes($nombre_completo) ?>')"><i class="fas fa-undo me-1"></i> Revertir</button>
+                                    <button type="button" class="btn btn-eliminar btn-sm" onclick="eliminarEgreso(<?= $egreso['egreso_id'] ?>, '<?= addslashes($nombre_completo) ?>')"><i class="fas fa-trash-alt me-1"></i> Eliminar</button>
+                                </td>
+                            </tr>
+                        <?php endwhile; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php
+            // Paginación
+            if ($total_paginas > 1) {
+                $query_params = $_GET;
+                unset($query_params['pagina']);
+                $base_url = '?';
+                if (!empty($query_params)) $base_url .= http_build_query($query_params) . '&';
+                ?>
+                <div class="d-flex justify-content-center py-3 border-top">
+                    <nav><ul class="pagination mb-0">
+                        <li class="page-item <?= ($pagina <= 1) ? 'disabled' : '' ?>"><a class="page-link" href="#" data-pagina="<?= $pagina - 1 ?>"><i class="fas fa-chevron-left"></i></a></li>
+                        <?php for ($i = max(1, $pagina - 2); $i <= min($total_paginas, $pagina + 2); $i++): ?>
+                            <li class="page-item <?= ($i == $pagina) ? 'active' : '' ?>"><a class="page-link" href="#" data-pagina="<?= $i ?>"><?= $i ?></a></li>
+                        <?php endfor; ?>
+                        <li class="page-item <?= ($pagina >= $total_paginas) ? 'disabled' : '' ?>"><a class="page-link" href="#" data-pagina="<?= $pagina + 1 ?>"><i class="fas fa-chevron-right"></i></a></li>
+                    </ul></nav>
+                </div>
+                <?php
+            }
+            $html_tabla = ob_get_clean();
+        } else {
+            $html_tabla = '
+                <div class="estado-vacio"><i class="fas fa-inbox"></i><h5 class="fw-bold">No se encontraron egresos</h5>
+                <p class="mb-0">'.(!empty($filtro_sala) || !empty($filtro_busqueda) || !empty($filtro_periodo) ? 'No hay egresos que coincidan con los filtros aplicados.' : 'Aún no se ha registrado ningún egreso.').'</p></div>';
+        }
+        
+        $html_footer = '
+            <div class="d-flex justify-content-between align-items-center py-3">
+                <span class="text-muted small"><i class="fas fa-clock me-1"></i> Última actualización: '.date('d/m/Y H:i:s').'</span>
+                <span class="text-muted small">Mostrando '.min($por_pagina, max(0, $total_egresos - $offset)).' de '.$total_egresos.' egresos</span>
+            </div>
+        ';
+        
+        responderJSON([
+            'success' => true,
+            'html_tabla' => $html_tabla,
+            'html_footer' => $html_footer,
+            'total' => $total_egresos,
+            'pagina' => $pagina,
+            'total_paginas' => $total_paginas
+        ]);
+    }
+    
+    // ===== REVERTIR EGRESO =====
     if ($action === 'revertir_egreso') {
         if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
             responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
@@ -104,9 +305,8 @@ if ($esAjax) {
             $stmt_up->execute();
             $stmt_up->close();
             
-            // ========== AUDITORÍA (usando función de conexion.php) ==========
             $usuario_id = $_SESSION['usuario_id'] ?? 0;
-            if ($usuario_id > 0) {
+            if ($usuario_id > 0 && function_exists('registrarAuditoria')) {
                 $detalles = "Egreso revertido. Estudiante: $nombre_estudiante (ID: $estudiante_id), Sala: {$egreso['sala']}, Sección: {$egreso['seccion_id']}, Período: {$egreso['periodo']}";
                 registrarAuditoria($conexion, $usuario_id, 'REVERTIR_EGRESO', 'egresos', $egreso_id, $detalles);
             }
@@ -121,6 +321,7 @@ if ($esAjax) {
         exit;
     }
     
+    // ===== ELIMINAR EGRESO =====
     if ($action === 'eliminar_egreso') {
         if (!isset($_POST['csrf_token']) || !verificarTokenCSRF($_POST['csrf_token'])) {
             responderJSON(['success' => false, 'error' => 'Token CSRF inválido'], 403);
@@ -156,9 +357,8 @@ if ($esAjax) {
             $stmt_del_est->execute();
             $stmt_del_est->close();
             
-            // ========== AUDITORÍA ==========
             $usuario_id = $_SESSION['usuario_id'] ?? 0;
-            if ($usuario_id > 0) {
+            if ($usuario_id > 0 && function_exists('registrarAuditoria')) {
                 $detalles = "Egreso y estudiante eliminados permanentemente. Estudiante: $nombre_estudiante (ID: $estudiante_id), Sala: {$egreso['sala']}, Sección: {$egreso['seccion_id']}, Período: {$egreso['periodo']}";
                 registrarAuditoria($conexion, $usuario_id, 'ELIMINAR_EGRESO', 'egresos', $egreso_id, $detalles);
             }
@@ -173,115 +373,16 @@ if ($esAjax) {
         exit;
     }
     
-    if ($action === 'cargar_secciones') {
-        $sala = sanitizarEntrada($_POST['sala'] ?? '');
-        if (empty($sala)) responderJSON(['secciones' => []]);
-        $stmt = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
-        $stmt->bind_param("s", $sala);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $secciones = [];
-        while ($row = $result->fetch_assoc()) {
-            $secciones[] = ['id' => (int)$row['id'], 'nombre' => htmlspecialchars($row['nombre'])];
-        }
-        responderJSON(['secciones' => $secciones]);
-    }
-    
     responderJSON(['error' => 'Acción no válida'], 400);
     exit;
 }
 
 // ============================================================================
-// CARGAR VISTA PRINCIPAL
+// CARGAR VISTA PRINCIPAL (HTML)
 // ============================================================================
 include "../includes/header.php";
 
-$filtro_sala = sanitizarEntrada($_GET['sala'] ?? '');
-$filtro_seccion = filter_var($_GET['seccion'] ?? 0, FILTER_VALIDATE_INT);
-$filtro_periodo = sanitizarEntrada($_GET['periodo'] ?? '');
-$filtro_busqueda = sanitizarEntrada($_GET['busqueda'] ?? '');
-$pagina = filter_var($_GET['pagina'] ?? 1, FILTER_VALIDATE_INT) ?: 1;
-$por_pagina = 20;
-$offset = ($pagina - 1) * $por_pagina;
-
-// Construir consulta
-$where = [];
-$params = [];
-$tipos = '';
-
-if (!empty($filtro_sala)) {
-    $where[] = "e.sala = ?";
-    $params[] = $filtro_sala;
-    $tipos .= 's';
-}
-if (!empty($filtro_seccion)) {
-    $where[] = "e.seccion_id = ?";
-    $params[] = $filtro_seccion;
-    $tipos .= 'i';
-}
-if (!empty($filtro_periodo)) {
-    $where[] = "e.periodo = ?";
-    $params[] = $filtro_periodo;
-    $tipos .= 's';
-}
-if (!empty($filtro_busqueda)) {
-    $termino = "%$filtro_busqueda%";
-    $where[] = "(est.nombre LIKE ? OR est.apellido LIKE ? OR est.cedula LIKE ? OR CONCAT(est.apellido, ' ', est.nombre) LIKE ?)";
-    $params[] = $termino; $params[] = $termino; $params[] = $termino; $params[] = $termino;
-    $tipos .= 'ssss';
-}
-
-// ========== FILTRO POR INSCRIPCIÓN COMPLETA (para mostrar solo egresos de estudiantes que estuvieron completos) ==========
-// Si deseas ver todos los egresos históricos, elimina la siguiente línea.
-$where[] = "est.inscripcion_completa = 1";
-
-$whereSQL = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
-
-// Contar total
-$sql_count = "SELECT COUNT(*) as total FROM egresos e LEFT JOIN estudiantes est ON e.estudiante_id = est.id $whereSQL";
-$stmt_count = $conexion->prepare($sql_count);
-if (!empty($params)) $stmt_count->bind_param($tipos, ...$params);
-$stmt_count->execute();
-$total_egresos = $stmt_count->get_result()->fetch_assoc()['total'];
-$total_paginas = ceil($total_egresos / $por_pagina);
-
-// Consulta principal
-$sql = "
-    SELECT 
-        e.id AS egreso_id,
-        e.estudiante_id,
-        e.sala,
-        e.seccion_id,
-        e.periodo,
-        e.fecha_egreso,
-        e.motivo,
-        e.genero AS genero_egreso,
-        est.nombre,
-        est.apellido,
-        est.cedula,
-        est.nacionalidad,
-        est.genero AS genero_est,
-        est.fecha_nacimiento,
-        sec.nombre AS nombre_seccion
-    FROM egresos e 
-    LEFT JOIN estudiantes est ON e.estudiante_id = est.id 
-    LEFT JOIN secciones sec ON e.seccion_id = sec.id
-    $whereSQL
-    ORDER BY e.fecha_egreso DESC, e.id DESC
-    LIMIT ? OFFSET ?
-";
-
-$params_paginados = $params;
-$params_paginados[] = $por_pagina;
-$params_paginados[] = $offset;
-$tipos_paginados = $tipos . 'ii';
-
-$stmt = $conexion->prepare($sql);
-if (!empty($params_paginados)) $stmt->bind_param($tipos_paginados, ...$params_paginados);
-$stmt->execute();
-$egresos = $stmt->get_result();
-
-// Salas disponibles
+// Obtener salas disponibles para el filtro
 $salas_disponibles = [];
 $result_salas = $conexion->query("SELECT DISTINCT sala FROM egresos ORDER BY sala");
 while ($row = $result_salas->fetch_assoc()) {
@@ -327,15 +428,14 @@ $csrf_token = generarTokenCSRF();
         .btn-revertir:hover { background: #dc3545; color: white; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(220,53,69,0.25); }
         .btn-eliminar { background: none; border: 1.5px solid #dc3545; background-color: #dc3545; color: white; border-radius: 8px; padding: 5px 14px; font-size: 0.78rem; font-weight: 500; transition: all 0.2s; }
         .btn-eliminar:hover { background-color: #bb2d3b; border-color: #bb2d3b; color: white; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(220,53,69,0.4); }
-        .btn-filtro { background: var(--primary-gradient); border: none; color: white; font-weight: 500; }
-        .btn-filtro:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,45,84,0.3); color: white; }
-        .btn-limpiar { background: white; border: 1.5px solid #6c757d; color: #6c757d; font-weight: 500; }
-        .btn-limpiar:hover { background: #6c757d; color: white; }
-        .pagination .page-link { border-radius: 8px; margin: 0 3px; color: var(--navy); font-weight: 500; }
+        .btn-limpiar-filtros { background: white; border: 1.5px solid #6c757d; color: #6c757d; font-weight: 500; border-radius: 8px; padding: 7px 20px; }
+        .btn-limpiar-filtros:hover { background: #6c757d; color: white; }
+        .pagination .page-link { border-radius: 8px; margin: 0 3px; color: var(--navy); font-weight: 500; cursor: pointer; }
         .pagination .page-item.active .page-link { background: var(--primary-gradient); border-color: transparent; }
         .estado-vacio { padding: 50px 20px; text-align: center; color: #6c757d; }
         .estado-vacio i { font-size: 3rem; color: #adb5bd; margin-bottom: 15px; }
         .info-egreso { font-size: 0.75rem; color: #6c757d; }
+        .filtro-auto { font-size: 0.75rem; color: #6c757d; }
         @media (max-width: 768px) { .table-egresos { font-size: 0.7rem; } .btn-revertir, .btn-eliminar { font-size: 0.65rem; padding: 3px 8px; } }
     </style>
 </head>
@@ -356,122 +456,52 @@ $csrf_token = generarTokenCSRF();
     <!-- Filtros -->
     <div class="card">
         <div class="card-body p-4">
-            <form method="GET" class="row g-3 align-items-end" id="filtroForm" autocomplete="off">
+            <div class="row g-3 align-items-end">
                 <div class="col-md-2">
                     <label class="small fw-bold text-muted"><i class="fas fa-graduation-cap"></i> Sala / Grado</label>
                     <select name="sala" id="filtro-sala" class="form-select shadow-none" onchange="cargarSeccionesFiltro()">
                         <option value="">Todas las salas</option>
                         <?php foreach ($salas_disponibles as $sala_disp): ?>
-                            <option value="<?= htmlspecialchars($sala_disp) ?>" <?= ($filtro_sala == $sala_disp) ? 'selected' : '' ?>><?= htmlspecialchars($nombres_salas[$sala_disp] ?? $sala_disp) ?></option>
+                            <option value="<?= htmlspecialchars($sala_disp) ?>"><?= htmlspecialchars($nombres_salas[$sala_disp] ?? $sala_disp) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 <div class="col-md-2">
                     <label class="small fw-bold text-muted"><i class="fas fa-layer-group"></i> Sección</label>
-                    <select name="seccion" id="filtro-seccion" class="form-select shadow-none" <?= empty($filtro_sala) ? 'disabled' : '' ?>>
+                    <select name="seccion" id="filtro-seccion" class="form-select shadow-none" disabled>
                         <option value="">Todas las secciones</option>
-                        <?php if ($filtro_sala): 
-                            $stmt_sec = $conexion->prepare("SELECT id, nombre FROM secciones WHERE sala = ? ORDER BY nombre");
-                            $stmt_sec->bind_param("s", $filtro_sala);
-                            $stmt_sec->execute();
-                            $result_sec = $stmt_sec->get_result();
-                            while ($sec = $result_sec->fetch_assoc()): ?>
-                                <option value="<?= $sec['id'] ?>" <?= ($filtro_seccion == $sec['id']) ? 'selected' : '' ?>><?= htmlspecialchars($sec['nombre']) ?></option>
-                            <?php endwhile; $stmt_sec->close(); endif; ?>
                     </select>
                 </div>
                 <div class="col-md-2">
                     <label class="small fw-bold text-muted"><i class="fas fa-calendar-alt"></i> Período</label>
-                    <input type="month" name="periodo" id="filtro-periodo" class="form-control shadow-none" value="<?= htmlspecialchars($filtro_periodo) ?>">
+                    <input type="month" name="periodo" id="filtro-periodo" class="form-control shadow-none">
                 </div>
                 <div class="col-md-3">
                     <label class="small fw-bold text-muted"><i class="fas fa-search"></i> Buscar estudiante</label>
-                    <input type="text" name="busqueda" id="filtro-busqueda" class="form-control shadow-none" placeholder="Nombre, apellido o cédula..." value="<?= htmlspecialchars($filtro_busqueda) ?>">
+                    <input type="text" name="busqueda" id="filtro-busqueda" class="form-control shadow-none" placeholder="Nombre, apellido o cédula...">
                 </div>
                 <div class="col-md-3 text-end d-flex gap-2 justify-content-end">
-                    <button type="submit" class="btn btn-filtro px-4"><i class="fas fa-filter me-2"></i> Filtrar</button>
-                    <a href="egresados.php" class="btn btn-limpiar px-3"><i class="fas fa-eraser me-2"></i> Limpiar</a>
+                    <button type="button" id="btn-limpiar-filtros" class="btn-limpiar-filtros">
+                        <i class="fas fa-eraser me-2"></i> Limpiar filtros
+                    </button>
+                    <span class="filtro-auto align-self-center"><i class="fas fa-sync-alt me-1"></i> Filtro automático</span>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
     
     <!-- Tabla -->
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
-            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i> Registro de Egresos <span class="badge bg-light text-dark ms-2"><?= $total_egresos ?> registro(s)</span></h6>
+            <h6 class="mb-0"><i class="fas fa-list-ul me-2"></i> Registro de Egresos <span class="badge bg-light text-dark ms-2" id="total-egresos">0</span></h6>
             <small class="opacity-75"><i class="fas fa-info-circle me-1"></i> Use "Revertir" para reactivar, "Eliminar" para borrado permanente</small>
         </div>
-        <div class="card-body p-0">
-            <?php if ($total_egresos > 0): ?>
-                <div class="table-responsive">
-                    <table class="table table-hover table-egresos mb-0">
-                        <thead>
-                            <tr>
-                                <th style="width:5%">#</th>
-                                <th style="width:16%">Estudiante</th>
-                                <th style="width:9%">Cédula</th>
-                                <th style="width:7%">Género</th>
-                                <th style="width:10%">Sala / Sección</th>
-                                <th style="width:8%">Período</th>
-                                <th style="width:9%">F. Egreso</th>
-                                <th style="width:14%">Motivo</th>
-                                <th style="width:7%">Estatus</th>
-                                <th style="width:15%">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php 
-                            $contador = $offset + 1;
-                            while ($egreso = $egresos->fetch_assoc()): 
-                                $nombre_completo = htmlspecialchars(($egreso['apellido'] ?? '') . ' ' . ($egreso['nombre'] ?? 'Estudiante eliminado'));
-                                $sala_nombre = $nombres_salas[$egreso['sala']] ?? htmlspecialchars($egreso['sala']);
-                            ?>
-                                <tr id="fila-egreso-<?= $egreso['egreso_id'] ?>">
-                                    <td class="text-center fw-bold text-muted"><?= $contador++ ?></td>
-                                    <td><strong><?= $nombre_completo ?></strong></td>
-                                    <td><span class="font-monospace"><?= htmlspecialchars($egreso['cedula'] ?? 'N/A') ?></span></td>
-                                    <td>
-                                        <?php $gen = $egreso['genero_egreso'] ?? $egreso['genero_est'] ?? '';
-                                        if ($gen === 'V'): ?><span class="text-primary fw-bold"><i class="fas fa-male me-1"></i> Varón</span>
-                                        <?php elseif ($gen === 'H'): ?><span class="text-danger fw-bold"><i class="fas fa-female me-1"></i> Hembra</span>
-                                        <?php else: ?><span class="text-muted">N/A</span><?php endif; ?>
-                                    </td>
-                                    <td><span class="badge-sala"><?= $sala_nombre ?></span><?php if ($egreso['nombre_seccion']): ?><br><small class="info-egreso">Sec. <?= htmlspecialchars($egreso['nombre_seccion']) ?></small><?php endif; ?></td>
-                                    <td class="text-center"><span class="font-monospace small"><?= htmlspecialchars($egreso['periodo']) ?></span></td>
-                                    <td class="text-center"><?= date('d/m/Y', strtotime($egreso['fecha_egreso'])) ?></td>
-                                    <td><?= htmlspecialchars($egreso['motivo'] ?? 'No especificado') ?></td>
-                                    <td class="text-center"><span class="badge badge-estatus"><i class="fas fa-user-slash me-1"></i> Inactivo</span></td>
-                                    <td class="text-center">
-                                        <button type="button" class="btn btn-revertir btn-sm" onclick="revertirEgreso(<?= $egreso['egreso_id'] ?>, '<?= addslashes($nombre_completo) ?>')"><i class="fas fa-undo me-1"></i> Revertir</button>
-                                        <button type="button" class="btn btn-eliminar btn-sm" onclick="eliminarEgreso(<?= $egreso['egreso_id'] ?>, '<?= addslashes($nombre_completo) ?>')"><i class="fas fa-trash-alt me-1"></i> Eliminar</button>
-                                    </td>
-                                </tr>
-                            <?php endwhile; ?>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <?php if ($total_paginas > 1): ?>
-                    <div class="d-flex justify-content-center py-3 border-top">
-                        <nav><ul class="pagination mb-0">
-                            <?php $query_params = $_GET; unset($query_params['pagina']); $base_url = 'egresados.php?' . http_build_query($query_params); if (!empty($query_params)) $base_url .= '&'; ?>
-                            <li class="page-item <?= ($pagina <= 1) ? 'disabled' : '' ?>"><a class="page-link" href="<?= $base_url ?>pagina=<?= $pagina - 1 ?>"><i class="fas fa-chevron-left"></i></a></li>
-                            <?php for ($i = max(1, $pagina - 2); $i <= min($total_paginas, $pagina + 2); $i++): ?>
-                                <li class="page-item <?= ($i == $pagina) ? 'active' : '' ?>"><a class="page-link" href="<?= $base_url ?>pagina=<?= $i ?>"><?= $i ?></a></li>
-                            <?php endfor; ?>
-                            <li class="page-item <?= ($pagina >= $total_paginas) ? 'disabled' : '' ?>"><a class="page-link" href="<?= $base_url ?>pagina=<?= $pagina + 1 ?>"><i class="fas fa-chevron-right"></i></a></li>
-                        </ul></nav>
-                    </div>
-                <?php endif; ?>
-                
-            <?php else: ?>
-                <div class="estado-vacio"><i class="fas fa-inbox"></i><h5 class="fw-bold">No se encontraron egresos</h5><p class="mb-0"><?= (!empty($filtro_sala) || !empty($filtro_busqueda) || !empty($filtro_periodo)) ? 'No hay egresos que coincidan con los filtros aplicados. <a href="egresados.php" class="text-primary">Limpiar filtros</a>' : 'Aún no se ha registrado ningún egreso.' ?></p></div>
-            <?php endif; ?>
-        </div>
-        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
-            <span class="text-muted small"><i class="fas fa-clock me-1"></i> Última actualización: <?= date('d/m/Y H:i:s') ?></span>
-            <span class="text-muted small">Mostrando <?= min($por_pagina, $total_egresos - $offset) ?> de <?= $total_egresos ?> egresos</span>
+        <div class="card-body p-0" id="tabla-container">
+            <!-- El contenido se carga dinámicamente con JavaScript -->
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div>
+                <p class="text-muted mt-2">Cargando egresos...</p>
+            </div>
         </div>
     </div>
 </div>
@@ -519,68 +549,216 @@ $csrf_token = generarTokenCSRF();
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// ===== VARIABLES GLOBALES =====
 let egresoIdARevertir = null, egresoIdAEliminar = null;
 const modalRevertir = new bootstrap.Modal(document.getElementById('modalRevertir'));
 const modalEliminar = new bootstrap.Modal(document.getElementById('modalEliminar'));
 
+const filtroSala = document.getElementById('filtro-sala');
+const filtroSeccion = document.getElementById('filtro-seccion');
+const filtroPeriodo = document.getElementById('filtro-periodo');
+const filtroBusqueda = document.getElementById('filtro-busqueda');
+const tablaContainer = document.getElementById('tabla-container');
+const totalEgresos = document.getElementById('total-egresos');
+let timeoutId = null;
+let paginaActual = 1;
+
+// ===== CARGAR SECCIONES =====
 function cargarSeccionesFiltro() {
-    const sala = document.getElementById('filtro-sala').value;
-    const seccionSelect = document.getElementById('filtro-seccion');
-    seccionSelect.innerHTML = '<option value="">Cargando...</option>';
-    seccionSelect.disabled = true;
-    if (!sala) { seccionSelect.innerHTML = '<option value="">Todas las secciones</option>'; seccionSelect.disabled = true; return; }
-    const formData = new FormData(); formData.append('action', 'cargar_secciones'); formData.append('sala', sala);
+    const sala = filtroSala.value;
+    filtroSeccion.innerHTML = '<option value="">Cargando...</option>';
+    filtroSeccion.disabled = true;
+    if (!sala) {
+        filtroSeccion.innerHTML = '<option value="">Todas las secciones</option>';
+        filtroSeccion.disabled = true;
+        return;
+    }
+    const formData = new FormData();
+    formData.append('action', 'cargar_secciones');
+    formData.append('sala', sala);
     fetch('egresados.php?ajax=1', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
-            seccionSelect.innerHTML = '<option value="">Todas las secciones</option>';
-            if (data.secciones?.length) { data.secciones.forEach(sec => seccionSelect.add(new Option(sec.nombre, sec.id))); seccionSelect.disabled = false; }
-            else seccionSelect.innerHTML = '<option value="">Sin secciones</option>';
+            filtroSeccion.innerHTML = '<option value="">Todas las secciones</option>';
+            if (data.secciones?.length) {
+                data.secciones.forEach(sec => {
+                    filtroSeccion.add(new Option(sec.nombre, sec.id));
+                });
+                filtroSeccion.disabled = false;
+            } else {
+                filtroSeccion.innerHTML = '<option value="">Sin secciones</option>';
+            }
+            cargarEgresos();
+        })
+        .catch(() => {
+            filtroSeccion.innerHTML = '<option value="">Error al cargar</option>';
+            filtroSeccion.disabled = true;
         });
 }
 
-function revertirEgreso(id, nombre) { egresoIdARevertir = id; document.getElementById('nombre-estudiante-revertir').textContent = nombre; modalRevertir.show(); }
-function eliminarEgreso(id, nombre) { egresoIdAEliminar = id; document.getElementById('nombre-estudiante-eliminar').textContent = nombre; modalEliminar.show(); }
+// ===== CARGAR EGRESOS FILTRADOS =====
+function cargarEgresos(pagina = 1) {
+    paginaActual = pagina;
+    const sala = filtroSala.value;
+    const seccion = filtroSeccion.value;
+    const periodo = filtroPeriodo.value;
+    const busqueda = filtroBusqueda.value.trim();
 
-document.getElementById('btn-confirmar-revertir').addEventListener('click', function() {
-    if (!egresoIdARevertir) return;
-    const btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Revirtiendo...';
-    const formData = new FormData(); formData.append('action', 'revertir_egreso'); formData.append('egreso_id', egresoIdARevertir); formData.append('csrf_token', '<?= $csrf_token ?>');
+    tablaContainer.innerHTML = `
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div>
+            <p class="text-muted mt-2">Cargando egresos...</p>
+        </div>
+    `;
+
+    const formData = new FormData();
+    formData.append('action', 'cargar_egresos');
+    formData.append('sala', sala);
+    formData.append('seccion', seccion);
+    formData.append('periodo', periodo);
+    formData.append('busqueda', busqueda);
+    formData.append('pagina', pagina);
+
     fetch('egresados.php?ajax=1', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                const fila = document.getElementById('fila-egreso-' + egresoIdARevertir);
-                if (fila) { fila.style.transition = 'all 0.4s ease'; fila.style.opacity = '0'; fila.style.transform = 'translateX(30px)'; setTimeout(() => fila.remove(), 400); }
+                tablaContainer.innerHTML = data.html_tabla + data.html_footer;
+                totalEgresos.textContent = data.total || 0;
+                
+                // Manejar clics en la paginación
+                document.querySelectorAll('.page-link[data-pagina]').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const p = parseInt(this.dataset.pagina);
+                        if (p && !isNaN(p)) cargarEgresos(p);
+                    });
+                });
+            } else {
+                tablaContainer.innerHTML = `<div class="text-center py-5 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2 d-block"></i> Error al cargar los datos.</div>`;
+            }
+        })
+        .catch(() => {
+            tablaContainer.innerHTML = `<div class="text-center py-5 text-danger"><i class="fas fa-exclamation-circle fa-2x mb-2 d-block"></i> Error de conexión.</div>`;
+        });
+}
+
+// ===== FILTROS AUTOMÁTICOS =====
+filtroSala.addEventListener('change', function() {
+    cargarSeccionesFiltro(); // Esta función ya llama a cargarEgresos al final
+});
+
+filtroSeccion.addEventListener('change', function() {
+    cargarEgresos(1);
+});
+
+filtroPeriodo.addEventListener('change', function() {
+    cargarEgresos(1);
+});
+
+filtroBusqueda.addEventListener('input', function() {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => cargarEgresos(1), 400);
+});
+
+// ===== LIMPIAR FILTROS =====
+document.getElementById('btn-limpiar-filtros').addEventListener('click', function() {
+    filtroSala.value = '';
+    filtroSeccion.innerHTML = '<option value="">Todas las secciones</option>';
+    filtroSeccion.disabled = true;
+    filtroPeriodo.value = '';
+    filtroBusqueda.value = '';
+    cargarEgresos(1);
+});
+
+// ===== FUNCIONES PARA REVERTIR / ELIMINAR =====
+function revertirEgreso(id, nombre) {
+    egresoIdARevertir = id;
+    document.getElementById('nombre-estudiante-revertir').textContent = nombre;
+    modalRevertir.show();
+}
+
+function eliminarEgreso(id, nombre) {
+    egresoIdAEliminar = id;
+    document.getElementById('nombre-estudiante-eliminar').textContent = nombre;
+    modalEliminar.show();
+}
+
+document.getElementById('btn-confirmar-revertir').addEventListener('click', function() {
+    if (!egresoIdARevertir) return;
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Revirtiendo...';
+    const formData = new FormData();
+    formData.append('action', 'revertir_egreso');
+    formData.append('egreso_id', egresoIdARevertir);
+    formData.append('csrf_token', '<?= $csrf_token ?>');
+    fetch('egresados.php?ajax=1', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
                 modalRevertir.hide();
-                alert(data.mensaje || 'Egreso revertido.');
-            } else alert('Error: ' + (data.error || 'No se pudo revertir.'));
+                mostrarNotificacion('Egreso revertido exitosamente.', 'success');
+                cargarEgresos(paginaActual);
+            } else {
+                alert('Error: ' + (data.error || 'No se pudo revertir.'));
+            }
         })
         .catch(() => alert('Error de conexión.'))
-        .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-undo me-2"></i> Sí, Revertir'; });
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-undo me-2"></i> Sí, Revertir';
+            egresoIdARevertir = null;
+        });
 });
 
 document.getElementById('btn-confirmar-eliminar').addEventListener('click', function() {
     if (!egresoIdAEliminar) return;
     if (!confirm('¿Está ABSOLUTAMENTE SEGURO? Esta acción es irreversible.')) return;
-    const btn = this; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Eliminando...';
-    const formData = new FormData(); formData.append('action', 'eliminar_egreso'); formData.append('egreso_id', egresoIdAEliminar); formData.append('csrf_token', '<?= $csrf_token ?>');
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Eliminando...';
+    const formData = new FormData();
+    formData.append('action', 'eliminar_egreso');
+    formData.append('egreso_id', egresoIdAEliminar);
+    formData.append('csrf_token', '<?= $csrf_token ?>');
     fetch('egresados.php?ajax=1', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                const fila = document.getElementById('fila-egreso-' + egresoIdAEliminar);
-                if (fila) { fila.style.transition = 'all 0.4s ease'; fila.style.opacity = '0'; fila.style.transform = 'translateX(30px)'; setTimeout(() => fila.remove(), 400); }
                 modalEliminar.hide();
-                alert(data.mensaje || 'Egreso eliminado.');
-            } else alert('Error: ' + (data.error || 'No se pudo eliminar.'));
+                mostrarNotificacion('Egreso y estudiante eliminados permanentemente.', 'danger');
+                cargarEgresos(paginaActual);
+            } else {
+                alert('Error: ' + (data.error || 'No se pudo eliminar.'));
+            }
         })
         .catch(() => alert('Error de conexión.'))
-        .finally(() => { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt me-2"></i> Sí, Eliminar'; });
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-trash-alt me-2"></i> Sí, Eliminar';
+            egresoIdAEliminar = null;
+        });
 });
 
 document.getElementById('modalRevertir').addEventListener('hidden.bs.modal', () => egresoIdARevertir = null);
 document.getElementById('modalEliminar').addEventListener('hidden.bs.modal', () => egresoIdAEliminar = null);
+
+// ===== NOTIFICACIONES =====
+function mostrarNotificacion(mensaje, tipo = 'success') {
+    const alerta = document.createElement('div');
+    alerta.className = `alert alert-${tipo} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+    alerta.style.zIndex = '9999';
+    alerta.style.maxWidth = '400px';
+    alerta.innerHTML = `${mensaje} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+    document.body.appendChild(alerta);
+    setTimeout(() => alerta.remove(), 4000);
+}
+
+// ===== CARGA INICIAL =====
+document.addEventListener('DOMContentLoaded', function() {
+    cargarEgresos(1);
+});
 </script>
 
 <?php include "../includes/footer.php"; ?>
